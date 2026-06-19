@@ -1,6 +1,6 @@
 {
   "name": "data-vault",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "A desktop viewer for Git-backed HTML knowledge vaults.",
   "repository": "https://github.com/BasPeter/data-vault.git",
@@ -61,6 +61,12 @@
       "out/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
+      }
+    ],
     "publish": [
       {
         "provider": "github",
@@ -70,15 +76,20 @@
     ],
     "electronUpdaterCompatibility": ">=2.16",
     "mac": {
+      "icon": "build/icon.png",
       "target": [
         "dmg",
         "zip"
-      ]
+      ],
+      "hardenedRuntime": true,
+      "notarize": true
     },
     "win": {
+      "icon": "build/icon.png",
       "target": "nsis"
     },
     "linux": {
+      "icon": "build/icon.png",
       "target": [
         "AppImage",
         "deb"

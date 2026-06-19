@@ -73,6 +73,7 @@ function createWindow(): void {
     minWidth: 820,
     minHeight: 560,
     show: false,
+    icon: app.isPackaged ? path.join(process.resourcesPath, "icon.png") : path.resolve("build/icon.png"),
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.cjs"),
       nodeIntegration: false,
@@ -98,6 +99,9 @@ app.whenReady().then(() => {
   service = new VaultService(app.getPath("userData"));
   configureUpdater();
   registerIpc();
+  if (process.platform === "darwin") {
+    app.dock?.setIcon(app.isPackaged ? path.join(process.resourcesPath, "icon.png") : path.resolve("build/icon.png"));
+  }
   createWindow();
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
