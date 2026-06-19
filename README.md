@@ -50,6 +50,10 @@ tags: example, knowledge
 Internal links use document IDs: `<a href="#folder/document.html">Label</a>`.
 Mermaid diagrams use `<pre class="mermaid">...</pre>`.
 
+The quick-notes button opens a scratchpad for the active vault. Its HTML is
+stored as `quick-notes.html` at the documents root and is intentionally omitted
+from the document tree and graph. The application does not commit this file.
+
 ## Security model
 
 The renderer is sandboxed and has no Node.js integration. Filesystem and Git

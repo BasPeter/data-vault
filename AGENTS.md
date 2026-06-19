@@ -28,6 +28,8 @@ Electron modules into `src/`.
   `documentsDirectory` and a display `name`.
 - Documents are content-only `.html` fragments with an optional `<!--vault`
   metadata block containing `title`, `date`, and comma-separated `tags`.
+- `quick-notes.html` at the documents root is a reserved local scratchpad. It
+  is excluded from the manifest and graph and may remain uncommitted.
 - Internal links are hashes whose value is another document ID.
 - Mermaid source is stored in `<pre class="mermaid">` blocks.
 - Never add real vault data, credentials, repository URLs, or generated clones

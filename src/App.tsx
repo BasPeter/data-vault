@@ -3,6 +3,7 @@ import { Database, FolderOpen, GitBranch, Network, Plus, RefreshCw } from "lucid
 import { AppSidebar } from "@/components/app-sidebar";
 import { DocumentView } from "@/components/document-view";
 import { GraphView } from "@/components/graph-view";
+import { QuickNotesPanel } from "@/components/quick-notes-panel";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -129,6 +130,7 @@ export default function App() {
             <Button variant="ghost" size="icon" title="Sync vault" onClick={sync} disabled={syncing}>
               <RefreshCw className={syncing ? "animate-spin" : ""} />
             </Button>
+            <QuickNotesPanel vaultId={vaultId} version={version} />
             <Button variant={view === "graph" ? "secondary" : "ghost"} size="icon" title="Graph" onClick={() => setView(view === "graph" ? "doc" : "graph")}>
               <Network />
             </Button>

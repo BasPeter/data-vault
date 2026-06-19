@@ -55,4 +55,43 @@ describe("VaultService", () => {
     expect(() => service.document(vault.id, "link.html")).toThrow("Document not found");
     expect(service.manifest(vault.id).tree).toEqual([]);
   });
+
+  it("stores quick notes outside the manifest and graph", () => {
+    const root = temporaryDirectory();
+    const documents = path.join(root, "documents");
+    fs.mkdirSync(documents);
+    fs.writeFileSync(path.join(documents, "document.html"), "<h1>Document</h1>");
+    fs.writeFileSync(path.join(documents, "quick-notes.html"), "<!--vault\ntitle: Notes\n-->\n<p>Existing</p>");
+
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = service.addLocal(root);
+
+    expect(service.quickNotes(vault.id)).toBe("<p>Existing</p>");
+    expect(service.manifest(vault.id).tree).toHaveLength(1);
+    expect(service.graph(vault.id).nodes).toHaveLength(1);
+
+    service.saveQuickNotes(vault.id, "<h2>Updated</h2>");
+
+    expect(service.quickNotes(vault.id)).toBe("<h2>Updated</h2>");
+    expect(fs.readFileSync(path.join(documents, "quick-notes.html"), "utf8"))
+      .toBe("<!--vault\ntitle: Quick notes\n-->\n<h2>Updated</h2>");
+  });
+
+  it("rejects oversized quick notes and symlink destinations", () => {
+    const root = temporaryDirectory();
+    const documents = path.join(root, "documents");
+    fs.mkdirSync(documents);
+    const outside = path.join(root, "outside.html");
+    fs.writeFileSync(outside, "outside");
+    fs.symlinkSync(outside, path.join(documents, "quick-notes.html"));
+
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = service.addLocal(root);
+
+    expect(() => service.quickNotes(vault.id)).toThrow("Quick notes file is invalid");
+    expect(() => service.saveQuickNotes(vault.id, "changed")).toThrow("Quick notes file is invalid");
+    expect(() => service.saveQuickNotes(vault.id, "x".repeat(2 * 1024 * 1024 + 1)))
+      .toThrow("Quick notes are too large");
+    expect(fs.readFileSync(outside, "utf8")).toBe("outside");
+  });
 });

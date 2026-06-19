@@ -53,6 +53,8 @@ export type VaultApi = {
   clone: (url: string) => Promise<VaultSummary>;
   manifest: (vaultId: string) => Promise<Manifest>;
   document: (vaultId: string, documentId: string) => Promise<LoadedDoc>;
+  quickNotes: (vaultId: string) => Promise<string>;
+  saveQuickNotes: (vaultId: string, html: string) => Promise<void>;
   graph: (vaultId: string) => Promise<GraphData>;
   sync: (vaultId: string) => Promise<SyncResult>;
 };

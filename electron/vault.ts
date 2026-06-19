@@ -14,6 +14,8 @@ import type {
 
 const execFileAsync = promisify(execFile);
 const MAX_DOCUMENT_BYTES = 2 * 1024 * 1024;
+const QUICK_NOTES_FILE = "quick-notes.html";
+const QUICK_NOTES_HEADER = "<!--vault\ntitle: Quick notes\n-->\n";
 
 type VaultConfig = {
   schemaVersion?: number;
@@ -145,6 +147,39 @@ export class VaultService {
     };
   }
 
+  quickNotes(vaultId: string): string {
+    const root = this.documentsRoot(vaultId);
+    const file = path.join(root, QUICK_NOTES_FILE);
+    if (!fs.existsSync(file)) return "";
+    const canonical = fs.realpathSync(file);
+    if (!isWithin(root, canonical) || !fs.statSync(canonical).isFile()) {
+      throw new Error("Quick notes file is invalid.");
+    }
+    if (fs.statSync(canonical).size > MAX_DOCUMENT_BYTES + Buffer.byteLength(QUICK_NOTES_HEADER)) {
+      throw new Error("Quick notes are too large.");
+    }
+    return fs.readFileSync(canonical, "utf8").replace(/^\s*<!--vault[\s\S]*?-->/i, "").trim();
+  }
+
+  saveQuickNotes(vaultId: string, html: string): void {
+    if (Buffer.byteLength(html, "utf8") > MAX_DOCUMENT_BYTES) {
+      throw new Error("Quick notes are too large.");
+    }
+    const root = this.documentsRoot(vaultId);
+    const file = path.join(root, QUICK_NOTES_FILE);
+    if (fs.existsSync(file)) {
+      const stats = fs.lstatSync(file);
+      if (stats.isSymbolicLink() || !stats.isFile()) throw new Error("Quick notes file is invalid.");
+    }
+    const temporary = path.join(root, `.quick-notes-${randomUUID()}.tmp`);
+    try {
+      fs.writeFileSync(temporary, QUICK_NOTES_HEADER + html, { encoding: "utf8", mode: 0o600 });
+      fs.renameSync(temporary, file);
+    } finally {
+      fs.rmSync(temporary, { force: true });
+    }
+  }
+
   graph(vaultId: string): GraphData {
     const nodes = this.flatten(this.manifest(vaultId).tree);
     const ids = new Set(nodes.map((node) => node.id));
@@ -233,6 +268,7 @@ export class VaultService {
     const nodes: TreeNode[] = [];
     for (const entry of fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
       if (entry.name.startsWith(".") || entry.name.startsWith("_") || entry.isSymbolicLink()) continue;
+      if (directory === root && entry.name.toLowerCase() === QUICK_NOTES_FILE) continue;
       const absolute = path.join(directory, entry.name);
       const id = path.relative(root, absolute).split(path.sep).join("/");
       if (entry.isDirectory()) {

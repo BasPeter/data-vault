@@ -7,6 +7,8 @@ const api: VaultApi = {
   clone: (url) => ipcRenderer.invoke("vault:clone", url),
   manifest: (vaultId) => ipcRenderer.invoke("vault:manifest", vaultId),
   document: (vaultId, documentId) => ipcRenderer.invoke("vault:document", vaultId, documentId),
+  quickNotes: (vaultId) => ipcRenderer.invoke("vault:quick-notes", vaultId),
+  saveQuickNotes: (vaultId, html) => ipcRenderer.invoke("vault:save-quick-notes", vaultId, html),
   graph: (vaultId) => ipcRenderer.invoke("vault:graph", vaultId),
   sync: (vaultId) => ipcRenderer.invoke("vault:sync", vaultId),
 };

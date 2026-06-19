@@ -18,6 +18,13 @@ function stringArgument(value: unknown, name: string): string {
   return value;
 }
 
+function htmlArgument(value: unknown): string {
+  if (typeof value !== "string" || Buffer.byteLength(value, "utf8") > 2 * 1024 * 1024) {
+    throw new Error("Invalid quick notes HTML.");
+  }
+  return value;
+}
+
 function registerIpc(): void {
   ipcMain.handle("vault:list", (event) => { assertTrusted(event); return service.list(); });
   ipcMain.handle("vault:choose-local", async (event) => {
@@ -36,6 +43,14 @@ function registerIpc(): void {
   ipcMain.handle("vault:document", (event, vaultId, documentId) => {
     assertTrusted(event);
     return service.document(stringArgument(vaultId, "vault ID"), stringArgument(documentId, "document ID"));
+  });
+  ipcMain.handle("vault:quick-notes", (event, vaultId) => {
+    assertTrusted(event);
+    return service.quickNotes(stringArgument(vaultId, "vault ID"));
+  });
+  ipcMain.handle("vault:save-quick-notes", (event, vaultId, html) => {
+    assertTrusted(event);
+    service.saveQuickNotes(stringArgument(vaultId, "vault ID"), htmlArgument(html));
   });
   ipcMain.handle("vault:graph", (event, vaultId) => {
     assertTrusted(event);
