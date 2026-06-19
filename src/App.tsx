@@ -1,0 +1,193 @@
+import { useEffect, useState } from "react";
+import { Database, FolderOpen, GitBranch, Network, Plus, RefreshCw } from "lucide-react";
+import { AppSidebar } from "@/components/app-sidebar";
+import { DocumentView } from "@/components/document-view";
+import { GraphView } from "@/components/graph-view";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { useTheme } from "@/hooks/use-theme";
+import type { Manifest, TreeNode, VaultSummary } from "@/types";
+
+function firstDocument(nodes: TreeNode[]): string | null {
+  for (const node of nodes) {
+    if (node.type === "doc") return node.id;
+    const found = firstDocument(node.children);
+    if (found) return found;
+  }
+  return null;
+}
+
+function documentLabel(nodes: TreeNode[], id: string): string | null {
+  for (const node of nodes) {
+    if (node.type === "doc" && node.id === id) return node.label;
+    if (node.type === "folder") {
+      const found = documentLabel(node.children, id);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+export default function App() {
+  const { theme, toggle } = useTheme();
+  const [vaults, setVaults] = useState<VaultSummary[]>([]);
+  const [vaultId, setVaultId] = useState<string | null>(null);
+  const [manifest, setManifest] = useState<Manifest>({ tree: [] });
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [view, setView] = useState<"doc" | "graph">("doc");
+  const [version, setVersion] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
+  const refreshVaults = async (preferred?: string) => {
+    const next = await window.vaultApi.list();
+    setVaults(next);
+    setVaultId((current) => preferred || current || next[0]?.id || null);
+  };
+
+  useEffect(() => {
+    refreshVaults().catch((cause) => setError(String(cause))).finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (!vaultId) {
+      setManifest({ tree: [] });
+      setActiveId(null);
+      return;
+    }
+    window.vaultApi.manifest(vaultId)
+      .then((next) => {
+        setManifest(next);
+        setActiveId((current) => current && documentLabel(next.tree, current) ? current : firstDocument(next.tree));
+      })
+      .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
+  }, [vaultId, version]);
+
+  useEffect(() => {
+    const onHash = () => setActiveId(decodeURIComponent(location.hash.slice(1)) || null);
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  const openDocument = (id: string) => {
+    setActiveId(id);
+    location.hash = encodeURIComponent(id);
+    setView("doc");
+  };
+
+  const addLocal = async () => {
+    setError(null);
+    try {
+      const vault = await window.vaultApi.chooseLocal();
+      if (vault) await refreshVaults(vault.id);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  };
+
+  const sync = async () => {
+    if (!vaultId) return;
+    setSyncing(true);
+    setError(null);
+    try {
+      await window.vaultApi.sync(vaultId);
+      setVersion((value) => value + 1);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  if (loading) return <CenteredMessage title="Loading vaults…" />;
+  if (!vaultId) return <Onboarding onLocal={addLocal} onCloned={refreshVaults} error={error} />;
+
+  const vault = vaults.find((candidate) => candidate.id === vaultId)!;
+  const title = activeId ? documentLabel(manifest.tree, activeId) : null;
+
+  return (
+    <SidebarProvider>
+      <AppSidebar tree={manifest.tree} activeId={activeId} onSelect={openDocument} vaultName={vault.name} />
+      <SidebarInset>
+        <header className="bg-background sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b px-4">
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="mr-2 !h-4" />
+          <select
+            className="bg-background max-w-52 truncate rounded border px-2 py-1 text-sm"
+            value={vaultId}
+            onChange={(event) => { setVaultId(event.target.value); setActiveId(null); }}
+          >
+            {vaults.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select>
+          <span className="text-muted-foreground truncate text-sm">{view === "graph" ? "Graph" : title}</span>
+          <div className="ml-auto flex items-center gap-1">
+            <Button variant="ghost" size="icon" title="Add local vault" onClick={addLocal}><Plus /></Button>
+            <Button variant="ghost" size="icon" title="Sync vault" onClick={sync} disabled={syncing}>
+              <RefreshCw className={syncing ? "animate-spin" : ""} />
+            </Button>
+            <Button variant={view === "graph" ? "secondary" : "ghost"} size="icon" title="Graph" onClick={() => setView(view === "graph" ? "doc" : "graph")}>
+              <Network />
+            </Button>
+            <ThemeToggle theme={theme} onToggle={toggle} />
+          </div>
+        </header>
+        {error && <div role="alert" className="border-destructive/50 bg-destructive/10 border-b px-4 py-2 text-sm">{error}</div>}
+        <main className="min-h-0 flex-1">
+          {view === "graph" ? (
+            <GraphView vaultId={vaultId} activeId={activeId} onSelect={openDocument} version={version} />
+          ) : (
+            <div className="h-full overflow-auto">
+              <DocumentView vaultId={vaultId} docId={activeId} theme={theme} version={version} />
+            </div>
+          )}
+        </main>
+      </SidebarInset>
+    </SidebarProvider>
+  );
+}
+
+function Onboarding({ onLocal, onCloned, error }: {
+  onLocal: () => Promise<void>;
+  onCloned: (preferred?: string) => Promise<void>;
+  error: string | null;
+}) {
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const clone = async () => {
+    setBusy(true);
+    setLocalError(null);
+    try {
+      const vault = await window.vaultApi.clone(url.trim());
+      await onCloned(vault.id);
+    } catch (cause) {
+      setLocalError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="bg-muted/30 flex min-h-screen items-center justify-center p-6">
+      <div className="bg-card w-full max-w-lg rounded-xl border p-8 shadow-sm">
+        <Database className="text-primary mb-4 size-10" />
+        <h1 className="text-2xl font-semibold">Open a data vault</h1>
+        <p className="text-muted-foreground mt-2 text-sm">Clone a private Git repository or open an existing local clone.</p>
+        <div className="mt-6 flex gap-2">
+          <Input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://github.com/company/vault.git" />
+          <Button onClick={clone} disabled={!url.trim() || busy}><GitBranch />{busy ? "Cloning…" : "Clone"}</Button>
+        </div>
+        <div className="my-5 flex items-center gap-3"><Separator className="flex-1" /><span className="text-muted-foreground text-xs">OR</span><Separator className="flex-1" /></div>
+        <Button variant="outline" className="w-full" onClick={onLocal}><FolderOpen />Open local repository</Button>
+        {(error || localError) && <p role="alert" className="text-destructive mt-4 text-sm">{localError || error}</p>}
+      </div>
+    </div>
+  );
+}
+
+function CenteredMessage({ title }: { title: string }) {
+  return <div className="text-muted-foreground flex min-h-screen items-center justify-center">{title}</div>;
+}
