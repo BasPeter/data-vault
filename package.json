@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "description": "A desktop viewer for Git-backed HTML knowledge vaults.",
+  "author": {
+    "name": "BasPeter",
+    "email": "23128615+BasPeter@users.noreply.github.com"
+  },
   "main": "out/main/index.js",
   "type": "module",
   "scripts": {
