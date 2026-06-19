@@ -5,6 +5,7 @@ import { DocumentView } from "@/components/document-view";
 import { GraphView } from "@/components/graph-view";
 import { QuickNotesPanel } from "@/components/quick-notes-panel";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { UpdateButton } from "@/components/update-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -135,6 +136,7 @@ export default function App() {
               <Network />
             </Button>
             <ThemeToggle theme={theme} onToggle={toggle} />
+            <UpdateButton />
           </div>
         </header>
         {error && <div role="alert" className="border-destructive/50 bg-destructive/10 border-b px-4 py-2 text-sm">{error}</div>}
@@ -184,6 +186,7 @@ function Onboarding({ onLocal, onCloned, error }: {
         </div>
         <div className="my-5 flex items-center gap-3"><Separator className="flex-1" /><span className="text-muted-foreground text-xs">OR</span><Separator className="flex-1" /></div>
         <Button variant="outline" className="w-full" onClick={onLocal}><FolderOpen />Open local repository</Button>
+        <div className="mt-3 flex justify-center"><UpdateButton showLabel /></div>
         {(error || localError) && <p role="alert" className="text-destructive mt-4 text-sm">{localError || error}</p>}
       </div>
     </div>

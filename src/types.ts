@@ -47,6 +47,14 @@ export type SyncResult = {
   pulled: boolean;
 };
 
+export type UpdateStatus = {
+  state: "idle" | "checking" | "available" | "downloading" | "downloaded" | "not-available" | "error";
+  currentVersion: string;
+  version?: string;
+  percent?: number;
+  message?: string;
+};
+
 export type VaultApi = {
   list: () => Promise<VaultSummary[]>;
   chooseLocal: () => Promise<VaultSummary | null>;
@@ -57,6 +65,10 @@ export type VaultApi = {
   saveQuickNotes: (vaultId: string, html: string) => Promise<void>;
   graph: (vaultId: string) => Promise<GraphData>;
   sync: (vaultId: string) => Promise<SyncResult>;
+  updateStatus: () => Promise<UpdateStatus>;
+  checkForUpdates: () => Promise<UpdateStatus>;
+  installUpdate: () => Promise<void>;
+  onUpdateStatus: (listener: (status: UpdateStatus) => void) => () => void;
 };
 
 declare global {

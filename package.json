@@ -1,8 +1,9 @@
 {
   "name": "data-vault",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "A desktop viewer for Git-backed HTML knowledge vaults.",
+  "repository": "https://github.com/BasPeter/data-vault.git",
   "author": {
     "name": "BasPeter",
     "email": "23128615+BasPeter@users.noreply.github.com"
@@ -27,6 +28,7 @@
     "clsx": "^2.1.1",
     "d3-force": "^3.0.0",
     "dompurify": "^3.2.6",
+    "electron-updater": "^6.8.9",
     "lucide-react": "^0.469.0",
     "mermaid": "^11.4.1",
     "radix-ui": "^1.6.0",
@@ -55,9 +57,32 @@
     "appId": "dev.poweredbybp.data-vault",
     "productName": "Data Vault",
     "asar": true,
-    "files": ["out/**/*", "package.json"],
-    "mac": { "target": "dmg" },
-    "win": { "target": "nsis" },
-    "linux": { "target": ["AppImage", "deb"] }
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "BasPeter",
+        "repo": "data-vault"
+      }
+    ],
+    "electronUpdaterCompatibility": ">=2.16",
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    }
   }
 }

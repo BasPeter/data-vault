@@ -11,6 +11,14 @@ const api: VaultApi = {
   saveQuickNotes: (vaultId, html) => ipcRenderer.invoke("vault:save-quick-notes", vaultId, html),
   graph: (vaultId) => ipcRenderer.invoke("vault:graph", vaultId),
   sync: (vaultId) => ipcRenderer.invoke("vault:sync", vaultId),
+  updateStatus: () => ipcRenderer.invoke("app:update-status"),
+  checkForUpdates: () => ipcRenderer.invoke("app:check-for-updates"),
+  installUpdate: () => ipcRenderer.invoke("app:install-update"),
+  onUpdateStatus: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, status: Parameters<typeof listener>[0]) => listener(status);
+    ipcRenderer.on("app:update-status", handler);
+    return () => ipcRenderer.removeListener("app:update-status", handler);
+  },
 };
 
 contextBridge.exposeInMainWorld("vaultApi", api);

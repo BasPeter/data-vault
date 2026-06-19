@@ -78,6 +78,9 @@ jobs:
             dist/*.deb
             dist/*.dmg
             dist/*.exe
+            dist/*.zip
+            dist/*.yml
+            dist/*.blockmap
 
   release:
     name: Publish GitHub Release

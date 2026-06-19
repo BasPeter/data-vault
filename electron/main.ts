@@ -1,6 +1,7 @@
 import path from "node:path";
 import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from "electron";
 import { VaultService } from "./vault";
+import { checkForUpdates, configureUpdater, installUpdate, updateStatus } from "./updater";
 
 let service: VaultService;
 
@@ -60,6 +61,9 @@ function registerIpc(): void {
     assertTrusted(event);
     return service.sync(stringArgument(vaultId, "vault ID"));
   });
+  ipcMain.handle("app:update-status", (event) => { assertTrusted(event); return updateStatus(); });
+  ipcMain.handle("app:check-for-updates", (event) => { assertTrusted(event); return checkForUpdates(); });
+  ipcMain.handle("app:install-update", (event) => { assertTrusted(event); installUpdate(); });
 }
 
 function createWindow(): void {
@@ -92,6 +96,7 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   service = new VaultService(app.getPath("userData"));
+  configureUpdater();
   registerIpc();
   createWindow();
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
