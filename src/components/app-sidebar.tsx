@@ -16,6 +16,7 @@ import {
   SidebarMenuSub,
 } from "@/components/ui/sidebar";
 import type { TreeNode } from "@/types";
+import appIcon from "../../build/icon.svg";
 
 type Props = {
   tree: TreeNode[];
@@ -81,9 +82,12 @@ export function AppSidebar({ tree, activeId, onSelect, vaultName }: Props) {
   return (
     <Sidebar>
       <SidebarHeader className="border-b px-4 py-3">
-        <div className="flex flex-col">
-          <span className="truncate text-sm font-semibold">{vaultName}</span>
-          <span className="text-muted-foreground text-xs">Data Vault</span>
+        <div className="flex min-w-0 items-center gap-2.5">
+          <img src={appIcon} alt="" className="size-8 shrink-0 object-contain" />
+          <div className="flex min-w-0 flex-col">
+            <span className="truncate text-sm font-semibold">{vaultName}</span>
+            <span className="text-muted-foreground text-xs">Data Vault</span>
+          </div>
         </div>
       </SidebarHeader>
       <SidebarContent>

@@ -3,7 +3,14 @@ import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } f
 import { VaultService } from "./vault";
 import { checkForUpdates, configureUpdater, installUpdate, updateStatus } from "./updater";
 
+const APPLICATION_NAME = "Data Vault";
+app.setName(APPLICATION_NAME);
+
 let service: VaultService;
+
+function applicationIconPath(): string {
+  return app.isPackaged ? path.join(process.resourcesPath, "icon.png") : path.resolve("build/icon.png");
+}
 
 function assertTrusted(event: IpcMainInvokeEvent): void {
   const url = event.senderFrame?.url;
@@ -73,7 +80,7 @@ function createWindow(): void {
     minWidth: 820,
     minHeight: 560,
     show: false,
-    icon: app.isPackaged ? path.join(process.resourcesPath, "icon.png") : path.resolve("build/icon.png"),
+    icon: applicationIconPath(),
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.cjs"),
       nodeIntegration: false,
@@ -99,8 +106,13 @@ app.whenReady().then(() => {
   service = new VaultService(app.getPath("userData"));
   configureUpdater();
   registerIpc();
+  app.setAboutPanelOptions({
+    applicationName: APPLICATION_NAME,
+    applicationVersion: app.getVersion(),
+    iconPath: applicationIconPath(),
+  });
   if (process.platform === "darwin") {
-    app.dock?.setIcon(app.isPackaged ? path.join(process.resourcesPath, "icon.png") : path.resolve("build/icon.png"));
+    app.dock?.setIcon(applicationIconPath());
   }
   createWindow();
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
