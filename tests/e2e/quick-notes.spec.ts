@@ -1,6 +1,6 @@
-import { expect, test } from "./electron-app";
+import { captureScreenshot, expect, test } from "./electron-app";
 
-test("edits, saves and persists quick notes", async ({ appLaunch }) => {
+test("edits, saves and persists quick notes", async ({ appLaunch }, testInfo) => {
   const { page } = appLaunch;
 
   const openNotes = () => page.getByRole("button", { name: "Quick notes", exact: true }).click();
@@ -16,6 +16,7 @@ test("edits, saves and persists quick notes", async ({ appLaunch }) => {
 
   // Saved notes render as sanitized HTML inside the panel.
   await expect(page.getByRole("heading", { name: "Test note" })).toBeVisible();
+  await captureScreenshot(page, testInfo, "quick-notes-saved");
 
   // Close and reopen to confirm the note was written to the vault on disk.
   await page.getByRole("button", { name: "Close quick notes" }).click();

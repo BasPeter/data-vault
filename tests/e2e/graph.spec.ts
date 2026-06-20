@@ -1,6 +1,6 @@
-import { expect, test } from "./electron-app";
+import { captureScreenshot, expect, test } from "./electron-app";
 
-test("renders the document graph and navigates from a node", async ({ appLaunch }) => {
+test("renders the document graph and navigates from a node", async ({ appLaunch }, testInfo) => {
   const { page } = appLaunch;
 
   await page.getByRole("button", { name: "Graph", exact: true }).click();
@@ -12,6 +12,7 @@ test("renders the document graph and navigates from a node", async ({ appLaunch 
 
   // Let the force simulation settle so node hit-targets stop moving.
   await page.waitForTimeout(2500);
+  await captureScreenshot(page, testInfo, "graph-view");
   await page.locator("svg g.cursor-pointer").first().click({ force: true });
 
   // Selecting a node returns to the document view.

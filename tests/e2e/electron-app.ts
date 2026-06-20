@@ -3,6 +3,7 @@ import {
   test as base,
   type ElectronApplication,
   type Page,
+  type TestInfo,
 } from "@playwright/test";
 import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -73,6 +74,22 @@ export async function stubDirectoryDialog(
   await app.evaluate(async ({ dialog }, dir) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [dir] });
   }, directory);
+}
+
+/**
+ * Capture a named screenshot and attach it to the Playwright report. Unlike the
+ * automatic `only-on-failure` capture, these run on passing tests too, so every
+ * CI run produces a labelled gallery of each flow under the test's attachments.
+ */
+export async function captureScreenshot(
+  page: Page,
+  testInfo: TestInfo,
+  name: string,
+): Promise<void> {
+  await testInfo.attach(name, {
+    body: await page.screenshot(),
+    contentType: "image/png",
+  });
 }
 
 export function cleanup(launch: AppLaunch): void {
