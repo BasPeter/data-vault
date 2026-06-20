@@ -4,6 +4,10 @@ release/
 out/
 *.local
 .DS_Store
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
 .env
 .env.*
 npm-debug.log*
