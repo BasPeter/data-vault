@@ -56,10 +56,13 @@ from the document tree and graph. The application does not commit this file.
 
 ## Application updates
 
-Installed builds can check GitHub Releases for updates from the toolbar or the
-onboarding screen. A newer release downloads in the background; click the same
-button again to install it and restart Data Vault. Update checks are unavailable
-in the unpackaged development build. macOS updates require signed release builds.
+The installed version is shown in the top-right of the toolbar. Installed builds
+check GitHub Releases automatically on launch (and periodically afterwards), and
+a red dot appears on the version when a newer release is found. A newer release
+downloads in the background; click the version to open the update prompt and
+choose **Update and restart** once it is ready. You can also trigger a manual
+check from the same prompt. Update checks are unavailable in the unpackaged
+development build. macOS updates require signed release builds.
 
 ## Security model
 
