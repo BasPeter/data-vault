@@ -17,7 +17,8 @@
     "package": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
     "typecheck": "tsc -b --pretty false",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "npm run build && playwright test"
   },
   "dependencies": {
     "@radix-ui/react-collapsible": "^1.1.2",
@@ -38,6 +39,7 @@
   },
   "devDependencies": {
     "@electron-toolkit/preload": "^3.0.2",
+    "@playwright/test": "^1.61.0",
     "@tailwindcss/vite": "^4.0.0",
     "@types/d3-force": "^3.0.10",
     "@types/node": "^22.10.5",
