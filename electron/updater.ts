@@ -4,6 +4,10 @@ import type { UpdateStatus } from "../src/types";
 
 const { autoUpdater } = updater;
 
+// Re-check GitHub Releases on this cadence so a freshly published version
+// surfaces without the user reopening the application.
+const AUTOMATIC_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
 let status: UpdateStatus = { state: "idle", currentVersion: app.getVersion() };
 
 function publish(next: UpdateStatus): void {
@@ -23,6 +27,16 @@ export function configureUpdater(): void {
   }));
   autoUpdater.on("update-downloaded", (info) => publish({ state: "downloaded", currentVersion: app.getVersion(), version: info.version }));
   autoUpdater.on("error", (error) => publish({ state: "error", currentVersion: app.getVersion(), message: error.message }));
+  scheduleAutomaticChecks();
+}
+
+function scheduleAutomaticChecks(): void {
+  // Update checks only function in an installed build; stay silent in development
+  // so the renderer keeps its neutral "idle" state instead of surfacing an error.
+  if (!app.isPackaged) return;
+  void checkForUpdates();
+  const timer = setInterval(() => void checkForUpdates(), AUTOMATIC_CHECK_INTERVAL_MS);
+  timer.unref?.();
 }
 
 export function updateStatus(): UpdateStatus { return status; }
