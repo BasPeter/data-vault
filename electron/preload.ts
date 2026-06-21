@@ -5,6 +5,8 @@ const api: VaultApi = {
   list: () => ipcRenderer.invoke("vault:list"),
   chooseLocal: () => ipcRenderer.invoke("vault:choose-local"),
   clone: (url) => ipcRenderer.invoke("vault:clone", url),
+  createEmpty: (name) => ipcRenderer.invoke("vault:create-empty", name),
+  updateVault: (vaultId, update) => ipcRenderer.invoke("vault:update", vaultId, update),
   manifest: (vaultId) => ipcRenderer.invoke("vault:manifest", vaultId),
   document: (vaultId, documentId) => ipcRenderer.invoke("vault:document", vaultId, documentId),
   quickNotes: (vaultId) => ipcRenderer.invoke("vault:quick-notes", vaultId),
@@ -19,6 +21,8 @@ const api: VaultApi = {
     ipcRenderer.on("app:update-status", handler);
     return () => ipcRenderer.removeListener("app:update-status", handler);
   },
+  skillStatus: () => ipcRenderer.invoke("skill:status"),
+  installSkills: () => ipcRenderer.invoke("skill:install"),
 };
 
 contextBridge.exposeInMainWorld("vaultApi", api);

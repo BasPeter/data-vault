@@ -4,6 +4,8 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { DocumentView } from "@/components/document-view";
 import { GraphView } from "@/components/graph-view";
 import { QuickNotesPanel } from "@/components/quick-notes-panel";
+import { SkillButton } from "@/components/skill-button";
+import { VaultSwitcher } from "@/components/vault-switcher";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { UpdateButton } from "@/components/update-button";
 import { Button } from "@/components/ui/button";
@@ -118,16 +120,15 @@ export default function App() {
         <header className="bg-background sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-2 !h-4" />
-          <select
-            className="bg-background max-w-52 truncate rounded border px-2 py-1 text-sm"
-            value={vaultId}
-            onChange={(event) => { setVaultId(event.target.value); setActiveId(null); }}
-          >
-            {vaults.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select>
+          <VaultSwitcher
+            vaults={vaults}
+            vaultId={vaultId}
+            onSwitch={(id) => { setVaultId(id); setActiveId(null); }}
+            onLocal={addLocal}
+            onRefresh={refreshVaults}
+          />
           <span className="text-muted-foreground truncate text-sm">{view === "graph" ? "Graph" : title}</span>
           <div className="ml-auto flex items-center gap-1">
-            <Button variant="ghost" size="icon" title="Add local vault" onClick={addLocal}><Plus /></Button>
             <Button variant="ghost" size="icon" title="Sync vault" onClick={sync} disabled={syncing}>
               <RefreshCw className={syncing ? "animate-spin" : ""} />
             </Button>
@@ -135,6 +136,7 @@ export default function App() {
             <Button variant={view === "graph" ? "secondary" : "ghost"} size="icon" title="Graph" onClick={() => setView(view === "graph" ? "doc" : "graph")}>
               <Network />
             </Button>
+            <SkillButton vaults={vaults} />
             <ThemeToggle theme={theme} onToggle={toggle} />
             <UpdateButton />
           </div>
@@ -160,13 +162,14 @@ function Onboarding({ onLocal, onCloned, error }: {
   error: string | null;
 }) {
   const [url, setUrl] = useState("");
+  const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
-  const clone = async () => {
+  const run = async (action: () => Promise<{ id: string }>) => {
     setBusy(true);
     setLocalError(null);
     try {
-      const vault = await window.vaultApi.clone(url.trim());
+      const vault = await action();
       await onCloned(vault.id);
     } catch (cause) {
       setLocalError(cause instanceof Error ? cause.message : String(cause));
@@ -174,15 +177,22 @@ function Onboarding({ onLocal, onCloned, error }: {
       setBusy(false);
     }
   };
+  const clone = () => run(() => window.vaultApi.clone(url.trim()));
+  const create = () => run(() => window.vaultApi.createEmpty(name.trim()));
   return (
     <div className="bg-muted/30 flex min-h-screen items-center justify-center p-6">
       <div className="bg-card w-full max-w-lg rounded-xl border p-8 shadow-sm">
         <Database className="text-primary mb-4 size-10" />
         <h1 className="text-2xl font-semibold">Open a data vault</h1>
-        <p className="text-muted-foreground mt-2 text-sm">Clone a private Git repository or open an existing local clone.</p>
+        <p className="text-muted-foreground mt-2 text-sm">Clone a Git repository, open an existing local clone, or create a new vault.</p>
         <div className="mt-6 flex gap-2">
           <Input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://github.com/company/vault.git" />
           <Button onClick={clone} disabled={!url.trim() || busy}><GitBranch />{busy ? "Cloning…" : "Clone"}</Button>
+        </div>
+        <div className="my-5 flex items-center gap-3"><Separator className="flex-1" /><span className="text-muted-foreground text-xs">OR</span><Separator className="flex-1" /></div>
+        <div className="flex gap-2">
+          <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="New vault name" />
+          <Button variant="outline" onClick={create} disabled={!name.trim() || busy}><Plus />{busy ? "Creating…" : "Create"}</Button>
         </div>
         <div className="my-5 flex items-center gap-3"><Separator className="flex-1" /><span className="text-muted-foreground text-xs">OR</span><Separator className="flex-1" /></div>
         <Button variant="outline" className="w-full" onClick={onLocal}><FolderOpen />Open local repository</Button>

@@ -39,6 +39,6 @@ test("renders Mermaid diagrams inside a document", async ({ appLaunch }, testInf
 
 test("switches between vaults via the toolbar selector", async ({ appLaunch }) => {
   const { page } = appLaunch;
-  // Only the seeded vault is registered, so the selector reflects its name.
-  await expect(page.getByRole("combobox")).toContainText("Example Vault");
+  // Only the seeded vault is registered, so the switcher reflects its name.
+  await expect(page.getByTestId("vault-switcher")).toContainText("Example Vault");
 });

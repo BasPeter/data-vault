@@ -13,6 +13,7 @@ contribution workflow. `CLAUDE.md` points here.
 electron/main.ts       privileged application lifecycle and IPC handlers
 electron/preload.ts    narrow typed context bridge
 electron/vault.ts      repository, filesystem, manifest, graph, and Git logic
+electron/skills.ts     renders and installs the versioned vault-guide agent skill
 src/                   sandboxed React renderer
 skills/                repository-local agent workflows
 ```
@@ -47,6 +48,9 @@ Electron modules into `src/`.
 - Validate IPC senders and arguments in the main process.
 - Block renderer navigation and validate external URLs before opening them.
 - Do not add a localhost HTTP server to the desktop runtime.
+- The `vault-guide` skill installer writes only to the fixed paths
+  `~/.claude/skills/vault-guide` and `~/.codex/skills/vault-guide` (no
+  renderer-supplied paths) and never embeds Data Vault app-repo content.
 
 ## Development workflow
 

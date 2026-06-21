@@ -10,12 +10,16 @@ import type {
   Manifest,
   TreeNode,
   VaultSummary,
+  VaultUpdate,
+  VaultUpdateResult,
 } from "../src/types";
 
 const execFileAsync = promisify(execFile);
 const MAX_DOCUMENT_BYTES = 2 * 1024 * 1024;
 const QUICK_NOTES_FILE = "quick-notes.html";
 const QUICK_NOTES_HEADER = "<!--vault\ntitle: Quick notes\n-->\n";
+const WELCOME_DOCUMENT =
+  "<!--vault\ntitle: Welcome\n-->\n<h1>Welcome</h1>\n<p>This is your new vault. Add HTML documents under the documents directory to get started.</p>\n";
 
 type VaultConfig = {
   schemaVersion?: number;
@@ -71,6 +75,12 @@ function isWithin(root: string, candidate: string): boolean {
   return candidate === root || candidate.startsWith(`${root}${path.sep}`);
 }
 
+function nameFromUrl(url: string): string {
+  const withoutQuery = url.split(/[?#]/)[0];
+  const last = withoutQuery.replace(/[/:]+$/, "").split(/[/:]/).pop() ?? "";
+  return humanize(last.replace(/\.git$/i, "")).trim();
+}
+
 function safeRepositoryUrl(url: string): boolean {
   if (!url || url.startsWith("-")) return false;
   if (/^git@[\w.-]+:[\w./-]+(?:\.git)?$/.test(url)) return true;
@@ -114,13 +124,99 @@ export class VaultService {
       maxBuffer: 10 * 1024 * 1024,
     });
     try {
-      const vault = { ...this.describe(id, target), remoteUrl: url };
+      const vault = { ...this.describe(id, target, nameFromUrl(url)), remoteUrl: url };
       this.save({ vaults: [...this.registry().vaults, vault] });
       return vault;
     } catch (error) {
       fs.rmSync(target, { recursive: true, force: true });
       throw error;
     }
+  }
+
+  async createEmpty(name: string): Promise<VaultSummary> {
+    const trimmed = name.trim();
+    if (!trimmed || trimmed.length > 200) throw new Error("Enter a vault name.");
+    const id = randomUUID();
+    const target = path.join(this.repositoriesDirectory, id);
+    try {
+      fs.mkdirSync(path.join(target, "documents"), { recursive: true });
+      fs.writeFileSync(
+        path.join(target, "vault.json"),
+        `${JSON.stringify({ schemaVersion: 1, name: trimmed, documentsDirectory: "documents" }, null, 2)}\n`,
+      );
+      fs.writeFileSync(path.join(target, "documents", "welcome.html"), WELCOME_DOCUMENT);
+      await this.git(target, ["init", "-b", "main"]);
+      await this.git(target, ["add", "-A"]);
+      await this.git(target, [
+        "-c", "user.name=Data Vault",
+        "-c", "user.email=data-vault@localhost",
+        "commit", "-m", "Initialize vault",
+      ]);
+      const vault = this.describe(id, target);
+      this.save({ vaults: [...this.registry().vaults, vault] });
+      return vault;
+    } catch (error) {
+      fs.rmSync(target, { recursive: true, force: true });
+      throw error;
+    }
+  }
+
+  async updateVault(vaultId: string, update: VaultUpdate): Promise<VaultUpdateResult> {
+    const vault = this.vault(vaultId);
+    let next: VaultSummary = { ...vault };
+
+    if (update.name !== undefined) {
+      const trimmed = update.name.trim();
+      if (!trimmed || trimmed.length > 200) throw new Error("Enter a vault name.");
+      this.writeConfigName(vault.repositoryPath, trimmed);
+      next = { ...next, name: trimmed };
+    }
+
+    if (update.remoteUrl !== undefined) {
+      const url = update.remoteUrl.trim();
+      if (!safeRepositoryUrl(url)) throw new Error("Use an HTTPS, SSH, or git@ repository URL.");
+      const remotes = await this.git(vault.repositoryPath, ["remote"]);
+      const command = remotes.split(/\s+/).includes("origin") ? "set-url" : "add";
+      await this.git(vault.repositoryPath, ["remote", command, "origin", url]);
+      next = { ...next, remoteUrl: url };
+    }
+
+    this.save({
+      vaults: this.registry().vaults.map((candidate) => (candidate.id === vaultId ? next : candidate)),
+    });
+
+    let push: VaultUpdateResult["push"];
+    if (update.remoteUrl !== undefined && next.remoteUrl) {
+      try {
+        await this.git(vault.repositoryPath, ["push", "-u", "origin", "HEAD"], { GIT_TERMINAL_PROMPT: "0" });
+        push = { ok: true };
+      } catch (error) {
+        push = { ok: false, message: error instanceof Error ? error.message : String(error) };
+      }
+    }
+
+    return { vault: next, push };
+  }
+
+  private writeConfigName(repositoryPath: string, name: string): void {
+    const file = path.join(repositoryPath, "vault.json");
+    const config = { ...this.config(repositoryPath), name };
+    const temporary = path.join(repositoryPath, `.vault-${randomUUID()}.tmp`);
+    try {
+      fs.writeFileSync(temporary, `${JSON.stringify(config, null, 2)}\n`, { encoding: "utf8" });
+      fs.renameSync(temporary, file);
+    } finally {
+      fs.rmSync(temporary, { force: true });
+    }
+  }
+
+  private async git(repositoryPath: string, args: string[], env?: NodeJS.ProcessEnv): Promise<string> {
+    const result = await execFileAsync("git", ["-C", repositoryPath, ...args], {
+      timeout: 120_000,
+      maxBuffer: 10 * 1024 * 1024,
+      env: env ? { ...process.env, ...env } : process.env,
+    });
+    return result.stdout.trim();
   }
 
   manifest(vaultId: string): Manifest {
@@ -238,10 +334,11 @@ export class VaultService {
     return readJson<VaultConfig>(path.join(repositoryPath, "vault.json"), {});
   }
 
-  private describe(id: string, repositoryPath: string): VaultSummary {
+  private describe(id: string, repositoryPath: string, fallbackName?: string): VaultSummary {
     const config = this.config(repositoryPath);
     this.resolveDocumentsRoot(repositoryPath, config);
-    return { id, name: config.name?.trim() || path.basename(repositoryPath), repositoryPath };
+    const name = config.name?.trim() || fallbackName?.trim() || path.basename(repositoryPath);
+    return { id, name, repositoryPath };
   }
 
   private documentsRoot(vaultId: string): string {

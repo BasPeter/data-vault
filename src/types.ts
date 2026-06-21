@@ -47,6 +47,16 @@ export type SyncResult = {
   pulled: boolean;
 };
 
+export type VaultUpdate = {
+  name?: string;
+  remoteUrl?: string;
+};
+
+export type VaultUpdateResult = {
+  vault: VaultSummary;
+  push?: { ok: boolean; message?: string };
+};
+
 export type UpdateStatus = {
   state: "idle" | "checking" | "available" | "downloading" | "downloaded" | "not-available" | "error";
   currentVersion: string;
@@ -55,10 +65,18 @@ export type UpdateStatus = {
   message?: string;
 };
 
+export type SkillStatus = {
+  state: "not-installed" | "outdated" | "current";
+  version: string;
+  vaultCount: number;
+};
+
 export type VaultApi = {
   list: () => Promise<VaultSummary[]>;
   chooseLocal: () => Promise<VaultSummary | null>;
   clone: (url: string) => Promise<VaultSummary>;
+  createEmpty: (name: string) => Promise<VaultSummary>;
+  updateVault: (vaultId: string, update: VaultUpdate) => Promise<VaultUpdateResult>;
   manifest: (vaultId: string) => Promise<Manifest>;
   document: (vaultId: string, documentId: string) => Promise<LoadedDoc>;
   quickNotes: (vaultId: string) => Promise<string>;
@@ -69,6 +87,8 @@ export type VaultApi = {
   checkForUpdates: () => Promise<UpdateStatus>;
   installUpdate: () => Promise<void>;
   onUpdateStatus: (listener: (status: UpdateStatus) => void) => () => void;
+  skillStatus: () => Promise<SkillStatus>;
+  installSkills: () => Promise<SkillStatus>;
 };
 
 declare global {

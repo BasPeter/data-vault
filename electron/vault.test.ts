@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -93,5 +94,65 @@ describe("VaultService", () => {
     expect(() => service.saveQuickNotes(vault.id, "x".repeat(2 * 1024 * 1024 + 1)))
       .toThrow("Quick notes are too large");
     expect(fs.readFileSync(outside, "utf8")).toBe("outside");
+  });
+
+  it("creates an empty vault with a committed starter document", async () => {
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = await service.createEmpty("My Notes");
+
+    expect(vault.name).toBe("My Notes");
+    expect(fs.existsSync(path.join(vault.repositoryPath, ".git"))).toBe(true);
+    expect(fs.existsSync(path.join(vault.repositoryPath, "documents"))).toBe(true);
+    expect(JSON.parse(fs.readFileSync(path.join(vault.repositoryPath, "vault.json"), "utf8")).name)
+      .toBe("My Notes");
+
+    const manifest = service.manifest(vault.id);
+    expect(manifest.tree).toHaveLength(1);
+    expect(manifest.tree[0]).toMatchObject({ type: "doc", label: "Welcome" });
+
+    const head = execFileSync("git", ["-C", vault.repositoryPath, "rev-parse", "HEAD"]).toString().trim();
+    expect(head).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  it("rejects an empty vault name", async () => {
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    await expect(service.createEmpty("   ")).rejects.toThrow("Enter a vault name");
+  });
+
+  it("renames a vault without touching the remote", async () => {
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = await service.createEmpty("Before");
+
+    const result = await service.updateVault(vault.id, { name: "After" });
+
+    expect(result.vault.name).toBe("After");
+    expect(result.push).toBeUndefined();
+    expect(JSON.parse(fs.readFileSync(path.join(vault.repositoryPath, "vault.json"), "utf8")).name)
+      .toBe("After");
+    expect(service.list().find((candidate) => candidate.id === vault.id)?.name).toBe("After");
+  });
+
+  it("configures a remote and reports a failed push", async () => {
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = await service.createEmpty("Vault");
+    // Unreachable URL: the remote is configured and saved, but the push fails fast.
+    const remoteUrl = "https://127.0.0.1:1/vault.git";
+
+    const result = await service.updateVault(vault.id, { remoteUrl });
+
+    expect(result.vault.remoteUrl).toBe(remoteUrl);
+    expect(result.push?.ok).toBe(false);
+    expect(service.list().find((candidate) => candidate.id === vault.id)?.remoteUrl).toBe(remoteUrl);
+
+    const remote = execFileSync("git", ["-C", vault.repositoryPath, "remote", "get-url", "origin"])
+      .toString().trim();
+    expect(remote).toBe(remoteUrl);
+  });
+
+  it("rejects an unsafe remote URL", async () => {
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = await service.createEmpty("Vault");
+    await expect(service.updateVault(vault.id, { remoteUrl: "not a url" }))
+      .rejects.toThrow("HTTPS, SSH, or git@");
   });
 });

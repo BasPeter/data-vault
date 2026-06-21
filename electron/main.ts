@@ -1,12 +1,14 @@
 import path from "node:path";
 import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from "electron";
 import { VaultService } from "./vault";
+import { SkillService } from "./skills";
 import { checkForUpdates, configureUpdater, installUpdate, updateStatus } from "./updater";
 
 const APPLICATION_NAME = "Data Vault";
 app.setName(APPLICATION_NAME);
 
 let service: VaultService;
+let skills: SkillService;
 
 function applicationIconPath(): string {
   return app.isPackaged ? path.join(process.resourcesPath, "icon.png") : path.resolve("build/icon.png");
@@ -26,6 +28,16 @@ function stringArgument(value: unknown, name: string): string {
   return value;
 }
 
+function updateArgument(value: unknown): { name?: string; remoteUrl?: string } {
+  if (typeof value !== "object" || value === null) throw new Error("Invalid vault update.");
+  const update = value as Record<string, unknown>;
+  const result: { name?: string; remoteUrl?: string } = {};
+  if (update.name !== undefined) result.name = stringArgument(update.name, "vault name");
+  if (update.remoteUrl !== undefined) result.remoteUrl = stringArgument(update.remoteUrl, "remote URL");
+  if (result.name === undefined && result.remoteUrl === undefined) throw new Error("Nothing to update.");
+  return result;
+}
+
 function htmlArgument(value: unknown): string {
   if (typeof value !== "string" || Buffer.byteLength(value, "utf8") > 2 * 1024 * 1024) {
     throw new Error("Invalid quick notes HTML.");
@@ -43,6 +55,14 @@ function registerIpc(): void {
   ipcMain.handle("vault:clone", (event, url) => {
     assertTrusted(event);
     return service.clone(stringArgument(url, "repository URL"));
+  });
+  ipcMain.handle("vault:create-empty", (event, name) => {
+    assertTrusted(event);
+    return service.createEmpty(stringArgument(name, "vault name"));
+  });
+  ipcMain.handle("vault:update", (event, vaultId, update) => {
+    assertTrusted(event);
+    return service.updateVault(stringArgument(vaultId, "vault ID"), updateArgument(update));
   });
   ipcMain.handle("vault:manifest", (event, vaultId) => {
     assertTrusted(event);
@@ -71,6 +91,8 @@ function registerIpc(): void {
   ipcMain.handle("app:update-status", (event) => { assertTrusted(event); return updateStatus(); });
   ipcMain.handle("app:check-for-updates", (event) => { assertTrusted(event); return checkForUpdates(); });
   ipcMain.handle("app:install-update", (event) => { assertTrusted(event); installUpdate(); });
+  ipcMain.handle("skill:status", (event) => { assertTrusted(event); return skills.status(service.list()); });
+  ipcMain.handle("skill:install", (event) => { assertTrusted(event); return skills.install(service.list()); });
 }
 
 function createWindow(): void {
@@ -104,6 +126,7 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   service = new VaultService(app.getPath("userData"));
+  skills = new SkillService();
   configureUpdater();
   registerIpc();
   app.setAboutPanelOptions({
