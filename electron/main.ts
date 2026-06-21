@@ -51,7 +51,7 @@ function structureArgument(value: unknown): VaultStructure {
       if (typeof raw !== "object" || raw === null || Array.isArray(raw)) throw new Error("Invalid vault structure.");
       if (--remaining < 0) throw new Error("Vault structure is too large.");
       const node = raw as Record<string, unknown>;
-      const entry: VaultStructure[string] = { type: "directory" };
+      const entry: VaultStructure[string] = {};
       if (node.title !== undefined) entry.title = optionalText(node.title, "directory title");
       if (node.description !== undefined) entry.description = optionalText(node.description, "directory description");
       if (node.children !== undefined) entry.children = level(node.children, depth + 1);

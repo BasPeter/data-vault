@@ -280,7 +280,7 @@ function buildStructure(rows: FolderRow[]): VaultStructure {
     const segments = row.id.split("/");
     let level = structure;
     segments.forEach((segment, index) => {
-      const node = (level[segment] ??= { type: "directory" });
+      const node = (level[segment] ??= {});
       if (index === segments.length - 1) {
         if (title) node.title = title;
         if (description) node.description = description;

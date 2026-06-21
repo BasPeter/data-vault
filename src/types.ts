@@ -16,7 +16,6 @@ export type FolderNode = {
 
 export type DirectoryMeta = {
   title?: string;
-  type: "directory";
   description?: string;
   children?: Record<string, DirectoryMeta>;
 };

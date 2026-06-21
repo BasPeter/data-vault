@@ -171,9 +171,8 @@ describe("VaultService", () => {
         structure: {
           "10-knowledge": {
             title: "Knowledge base",
-            type: "directory",
             description: "Reference material.",
-            children: { playbooks: { title: "Playbooks", type: "directory" } },
+            children: { playbooks: { title: "Playbooks" } },
           },
         },
       }),
@@ -199,11 +198,11 @@ describe("VaultService", () => {
 
     const result = await service.updateVault(vault.id, {
       defaultLanguage: "nl",
-      structure: { documents: { title: "Docs", type: "directory" } },
+      structure: { documents: { title: "Docs" } },
     });
 
     expect(result.vault.defaultLanguage).toBe("nl");
-    expect(result.vault.structure).toMatchObject({ documents: { title: "Docs", type: "directory" } });
+    expect(result.vault.structure).toMatchObject({ documents: { title: "Docs" } });
 
     const written = JSON.parse(fs.readFileSync(path.join(vault.repositoryPath, "vault.json"), "utf8"));
     expect(written.defaultLanguage).toBe("nl");
@@ -228,8 +227,8 @@ describe("VaultService", () => {
       JSON.stringify({
         name: "Example",
         structure: {
-          "../escape": { title: "Bad", type: "directory" },
-          safe: { title: "Safe", type: "directory", description: "x".repeat(5000) },
+          "../escape": { title: "Bad" },
+          safe: { title: "Safe", description: "x".repeat(5000) },
         },
       }),
     );
@@ -239,7 +238,7 @@ describe("VaultService", () => {
 
     // Path-traversal keys are dropped and over-long text is ignored.
     expect(vault.structure?.["../escape"]).toBeUndefined();
-    expect(vault.structure?.safe).toMatchObject({ title: "Safe", type: "directory" });
+    expect(vault.structure?.safe).toMatchObject({ title: "Safe" });
     expect(vault.structure?.safe?.description).toBeUndefined();
     expect(service.manifest(vault.id).tree.find((node) => node.id === "safe")).toMatchObject({ label: "Safe" });
   });

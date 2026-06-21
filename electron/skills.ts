@@ -7,7 +7,7 @@ import type { SkillStatus, VaultStructure, VaultSummary } from "../src/types";
 
 // Bump when the SKILL.md template or its guidance changes so that installed
 // copies are reported as outdated and the user is prompted to re-install.
-const SKILL_VERSION = "2";
+const SKILL_VERSION = "3";
 const SKILL_NAME = "vault-guide";
 const SKILL_FILE = "SKILL.md";
 const MARKER_FILE = ".vault-guide.json";

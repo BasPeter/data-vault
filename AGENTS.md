@@ -29,8 +29,8 @@ Electron modules into `src/`.
   `documentsDirectory` and a display `name`.
 - `vault.json` may also set `defaultLanguage` (a language tag suggested to the
   agents when writing documents) and `structure`, a nested map keyed by
-  directory segment (`{ title?, type: "directory", description?, children? }`)
-  describing each directory's purpose. Both are editable from the vault
+  directory segment (`{ title?, description?, children? }`) describing each
+  directory's purpose. Both are editable from the vault
   switcher's settings dialog, surfaced in the sidebar, and injected into the
   `vault-guide` skill; changing them marks the installed skill outdated.
 - Documents are content-only `.html` fragments with an optional `<!--vault`
