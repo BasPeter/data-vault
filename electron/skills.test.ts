@@ -29,9 +29,8 @@ const vaultWithMeta: VaultSummary = {
   structure: {
     "10-knowledge": {
       title: "Knowledge base",
-      type: "directory",
       description: "Reference material.",
-      children: { playbooks: { title: "Playbooks", type: "directory" } },
+      children: { playbooks: { title: "Playbooks" } },
     },
   },
 };

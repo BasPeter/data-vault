@@ -130,7 +130,7 @@ function sanitizeStructure(value: unknown): VaultStructure | undefined {
       if (typeof raw !== "object" || raw === null || Array.isArray(raw)) continue;
       remaining -= 1;
       const node = raw as Record<string, unknown>;
-      const entry: DirectoryMeta = { type: "directory" };
+      const entry: DirectoryMeta = {};
       const title = cleanText(node.title);
       if (title) entry.title = title;
       const description = cleanText(node.description);

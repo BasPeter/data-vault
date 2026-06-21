@@ -6,12 +6,10 @@
   "structure": {
     "10-knowledge": {
       "title": "Knowledge base",
-      "type": "directory",
       "description": "Long-lived reference material.",
       "children": {
         "playbooks": {
-          "title": "Playbooks",
-          "type": "directory"
+          "title": "Playbooks"
         }
       }
     }
