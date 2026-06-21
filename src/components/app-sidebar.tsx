@@ -1,4 +1,6 @@
 import { FileText, Folder, FolderOpen } from "lucide-react";
+import { AgentSkillsPanel } from "@/components/agent-skills-panel";
+import { UpdateButton } from "@/components/update-button";
 import {
   Collapsible,
   CollapsibleContent,
@@ -7,6 +9,7 @@ import {
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupLabel,
   SidebarHeader,
@@ -15,7 +18,7 @@ import {
   SidebarMenuItem,
   SidebarMenuSub,
 } from "@/components/ui/sidebar";
-import type { TreeNode } from "@/types";
+import type { TreeNode, VaultSummary } from "@/types";
 import appIcon from "../../build/icon.svg";
 
 type Props = {
@@ -23,6 +26,7 @@ type Props = {
   activeId: string | null;
   onSelect: (id: string) => void;
   vaultName: string;
+  vaults: VaultSummary[];
 };
 
 function TreeItems({
@@ -78,7 +82,7 @@ function TreeItems({
   );
 }
 
-export function AppSidebar({ tree, activeId, onSelect, vaultName }: Props) {
+export function AppSidebar({ tree, activeId, onSelect, vaultName, vaults }: Props) {
   return (
     <Sidebar>
       <SidebarHeader className="app-drag border-b py-3 pr-4 pl-20">
@@ -102,6 +106,10 @@ export function AppSidebar({ tree, activeId, onSelect, vaultName }: Props) {
           )}
         </SidebarGroup>
       </SidebarContent>
+      <SidebarFooter className="border-t">
+        <AgentSkillsPanel vaults={vaults} />
+        <UpdateButton showLabel />
+      </SidebarFooter>
     </Sidebar>
   );
 }

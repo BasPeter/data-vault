@@ -3,8 +3,8 @@ import { Database, FolderOpen, GitBranch, Network, Plus, RefreshCw } from "lucid
 import { AppSidebar } from "@/components/app-sidebar";
 import { DocumentView } from "@/components/document-view";
 import { GraphView } from "@/components/graph-view";
+import { GuidedTour } from "@/components/guided-tour";
 import { QuickNotesPanel } from "@/components/quick-notes-panel";
-import { SkillButton } from "@/components/skill-button";
 import { VaultSwitcher } from "@/components/vault-switcher";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { UpdateButton } from "@/components/update-button";
@@ -116,7 +116,7 @@ export default function App() {
 
   return (
     <SidebarProvider>
-      <AppSidebar tree={manifest.tree} activeId={activeId} onSelect={openDocument} vaultName={vault.name} />
+      <AppSidebar tree={manifest.tree} activeId={activeId} onSelect={openDocument} vaultName={vault.name} vaults={vaults} />
       <SidebarInset>
         <AppHeader>
           <SidebarTrigger className="app-no-drag -ml-1" />
@@ -144,9 +144,8 @@ export default function App() {
             <Button variant={view === "graph" ? "secondary" : "ghost"} size="icon" title="Graph" onClick={() => setView(view === "graph" ? "doc" : "graph")}>
               <Network />
             </Button>
-            <SkillButton vaults={vaults} />
+            <GuidedTour />
             <ThemeToggle theme={theme} onToggle={toggle} />
-            <UpdateButton />
           </div>
         </AppHeader>
         {error && <div role="alert" className="border-destructive/50 bg-destructive/10 border-b px-4 py-2 text-sm">{error}</div>}
