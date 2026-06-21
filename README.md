@@ -59,9 +59,12 @@ from the document tree and graph. The application does not commit this file.
 Data Vault generates two agent skills for Claude and Codex from your registered
 vault list:
 
-- **vault-guide** — how to read, create, and edit vault documents.
-- **document-reviewer** — how to review existing documents for format,
-  metadata, link integrity, language, and structural placement.
+- **vault-guide** — how to read, create, edit, and cross-link vault documents
+  (including the rule that cross-vault links may only point from a less public
+  vault to a more public one), and to run the reviewer after every change.
+- **document-reviewer** — a structural check that documents conform to the
+  vault's setup and rules: fragment shape, metadata, link integrity, naming,
+  placement, language, and cross-vault privacy. It does not critique content.
 
 The skills install automatically on launch and whenever your vault list changes,
 writing only to `~/.claude/skills/<skill>` and `~/.codex/skills/<skill>`. The
