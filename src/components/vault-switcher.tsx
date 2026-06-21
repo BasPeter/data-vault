@@ -414,11 +414,13 @@ function VaultSettingsDialog({
                 <div key={folder.id} className="flex flex-col gap-1.5" style={{ marginLeft: folder.depth * 12 }}>
                   <span className="text-muted-foreground font-mono text-xs">{folder.segment}/</span>
                   <Input
+                    aria-label={`${folder.segment} title`}
                     value={folder.title}
                     onChange={(event) => updateFolder(folder.id, { title: event.target.value })}
                     placeholder="Title"
                   />
                   <Input
+                    aria-label={`${folder.segment} description`}
                     value={folder.description}
                     onChange={(event) => updateFolder(folder.id, { description: event.target.value })}
                     placeholder="Description (optional)"

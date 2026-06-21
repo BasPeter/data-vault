@@ -127,7 +127,12 @@ export default function App() {
               vaultId={vaultId}
               onSwitch={(id) => { setVaultId(id); setActiveId(null); }}
               onLocal={addLocal}
-              onRefresh={refreshVaults}
+              onRefresh={async (preferred) => {
+                await refreshVaults(preferred);
+                // Bump the version so the manifest re-fetches even when the
+                // active vault is unchanged (e.g. after editing folder titles).
+                setVersion((value) => value + 1);
+              }}
             />
           </div>
           <span className="text-muted-foreground truncate text-sm">{view === "graph" ? "Graph" : title}</span>

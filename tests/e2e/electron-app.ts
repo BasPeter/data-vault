@@ -5,7 +5,7 @@ import {
   type Page,
   type TestInfo,
 } from "@playwright/test";
-import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +14,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..", "..");
 const mainEntry = path.join(repoRoot, "out", "main", "index.js");
 const fixtureVault = path.join(repoRoot, "tests", "fixtures", "vault");
+const screenshotsDir = path.join(repoRoot, "screenshots");
 
 // A fixed identity so seeded registries are predictable across runs.
 export const SEEDED_VAULT_ID = "00000000-0000-4000-8000-000000000001";
@@ -77,19 +78,20 @@ export async function stubDirectoryDialog(
 }
 
 /**
- * Capture a named screenshot and attach it to the Playwright report. Unlike the
- * automatic `only-on-failure` capture, these run on passing tests too, so every
- * CI run produces a labelled gallery of each flow under the test's attachments.
+ * Capture a named screenshot on passing tests too (unlike the automatic
+ * `only-on-failure` capture). The image is both attached to the Playwright HTML
+ * report and written as a flat PNG under `screenshots/`, so CI can upload an
+ * easily browsable gallery of every flow as its own artifact.
  */
 export async function captureScreenshot(
   page: Page,
   testInfo: TestInfo,
   name: string,
 ): Promise<void> {
-  await testInfo.attach(name, {
-    body: await page.screenshot(),
-    contentType: "image/png",
-  });
+  const body = await page.screenshot();
+  await testInfo.attach(name, { body, contentType: "image/png" });
+  mkdirSync(screenshotsDir, { recursive: true });
+  writeFileSync(path.join(screenshotsDir, `${name}.png`), body);
 }
 
 export function cleanup(launch: AppLaunch): void {
