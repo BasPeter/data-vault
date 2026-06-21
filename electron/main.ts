@@ -103,6 +103,11 @@ function createWindow(): void {
     minHeight: 560,
     show: false,
     icon: applicationIconPath(),
+    // Modern macOS chrome: hide the OS title bar and let the app header act as
+    // the draggable title bar with the traffic lights inset over it.
+    ...(process.platform === "darwin"
+      ? { titleBarStyle: "hiddenInset" as const, trafficLightPosition: { x: 16, y: 19 } }
+      : {}),
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.cjs"),
       nodeIntegration: false,

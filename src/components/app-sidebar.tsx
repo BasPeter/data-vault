@@ -81,7 +81,7 @@ function TreeItems({
 export function AppSidebar({ tree, activeId, onSelect, vaultName }: Props) {
   return (
     <Sidebar>
-      <SidebarHeader className="border-b px-4 py-3">
+      <SidebarHeader className="app-drag border-b py-3 pr-4 pl-20">
         <div className="flex min-w-0 items-center gap-2.5">
           <img src={appIcon} alt="" className="size-8 shrink-0 object-contain" />
           <div className="flex min-w-0 flex-col">

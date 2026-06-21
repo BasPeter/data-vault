@@ -11,8 +11,9 @@ import { UpdateButton } from "@/components/update-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { useTheme } from "@/hooks/use-theme";
+import { cn } from "@/lib/utils";
 import type { Manifest, TreeNode, VaultSummary } from "@/types";
 
 function firstDocument(nodes: TreeNode[]): string | null {
@@ -117,18 +118,20 @@ export default function App() {
     <SidebarProvider>
       <AppSidebar tree={manifest.tree} activeId={activeId} onSelect={openDocument} vaultName={vault.name} />
       <SidebarInset>
-        <header className="bg-background sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1" />
+        <AppHeader>
+          <SidebarTrigger className="app-no-drag -ml-1" />
           <Separator orientation="vertical" className="mr-2 !h-4" />
-          <VaultSwitcher
-            vaults={vaults}
-            vaultId={vaultId}
-            onSwitch={(id) => { setVaultId(id); setActiveId(null); }}
-            onLocal={addLocal}
-            onRefresh={refreshVaults}
-          />
+          <div className="app-no-drag flex min-w-0 items-center">
+            <VaultSwitcher
+              vaults={vaults}
+              vaultId={vaultId}
+              onSwitch={(id) => { setVaultId(id); setActiveId(null); }}
+              onLocal={addLocal}
+              onRefresh={refreshVaults}
+            />
+          </div>
           <span className="text-muted-foreground truncate text-sm">{view === "graph" ? "Graph" : title}</span>
-          <div className="ml-auto flex items-center gap-1">
+          <div className="app-no-drag ml-auto flex items-center gap-1">
             <Button variant="ghost" size="icon" title="Sync vault" onClick={sync} disabled={syncing}>
               <RefreshCw className={syncing ? "animate-spin" : ""} />
             </Button>
@@ -140,7 +143,7 @@ export default function App() {
             <ThemeToggle theme={theme} onToggle={toggle} />
             <UpdateButton />
           </div>
-        </header>
+        </AppHeader>
         {error && <div role="alert" className="border-destructive/50 bg-destructive/10 border-b px-4 py-2 text-sm">{error}</div>}
         <main className="min-h-0 flex-1">
           {view === "graph" ? (
@@ -154,6 +157,29 @@ export default function App() {
       </SidebarInset>
     </SidebarProvider>
   );
+}
+
+// The app header doubles as the draggable macOS title bar. When the sidebar is
+// collapsed the content reaches the window edge, so it gains left padding to
+// clear the inset traffic lights; when expanded the lights sit over the sidebar.
+function AppHeader({ children }: { children: React.ReactNode }) {
+  const { state } = useSidebar();
+  return (
+    <header
+      className={cn(
+        "app-drag bg-background sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b pr-4 transition-[padding] duration-200 ease-linear",
+        state === "collapsed" ? "pl-20" : "pl-4",
+      )}
+    >
+      {children}
+    </header>
+  );
+}
+
+// Draggable strip for screens without the header (onboarding, loading) so the
+// window can still be moved past the inset traffic lights.
+function WindowDragStrip() {
+  return <div className="app-drag fixed inset-x-0 top-0 z-50 h-9" />;
 }
 
 function Onboarding({ onLocal, onCloned, error }: {
@@ -181,6 +207,7 @@ function Onboarding({ onLocal, onCloned, error }: {
   const create = () => run(() => window.vaultApi.createEmpty(name.trim()));
   return (
     <div className="bg-muted/30 flex min-h-screen items-center justify-center p-6">
+      <WindowDragStrip />
       <div className="bg-card w-full max-w-lg rounded-xl border p-8 shadow-sm">
         <Database className="text-primary mb-4 size-10" />
         <h1 className="text-2xl font-semibold">Open a data vault</h1>
@@ -204,5 +231,10 @@ function Onboarding({ onLocal, onCloned, error }: {
 }
 
 function CenteredMessage({ title }: { title: string }) {
-  return <div className="text-muted-foreground flex min-h-screen items-center justify-center">{title}</div>;
+  return (
+    <div className="text-muted-foreground flex min-h-screen items-center justify-center">
+      <WindowDragStrip />
+      {title}
+    </div>
+  );
 }

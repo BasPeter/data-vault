@@ -104,6 +104,17 @@
   }
 }
 
+/* Custom title bar (Electron `titleBarStyle: hiddenInset`): mark draggable
+   regions and opt interactive controls back out of dragging. */
+@layer utilities {
+  .app-drag {
+    -webkit-app-region: drag;
+  }
+  .app-no-drag {
+    -webkit-app-region: no-drag;
+  }
+}
+
 /* Styling for the rendered HTML document fragments from documents/. */
 @layer components {
   .doc-content {

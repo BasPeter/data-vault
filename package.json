@@ -12,6 +12,7 @@
   "type": "module",
   "scripts": {
     "postinstall": "install-electron --no",
+    "icon": "bash scripts/build-icon.sh",
     "dev": "electron-vite dev",
     "build": "tsc -b && electron-vite build",
     "package": "npm run build && electron-builder --dir",
