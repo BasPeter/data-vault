@@ -81,15 +81,24 @@ describe("SkillService", () => {
     }
   });
 
-  it("renders the document reviewer rubric and each registered vault", () => {
+  it("tells the writer to link documents and invoke the reviewer", () => {
+    const skill = new SkillService(temporaryDirectory()).render([vaultA]);
+    expect(skill).toContain("## Linking documents");
+    expect(skill).toContain("## After making changes");
+    expect(skill).toContain("document-reviewer");
+    expect(skill).toContain("less public");
+  });
+
+  it("renders the document reviewer structural checks and each registered vault", () => {
     const home = temporaryDirectory();
     new SkillService(home).install([vaultA, vaultWithMeta]);
     const skill = fs.readFileSync(path.join(reviewerDir(home, ".claude"), "SKILL.md"), "utf8");
     expect(skill).toContain("name: document-reviewer");
     expect(skill).toContain("# Document Reviewer");
-    expect(skill).toContain("## Review rubric");
+    expect(skill).toContain("## Structural checks");
     expect(skill).toContain("Link integrity");
-    expect(skill).toContain("Knowledge");
+    expect(skill).toContain("Cross-vault privacy");
+    expect(skill).toContain("**Error**");
     expect(skill).toContain("**Knowledge base** (`10-knowledge`) — Reference material.");
   });
 
