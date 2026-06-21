@@ -58,6 +58,7 @@
   "build": {
     "appId": "dev.poweredbybp.data-vault",
     "productName": "Data Vault",
+    "artifactName": "${name}-${version}-${arch}.${ext}",
     "asar": true,
     "files": [
       "out/**/*",
