@@ -8,20 +8,20 @@ const initialStatus: SkillStatus = { state: "not-installed", version: "", vaultC
 
 function headline(status: SkillStatus): string {
   switch (status.state) {
-    case "current": return "Agent skill is up to date";
-    case "outdated": return "Agent skill needs updating";
-    default: return "Install the agent skill";
+    case "current": return "Agent skills are up to date";
+    case "outdated": return "Agent skills need updating";
+    default: return "Install the agent skills";
   }
 }
 
 function detail(status: SkillStatus): string {
   switch (status.state) {
     case "current":
-      return `Claude and Codex know about your ${status.vaultCount} vault${status.vaultCount === 1 ? "" : "s"}.`;
+      return `Claude and Codex can read, edit, and review your ${status.vaultCount} vault${status.vaultCount === 1 ? "" : "s"}.`;
     case "outdated":
       return "Your vault list changed. Re-install so Claude and Codex see the latest vaults.";
     default:
-      return "Teach Claude and Codex how to read and edit your vaults, with the current vault list.";
+      return "Teach Claude and Codex how to read, edit, and review your vaults, with the current vault list.";
   }
 }
 
@@ -57,8 +57,8 @@ export function SkillButton({ vaults }: { vaults: VaultSummary[] }) {
           variant="ghost"
           size="icon"
           className="relative"
-          title="Set up Claude & Codex skill"
-          aria-label={`Set up Claude and Codex skill${stale ? " — update available" : ""}`}
+          title="Set up Claude & Codex skills"
+          aria-label={`Set up Claude and Codex skills${stale ? " — update available" : ""}`}
         >
           <Sparkles />
           {stale && (
@@ -86,9 +86,9 @@ export function SkillButton({ vaults }: { vaults: VaultSummary[] }) {
             {busy
               ? "Installing…"
               : status.state === "not-installed"
-                ? "Install skill"
+                ? "Install skills"
                 : status.state === "outdated"
-                  ? "Update skill"
+                  ? "Update skills"
                   : "Re-install"}
           </Button>
         </div>

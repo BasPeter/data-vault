@@ -1,6 +1,6 @@
 # Proposal: auto-installed document reviewer agent
 
-Status: draft for review
+Status: implemented (the `autoInstallSkills` opt-out toggle is deferred)
 Author: Data Vault maintainers
 Date: 2026-06-21
 

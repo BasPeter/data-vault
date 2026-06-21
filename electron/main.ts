@@ -88,24 +88,45 @@ function htmlArgument(value: unknown): string {
   return value;
 }
 
+// Re-install the generated agent skills whenever they are missing or outdated.
+// Best-effort: a read-only home directory or similar must never break the app,
+// so failures are logged and surfaced through the existing stale indicator.
+function autoInstallSkills(): void {
+  try {
+    const vaults = service.list();
+    if (skills.status(vaults).state !== "current") skills.install(vaults);
+  } catch (error) {
+    console.error("Automatic skill install failed:", error);
+  }
+}
+
 function registerIpc(): void {
   ipcMain.handle("vault:list", (event) => { assertTrusted(event); return service.list(); });
   ipcMain.handle("vault:choose-local", async (event) => {
     assertTrusted(event);
     const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
-    return result.canceled ? null : service.addLocal(result.filePaths[0]);
+    if (result.canceled) return null;
+    const vault = service.addLocal(result.filePaths[0]);
+    autoInstallSkills();
+    return vault;
   });
-  ipcMain.handle("vault:clone", (event, url) => {
+  ipcMain.handle("vault:clone", async (event, url) => {
     assertTrusted(event);
-    return service.clone(stringArgument(url, "repository URL"));
+    const vault = await service.clone(stringArgument(url, "repository URL"));
+    autoInstallSkills();
+    return vault;
   });
-  ipcMain.handle("vault:create-empty", (event, name) => {
+  ipcMain.handle("vault:create-empty", async (event, name) => {
     assertTrusted(event);
-    return service.createEmpty(stringArgument(name, "vault name"));
+    const vault = await service.createEmpty(stringArgument(name, "vault name"));
+    autoInstallSkills();
+    return vault;
   });
-  ipcMain.handle("vault:update", (event, vaultId, update) => {
+  ipcMain.handle("vault:update", async (event, vaultId, update) => {
     assertTrusted(event);
-    return service.updateVault(stringArgument(vaultId, "vault ID"), updateArgument(update));
+    const result = await service.updateVault(stringArgument(vaultId, "vault ID"), updateArgument(update));
+    autoInstallSkills();
+    return result;
   });
   ipcMain.handle("vault:manifest", (event, vaultId) => {
     assertTrusted(event);
@@ -175,6 +196,7 @@ function createWindow(): void {
 app.whenReady().then(() => {
   service = new VaultService(app.getPath("userData"));
   skills = new SkillService();
+  autoInstallSkills();
   configureUpdater();
   registerIpc();
   app.setAboutPanelOptions({
