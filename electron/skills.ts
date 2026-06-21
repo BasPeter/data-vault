@@ -3,11 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { randomUUID } from "node:crypto";
-import type { SkillStatus, VaultSummary } from "../src/types";
+import type { SkillStatus, VaultStructure, VaultSummary } from "../src/types";
 
 // Bump when the SKILL.md template or its guidance changes so that installed
 // copies are reported as outdated and the user is prompted to re-install.
-const SKILL_VERSION = "1";
+const SKILL_VERSION = "2";
 const SKILL_NAME = "vault-guide";
 const SKILL_FILE = "SKILL.md";
 const MARKER_FILE = ".vault-guide.json";
@@ -33,6 +33,17 @@ function readJson<T>(file: string): T | null {
   }
 }
 
+function structureOutline(structure: VaultStructure, indent: string): string[] {
+  const lines: string[] = [];
+  for (const [segment, meta] of Object.entries(structure)) {
+    const title = meta.title?.trim();
+    const label = title ? `**${title}** (\`${segment}\`)` : `\`${segment}\``;
+    lines.push(`${indent}- ${meta.description ? `${label} — ${meta.description}` : label}`);
+    if (meta.children) lines.push(...structureOutline(meta.children, `${indent}  `));
+  }
+  return lines;
+}
+
 function vaultEntry(vault: VaultSummary): string {
   const lines = [
     `### ${vault.name}`,
@@ -40,7 +51,12 @@ function vaultEntry(vault: VaultSummary): string {
     `- Repository path: \`${vault.repositoryPath}\``,
     `- Documents directory: \`${vault.repositoryPath}/documents\` (unless \`vault.json\` sets \`documentsDirectory\`)`,
   ];
+  if (vault.defaultLanguage) lines.push(`- Default language: \`${vault.defaultLanguage}\``);
   if (vault.remoteUrl) lines.push(`- Git remote: \`${vault.remoteUrl}\``);
+  if (vault.structure && Object.keys(vault.structure).length) {
+    lines.push("- Directory structure:");
+    lines.push(...structureOutline(vault.structure, "  "));
+  }
   return lines.join("\n");
 }
 
@@ -98,6 +114,10 @@ read and edit their documents directly on disk.
 - Mermaid diagrams are stored as \`<pre class="mermaid">...</pre>\` blocks.
 - \`quick-notes.html\` at the documents root is a reserved local scratchpad; do
   not treat it as a regular document.
+- \`vault.json\` may set \`defaultLanguage\` (an IETF/ISO language tag): write new
+  documents in that language unless the user asks otherwise. It may also set
+  \`structure\`, a nested map describing each directory's purpose — treat those
+  titles and descriptions as the authoritative guide to where content belongs.
 
 ## Available vaults
 
@@ -122,6 +142,8 @@ ${vaultSection}
         name: vault.name,
         repositoryPath: vault.repositoryPath,
         remoteUrl: vault.remoteUrl ?? null,
+        defaultLanguage: vault.defaultLanguage ?? null,
+        structure: vault.structure ?? null,
       })),
     });
     return createHash("sha256").update(payload).digest("hex");

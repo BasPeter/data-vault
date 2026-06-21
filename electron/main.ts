@@ -3,6 +3,13 @@ import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } f
 import { VaultService } from "./vault";
 import { SkillService } from "./skills";
 import { checkForUpdates, configureUpdater, installUpdate, updateStatus } from "./updater";
+import type { VaultStructure, VaultUpdate } from "../src/types";
+
+// Bounds for the optional vault.json `structure` tree, mirrored from
+// electron/vault.ts. The renderer is trusted but validated defensively.
+const STRUCTURE_MAX_NODES = 500;
+const STRUCTURE_MAX_DEPTH = 16;
+const STRUCTURE_MAX_TEXT = 1000;
 
 const APPLICATION_NAME = "Data Vault";
 app.setName(APPLICATION_NAME);
@@ -28,13 +35,49 @@ function stringArgument(value: unknown, name: string): string {
   return value;
 }
 
-function updateArgument(value: unknown): { name?: string; remoteUrl?: string } {
+function optionalText(value: unknown, name: string): string {
+  if (typeof value !== "string" || value.length > STRUCTURE_MAX_TEXT) throw new Error(`Invalid ${name}.`);
+  return value;
+}
+
+function structureArgument(value: unknown): VaultStructure {
+  let remaining = STRUCTURE_MAX_NODES;
+  function level(input: unknown, depth: number): VaultStructure {
+    if (typeof input !== "object" || input === null || Array.isArray(input)) throw new Error("Invalid vault structure.");
+    if (depth > STRUCTURE_MAX_DEPTH) throw new Error("Vault structure is too deep.");
+    const output: VaultStructure = {};
+    for (const [key, raw] of Object.entries(input as Record<string, unknown>)) {
+      if (!key || key === "." || key === ".." || /[/\\]/.test(key)) throw new Error("Invalid directory name.");
+      if (typeof raw !== "object" || raw === null || Array.isArray(raw)) throw new Error("Invalid vault structure.");
+      if (--remaining < 0) throw new Error("Vault structure is too large.");
+      const node = raw as Record<string, unknown>;
+      const entry: VaultStructure[string] = { type: "directory" };
+      if (node.title !== undefined) entry.title = optionalText(node.title, "directory title");
+      if (node.description !== undefined) entry.description = optionalText(node.description, "directory description");
+      if (node.children !== undefined) entry.children = level(node.children, depth + 1);
+      output[key] = entry;
+    }
+    return output;
+  }
+  return level(value, 1);
+}
+
+function updateArgument(value: unknown): VaultUpdate {
   if (typeof value !== "object" || value === null) throw new Error("Invalid vault update.");
   const update = value as Record<string, unknown>;
-  const result: { name?: string; remoteUrl?: string } = {};
+  const result: VaultUpdate = {};
   if (update.name !== undefined) result.name = stringArgument(update.name, "vault name");
   if (update.remoteUrl !== undefined) result.remoteUrl = stringArgument(update.remoteUrl, "remote URL");
-  if (result.name === undefined && result.remoteUrl === undefined) throw new Error("Nothing to update.");
+  if (update.defaultLanguage !== undefined) result.defaultLanguage = optionalText(update.defaultLanguage, "default language");
+  if (update.structure !== undefined) result.structure = structureArgument(update.structure);
+  if (
+    result.name === undefined &&
+    result.remoteUrl === undefined &&
+    result.defaultLanguage === undefined &&
+    result.structure === undefined
+  ) {
+    throw new Error("Nothing to update.");
+  }
   return result;
 }
 

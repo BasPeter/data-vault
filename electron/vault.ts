@@ -4,11 +4,13 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import type {
+  DirectoryMeta,
   GraphData,
   GraphNode,
   LoadedDoc,
   Manifest,
   TreeNode,
+  VaultStructure,
   VaultSummary,
   VaultUpdate,
   VaultUpdateResult,
@@ -25,7 +27,16 @@ type VaultConfig = {
   schemaVersion?: number;
   name?: string;
   documentsDirectory?: string;
+  defaultLanguage?: string;
+  structure?: VaultStructure;
 };
+
+// Bounds applied to the optional vault.json `structure` tree so that a malformed
+// or hostile config can neither blow up memory nor smuggle path separators in
+// directory keys. Kept in sync with the IPC validator in electron/main.ts.
+const STRUCTURE_MAX_NODES = 500;
+const STRUCTURE_MAX_DEPTH = 16;
+const STRUCTURE_MAX_TEXT = 1000;
 
 type Registry = { vaults: VaultSummary[] };
 
@@ -90,6 +101,48 @@ function safeRepositoryUrl(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+function isSafeSegment(key: string): boolean {
+  return key.length > 0 && key !== "." && key !== ".." && !/[/\\]/.test(key);
+}
+
+function cleanText(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > STRUCTURE_MAX_TEXT) return undefined;
+  return trimmed;
+}
+
+// Coerce arbitrary input into a bounded VaultStructure, dropping anything that
+// is malformed, escapes the directory namespace, or exceeds the size limits.
+// Returns undefined when nothing usable remains.
+function sanitizeStructure(value: unknown): VaultStructure | undefined {
+  let remaining = STRUCTURE_MAX_NODES;
+
+  function level(input: unknown, depth: number): VaultStructure | undefined {
+    if (depth > STRUCTURE_MAX_DEPTH || typeof input !== "object" || input === null || Array.isArray(input)) {
+      return undefined;
+    }
+    const output: VaultStructure = {};
+    for (const [key, raw] of Object.entries(input as Record<string, unknown>)) {
+      if (remaining <= 0 || !isSafeSegment(key)) continue;
+      if (typeof raw !== "object" || raw === null || Array.isArray(raw)) continue;
+      remaining -= 1;
+      const node = raw as Record<string, unknown>;
+      const entry: DirectoryMeta = { type: "directory" };
+      const title = cleanText(node.title);
+      if (title) entry.title = title;
+      const description = cleanText(node.description);
+      if (description) entry.description = description;
+      const children = level(node.children, depth + 1);
+      if (children) entry.children = children;
+      output[key] = entry;
+    }
+    return Object.keys(output).length ? output : undefined;
+  }
+
+  return level(value, 1);
 }
 
 export class VaultService {
@@ -164,13 +217,29 @@ export class VaultService {
   async updateVault(vaultId: string, update: VaultUpdate): Promise<VaultUpdateResult> {
     const vault = this.vault(vaultId);
     let next: VaultSummary = { ...vault };
+    const patch: Partial<VaultConfig> = {};
 
     if (update.name !== undefined) {
       const trimmed = update.name.trim();
       if (!trimmed || trimmed.length > 200) throw new Error("Enter a vault name.");
-      this.writeConfigName(vault.repositoryPath, trimmed);
+      patch.name = trimmed;
       next = { ...next, name: trimmed };
     }
+
+    if (update.defaultLanguage !== undefined) {
+      const language = update.defaultLanguage.trim();
+      if (language.length > STRUCTURE_MAX_TEXT) throw new Error("Default language is too long.");
+      patch.defaultLanguage = language || undefined;
+      next = { ...next, defaultLanguage: language || undefined };
+    }
+
+    if (update.structure !== undefined) {
+      const structure = sanitizeStructure(update.structure);
+      patch.structure = structure;
+      next = { ...next, structure };
+    }
+
+    if (Object.keys(patch).length) this.writeConfig(vault.repositoryPath, patch);
 
     if (update.remoteUrl !== undefined) {
       const url = update.remoteUrl.trim();
@@ -198,9 +267,13 @@ export class VaultService {
     return { vault: next, push };
   }
 
-  private writeConfigName(repositoryPath: string, name: string): void {
+  private writeConfig(repositoryPath: string, patch: Partial<VaultConfig>): void {
     const file = path.join(repositoryPath, "vault.json");
-    const config = { ...this.config(repositoryPath), name };
+    const config: Record<string, unknown> = { ...this.config(repositoryPath) };
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === undefined) delete config[key];
+      else config[key] = value;
+    }
     const temporary = path.join(repositoryPath, `.vault-${randomUUID()}.tmp`);
     try {
       fs.writeFileSync(temporary, `${JSON.stringify(config, null, 2)}\n`, { encoding: "utf8" });
@@ -220,8 +293,10 @@ export class VaultService {
   }
 
   manifest(vaultId: string): Manifest {
-    const root = this.documentsRoot(vaultId);
-    return { tree: this.walk(root, root) };
+    const vault = this.vault(vaultId);
+    const config = this.config(vault.repositoryPath);
+    const root = this.resolveDocumentsRoot(vault.repositoryPath, config);
+    return { tree: this.walk(root, root, sanitizeStructure(config.structure)) };
   }
 
   document(vaultId: string, documentId: string): LoadedDoc {
@@ -338,7 +413,12 @@ export class VaultService {
     const config = this.config(repositoryPath);
     this.resolveDocumentsRoot(repositoryPath, config);
     const name = config.name?.trim() || fallbackName?.trim() || path.basename(repositoryPath);
-    return { id, name, repositoryPath };
+    const summary: VaultSummary = { id, name, repositoryPath };
+    const defaultLanguage = cleanText(config.defaultLanguage);
+    if (defaultLanguage) summary.defaultLanguage = defaultLanguage;
+    const structure = sanitizeStructure(config.structure);
+    if (structure) summary.structure = structure;
+    return summary;
   }
 
   private documentsRoot(vaultId: string): string {
@@ -361,7 +441,7 @@ export class VaultService {
     return canonical;
   }
 
-  private walk(root: string, directory: string): TreeNode[] {
+  private walk(root: string, directory: string, meta?: VaultStructure): TreeNode[] {
     const nodes: TreeNode[] = [];
     for (const entry of fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
       if (entry.name.startsWith(".") || entry.name.startsWith("_") || entry.isSymbolicLink()) continue;
@@ -369,8 +449,18 @@ export class VaultService {
       const absolute = path.join(directory, entry.name);
       const id = path.relative(root, absolute).split(path.sep).join("/");
       if (entry.isDirectory()) {
-        const children = this.walk(root, absolute);
-        if (children.length) nodes.push({ type: "folder", id, label: humanize(entry.name), children });
+        const directoryMeta = meta?.[entry.name];
+        const children = this.walk(root, absolute, directoryMeta?.children);
+        if (children.length) {
+          const folder: TreeNode = {
+            type: "folder",
+            id,
+            label: directoryMeta?.title || humanize(entry.name),
+            children,
+          };
+          if (directoryMeta?.description) folder.description = directoryMeta.description;
+          nodes.push(folder);
+        }
       } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".html")) {
         const html = fs.statSync(absolute).size <= MAX_DOCUMENT_BYTES ? fs.readFileSync(absolute, "utf8") : "";
         const meta = parseMeta(html);
