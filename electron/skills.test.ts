@@ -37,6 +37,7 @@ const vaultWithMeta: VaultSummary = {
 
 const claudeSkill = (home: string) => path.join(home, ".claude", "skills", "vault-guide", "SKILL.md");
 const codexSkill = (home: string) => path.join(home, ".codex", "skills", "vault-guide", "SKILL.md");
+const reviewerDir = (home: string, base: string) => path.join(home, base, "skills", "document-reviewer");
 
 describe("SkillService", () => {
   it("renders the vault format guide and each registered vault", () => {
@@ -80,6 +81,28 @@ describe("SkillService", () => {
     }
   });
 
+  it("renders the document reviewer rubric and each registered vault", () => {
+    const home = temporaryDirectory();
+    new SkillService(home).install([vaultA, vaultWithMeta]);
+    const skill = fs.readFileSync(path.join(reviewerDir(home, ".claude"), "SKILL.md"), "utf8");
+    expect(skill).toContain("name: document-reviewer");
+    expect(skill).toContain("# Document Reviewer");
+    expect(skill).toContain("## Review rubric");
+    expect(skill).toContain("Link integrity");
+    expect(skill).toContain("Knowledge");
+    expect(skill).toContain("**Knowledge base** (`10-knowledge`) — Reference material.");
+  });
+
+  it("installs the document reviewer skill into both directories", () => {
+    const home = temporaryDirectory();
+    new SkillService(home).install([vaultA]);
+    for (const base of [".claude", ".codex"]) {
+      const dir = reviewerDir(home, base);
+      expect(fs.existsSync(path.join(dir, "SKILL.md"))).toBe(true);
+      expect(fs.existsSync(path.join(dir, ".document-reviewer.json"))).toBe(true);
+    }
+  });
+
   it("reports not-installed, then current, then outdated when vaults change", () => {
     const home = temporaryDirectory();
     const service = new SkillService(home);
@@ -88,5 +111,13 @@ describe("SkillService", () => {
     service.install([vaultA]);
     expect(service.status([vaultA]).state).toBe("current");
     expect(service.status([vaultA, vaultB]).state).toBe("outdated");
+  });
+
+  it("reports outdated when only the document reviewer skill is missing", () => {
+    const home = temporaryDirectory();
+    const service = new SkillService(home);
+    service.install([vaultA]);
+    fs.rmSync(reviewerDir(home, ".claude"), { recursive: true, force: true });
+    expect(service.status([vaultA]).state).toBe("not-installed");
   });
 });

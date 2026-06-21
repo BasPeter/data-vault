@@ -13,7 +13,7 @@ contribution workflow. `CLAUDE.md` points here.
 electron/main.ts       privileged application lifecycle and IPC handlers
 electron/preload.ts    narrow typed context bridge
 electron/vault.ts      repository, filesystem, manifest, graph, and Git logic
-electron/skills.ts     renders and installs the versioned vault-guide agent skill
+electron/skills.ts     renders and installs the versioned vault-guide and document-reviewer agent skills
 src/                   sandboxed React renderer
 skills/                repository-local agent workflows
 ```
@@ -32,7 +32,7 @@ Electron modules into `src/`.
   directory segment (`{ title?, description?, children? }`) describing each
   directory's purpose. Both are editable from the vault
   switcher's settings dialog, surfaced in the sidebar, and injected into the
-  `vault-guide` skill; changing them marks the installed skill outdated.
+  generated agent skills; changing them marks the installed skills outdated.
 - Documents are content-only `.html` fragments with an optional `<!--vault`
   metadata block containing `title`, `date`, and comma-separated `tags`.
 - `quick-notes.html` at the documents root is a reserved local scratchpad. It
@@ -54,9 +54,12 @@ Electron modules into `src/`.
 - Validate IPC senders and arguments in the main process.
 - Block renderer navigation and validate external URLs before opening them.
 - Do not add a localhost HTTP server to the desktop runtime.
-- The `vault-guide` skill installer writes only to the fixed paths
-  `~/.claude/skills/vault-guide` and `~/.codex/skills/vault-guide` (no
-  renderer-supplied paths) and never embeds Data Vault app-repo content.
+- The agent-skill installer writes only to the fixed paths
+  `~/.claude/skills/<skill>` and `~/.codex/skills/<skill>` for the generated
+  `vault-guide` and `document-reviewer` skills (no renderer-supplied paths) and
+  never embeds Data Vault app-repo content. The skills install automatically on
+  launch and after the vault list changes; auto-install is best-effort and must
+  never fail app startup.
 
 ## Development workflow
 

@@ -54,6 +54,20 @@ The quick-notes button opens a scratchpad for the active vault. Its HTML is
 stored as `quick-notes.html` at the documents root and is intentionally omitted
 from the document tree and graph. The application does not commit this file.
 
+## Agent skills
+
+Data Vault generates two agent skills for Claude and Codex from your registered
+vault list:
+
+- **vault-guide** — how to read, create, and edit vault documents.
+- **document-reviewer** — how to review existing documents for format,
+  metadata, link integrity, language, and structural placement.
+
+The skills install automatically on launch and whenever your vault list changes,
+writing only to `~/.claude/skills/<skill>` and `~/.codex/skills/<skill>`. The
+sparkles button in the toolbar shows their status and lets you re-install
+manually; a red dot means the installed copies are missing or out of date.
+
 ## Application updates
 
 The installed version is shown in the top-right of the toolbar. Installed builds
