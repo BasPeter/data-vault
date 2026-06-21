@@ -45,7 +45,7 @@ function TreeItems({
           >
             <SidebarMenuItem>
               <CollapsibleTrigger asChild>
-                <SidebarMenuButton>
+                <SidebarMenuButton title={node.description}>
                   <Folder className="group-data-[state=open]/collapsible:hidden" />
                   <FolderOpen className="hidden group-data-[state=open]/collapsible:block" />
                   <span>{node.label}</span>

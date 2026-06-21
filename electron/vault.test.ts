@@ -155,4 +155,92 @@ describe("VaultService", () => {
     await expect(service.updateVault(vault.id, { remoteUrl: "not a url" }))
       .rejects.toThrow("HTTPS, SSH, or git@");
   });
+
+  it("applies structure titles and descriptions to folder nodes", () => {
+    const root = temporaryDirectory();
+    const documents = path.join(root, "documents");
+    fs.mkdirSync(path.join(documents, "10-knowledge", "playbooks"), { recursive: true });
+    fs.mkdirSync(path.join(documents, "20-plain"), { recursive: true });
+    fs.writeFileSync(path.join(documents, "10-knowledge", "a.html"), "<h1>A</h1>");
+    fs.writeFileSync(path.join(documents, "10-knowledge", "playbooks", "b.html"), "<h1>B</h1>");
+    fs.writeFileSync(path.join(documents, "20-plain", "c.html"), "<h1>C</h1>");
+    fs.writeFileSync(
+      path.join(root, "vault.json"),
+      JSON.stringify({
+        name: "Example",
+        structure: {
+          "10-knowledge": {
+            title: "Knowledge base",
+            type: "directory",
+            description: "Reference material.",
+            children: { playbooks: { title: "Playbooks", type: "directory" } },
+          },
+        },
+      }),
+    );
+
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = service.addLocal(root);
+    const tree = service.manifest(vault.id).tree;
+
+    const knowledge = tree.find((node) => node.id === "10-knowledge");
+    expect(knowledge).toMatchObject({ type: "folder", label: "Knowledge base", description: "Reference material." });
+    const playbooks = knowledge?.type === "folder" ? knowledge.children.find((c) => c.id === "10-knowledge/playbooks") : undefined;
+    expect(playbooks).toMatchObject({ type: "folder", label: "Playbooks" });
+    // Folders without metadata keep the humanized fallback label and no description.
+    const plain = tree.find((node) => node.id === "20-plain");
+    expect(plain).toMatchObject({ label: "20 Plain" });
+    expect(plain?.type === "folder" ? plain.description : "set").toBeUndefined();
+  });
+
+  it("round-trips default language and structure through updateVault", async () => {
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = await service.createEmpty("Vault");
+
+    const result = await service.updateVault(vault.id, {
+      defaultLanguage: "nl",
+      structure: { documents: { title: "Docs", type: "directory" } },
+    });
+
+    expect(result.vault.defaultLanguage).toBe("nl");
+    expect(result.vault.structure).toMatchObject({ documents: { title: "Docs", type: "directory" } });
+
+    const written = JSON.parse(fs.readFileSync(path.join(vault.repositoryPath, "vault.json"), "utf8"));
+    expect(written.defaultLanguage).toBe("nl");
+    expect(written.structure.documents.title).toBe("Docs");
+
+    const stored = service.list().find((candidate) => candidate.id === vault.id);
+    expect(stored?.defaultLanguage).toBe("nl");
+
+    // Clearing the language removes it from vault.json.
+    await service.updateVault(vault.id, { defaultLanguage: "" });
+    expect(JSON.parse(fs.readFileSync(path.join(vault.repositoryPath, "vault.json"), "utf8")).defaultLanguage)
+      .toBeUndefined();
+  });
+
+  it("sanitizes hostile structure metadata and keeps the manifest working", () => {
+    const root = temporaryDirectory();
+    const documents = path.join(root, "documents");
+    fs.mkdirSync(path.join(documents, "safe"), { recursive: true });
+    fs.writeFileSync(path.join(documents, "safe", "a.html"), "<h1>A</h1>");
+    fs.writeFileSync(
+      path.join(root, "vault.json"),
+      JSON.stringify({
+        name: "Example",
+        structure: {
+          "../escape": { title: "Bad", type: "directory" },
+          safe: { title: "Safe", type: "directory", description: "x".repeat(5000) },
+        },
+      }),
+    );
+
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = service.addLocal(root);
+
+    // Path-traversal keys are dropped and over-long text is ignored.
+    expect(vault.structure?.["../escape"]).toBeUndefined();
+    expect(vault.structure?.safe).toMatchObject({ title: "Safe", type: "directory" });
+    expect(vault.structure?.safe?.description).toBeUndefined();
+    expect(service.manifest(vault.id).tree.find((node) => node.id === "safe")).toMatchObject({ label: "Safe" });
+  });
 });

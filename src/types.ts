@@ -10,8 +10,18 @@ export type FolderNode = {
   type: "folder";
   id: string;
   label: string;
+  description?: string;
   children: TreeNode[];
 };
+
+export type DirectoryMeta = {
+  title?: string;
+  type: "directory";
+  description?: string;
+  children?: Record<string, DirectoryMeta>;
+};
+
+export type VaultStructure = Record<string, DirectoryMeta>;
 
 export type TreeNode = DocNode | FolderNode;
 export type Manifest = { tree: TreeNode[] };
@@ -39,6 +49,8 @@ export type VaultSummary = {
   name: string;
   repositoryPath: string;
   remoteUrl?: string;
+  defaultLanguage?: string;
+  structure?: VaultStructure;
 };
 
 export type SyncResult = {
@@ -50,6 +62,8 @@ export type SyncResult = {
 export type VaultUpdate = {
   name?: string;
   remoteUrl?: string;
+  defaultLanguage?: string;
+  structure?: VaultStructure;
 };
 
 export type VaultUpdateResult = {
