@@ -129,4 +129,12 @@ describe("SkillService", () => {
     fs.rmSync(reviewerDir(home, ".claude"), { recursive: true, force: true });
     expect(service.status([vaultA]).state).toBe("not-installed");
   });
+
+  it("reports outdated when an installed skill no longer matches its generated content", () => {
+    const home = temporaryDirectory();
+    const service = new SkillService(home);
+    service.install([vaultA]);
+    fs.appendFileSync(claudeSkill(home), "\nLocally modified.\n");
+    expect(service.status([vaultA]).state).toBe("outdated");
+  });
 });

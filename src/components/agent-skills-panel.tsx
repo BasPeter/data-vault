@@ -1,9 +1,7 @@
-import { useEffect, useState } from "react";
-import { Check, RefreshCw, Sparkles } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Check, RefreshCw, Sparkles, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { SkillStatus, VaultSummary } from "@/types";
-
-const initialStatus: SkillStatus = { state: "not-installed", version: "", vaultCount: 0 };
 
 function headline(status: SkillStatus): string {
   switch (status.state) {
@@ -33,25 +31,38 @@ function actionLabel(status: SkillStatus, busy: boolean): string {
   }
 }
 
-// Renders inside the collapsible sidebar footer, where the extra space lets the
-// agent-skill installer explain what it does rather than hiding behind an icon.
+// Keep the healthy state compact; only spend sidebar space on setup, updates,
+// or an error that needs the user's attention.
 export function AgentSkillsPanel({ vaults }: { vaults: VaultSummary[] }) {
-  const [status, setStatus] = useState(initialStatus);
+  const [status, setStatus] = useState<SkillStatus | null>(null);
+  const [statusError, setStatusError] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  const refreshStatus = useCallback(() => {
+    window.vaultApi.skillStatus()
+      .then((nextStatus) => {
+        setStatus(nextStatus);
+        setStatusError(false);
+      })
+      .catch(() => setStatusError(true));
+  }, []);
 
   // Re-check whenever the registered vaults change so the stale indicator
   // appears after a vault is added, removed, or renamed.
   const signature = vaults.map((vault) => `${vault.id}:${vault.name}:${vault.repositoryPath}:${vault.remoteUrl ?? ""}`).join("|");
   useEffect(() => {
-    window.vaultApi.skillStatus().then(setStatus).catch(() => undefined);
-  }, [signature]);
+    refreshStatus();
+    window.addEventListener("focus", refreshStatus);
+    return () => window.removeEventListener("focus", refreshStatus);
+  }, [signature, refreshStatus]);
 
-  const stale = status.state !== "current";
+  const stale = statusError || (status !== null && status.state !== "current");
 
   const install = async () => {
     setBusy(true);
     try {
       setStatus(await window.vaultApi.installSkills());
+      setStatusError(false);
     } catch {
       // Leave the previous status; the button stays available to retry.
     } finally {
@@ -59,13 +70,33 @@ export function AgentSkillsPanel({ vaults }: { vaults: VaultSummary[] }) {
     }
   };
 
+  if (!status && !statusError) {
+    return (
+      <div className="text-muted-foreground flex h-9 items-center gap-2 px-2 text-xs">
+        <RefreshCw className="size-4 animate-spin" />
+        <span>Checking agent skills…</span>
+      </div>
+    );
+  }
+
+  if (status?.state === "current" && !statusError) {
+    return (
+      <div className="text-muted-foreground flex h-9 items-center gap-2 px-2 text-xs">
+        <Check className="size-4" />
+        <span>Agent skills are up to date</span>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-sidebar-accent/40 rounded-lg border p-3">
       <div className="flex items-center gap-2">
         <span className="text-muted-foreground [&_svg]:size-4">
-          {status.state === "current" ? <Check /> : <Sparkles />}
+          {statusError ? <TriangleAlert /> : <Sparkles />}
         </span>
-        <p className="text-sm font-medium">{headline(status)}</p>
+        <p className="text-sm font-medium">
+          {statusError ? "Could not check agent skills" : headline(status!)}
+        </p>
         {stale && (
           <span
             aria-hidden
@@ -73,7 +104,9 @@ export function AgentSkillsPanel({ vaults }: { vaults: VaultSummary[] }) {
           />
         )}
       </div>
-      <p className="text-muted-foreground mt-1.5 text-xs leading-relaxed">{detail(status)}</p>
+      <p className="text-muted-foreground mt-1.5 text-xs leading-relaxed">
+        {statusError ? "Try the check again. If the problem continues, the skills may not be writable." : detail(status!)}
+      </p>
       <p className="text-muted-foreground/80 mt-1.5 text-xs leading-relaxed">
         Installs the <span className="font-medium">vault-guide</span> and{" "}
         <span className="font-medium">document-reviewer</span> skills for Claude Code and Codex.
@@ -81,12 +114,12 @@ export function AgentSkillsPanel({ vaults }: { vaults: VaultSummary[] }) {
       <Button
         className="mt-3 w-full"
         size="sm"
-        variant={stale ? "default" : "outline"}
-        onClick={install}
+        variant="default"
+        onClick={statusError ? refreshStatus : install}
         disabled={busy}
       >
         <RefreshCw className={busy ? "animate-spin" : ""} />
-        {actionLabel(status, busy)}
+        {statusError ? "Check again" : actionLabel(status!, busy)}
       </Button>
     </div>
   );

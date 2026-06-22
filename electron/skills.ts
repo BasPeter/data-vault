@@ -320,14 +320,20 @@ export class SkillService {
     let matches = true;
     for (const skill of SKILLS) {
       const current = this.skillFingerprint(skill, vaults);
+      const expectedContent = skill.render(vaults);
       for (const base of this.bases) {
         const directory = path.join(base, skill.name);
-        if (!fs.existsSync(path.join(directory, SKILL_FILE))) {
+        const skillFile = path.join(directory, SKILL_FILE);
+        if (!fs.existsSync(skillFile)) {
           installed = false;
           continue;
         }
         const marker = readJson<Marker>(path.join(directory, skill.markerFile));
-        if (!marker || marker.fingerprint !== current) matches = false;
+        if (
+          !marker ||
+          marker.fingerprint !== current ||
+          fs.readFileSync(skillFile, "utf8") !== expectedContent
+        ) matches = false;
       }
     }
     const state: SkillStatus["state"] = !installed ? "not-installed" : matches ? "current" : "outdated";
