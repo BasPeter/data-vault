@@ -20,6 +20,51 @@ afterEach(() => {
 });
 
 describe("VaultService", () => {
+  it("returns author and edit time for each document source line", async () => {
+    const root = temporaryDirectory();
+    const documents = path.join(root, "documents");
+    fs.mkdirSync(documents);
+    const file = path.join(documents, "history.html");
+    fs.writeFileSync(file, "<h1>History</h1>\n<p>First version</p>\n");
+    execFileSync("git", ["-C", root, "init", "-b", "main"]);
+    execFileSync("git", ["-C", root, "config", "user.name", "Vault Author"]);
+    execFileSync("git", ["-C", root, "config", "user.email", "author@example.test"]);
+    execFileSync("git", ["-C", root, "add", "documents/history.html"]);
+    execFileSync("git", ["-C", root, "commit", "-m", "Add history document"], {
+      env: { ...process.env, GIT_AUTHOR_DATE: "2024-01-02T12:00:00Z", GIT_COMMITTER_DATE: "2024-01-02T12:00:00Z" },
+    });
+
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = service.addLocal(root);
+    const lines = await service.blame(vault.id, "history.html");
+
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatchObject({
+      lineNumber: 1,
+      content: "<h1>History</h1>",
+      author: "Vault Author",
+      timestamp: "2024-01-02T12:00:00.000Z",
+      summary: "Add history document",
+    });
+    expect(lines[0].commit).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  it("marks source lines in an untracked document as uncommitted", async () => {
+    const root = temporaryDirectory();
+    const documents = path.join(root, "documents");
+    fs.mkdirSync(documents);
+    fs.writeFileSync(path.join(documents, "draft.html"), "<h1>Draft</h1>\n<p>Work</p>");
+    execFileSync("git", ["-C", root, "init", "-b", "main"]);
+
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = service.addLocal(root);
+
+    await expect(service.blame(vault.id, "draft.html")).resolves.toEqual([
+      { lineNumber: 1, content: "<h1>Draft</h1>", author: "Not committed", timestamp: null, summary: "Untracked line", commit: null },
+      { lineNumber: 2, content: "<p>Work</p>", author: "Not committed", timestamp: null, summary: "Untracked line", commit: null },
+    ]);
+  });
+
   it("opens a compatible vault and builds its manifest", () => {
     const root = temporaryDirectory();
     const documents = path.join(root, "documents");
@@ -39,6 +84,7 @@ describe("VaultService", () => {
     expect(service.document(vault.id, "10-knowledge/example.html")).toMatchObject({
       title: "Example document",
       meta: { tags: ["one", "two"] },
+      sourceStartLine: 4,
     });
   });
 

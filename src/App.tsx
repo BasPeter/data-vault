@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Database, FolderOpen, GitBranch, Network, Plus, RefreshCw } from "lucide-react";
+import { Database, FolderOpen, GitBranch, GitCommitHorizontal, Network, Plus, RefreshCw } from "lucide-react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { DocumentView } from "@/components/document-view";
 import { GraphView } from "@/components/graph-view";
@@ -47,6 +47,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [showBlame, setShowBlame] = useState(false);
 
   const refreshVaults = async (preferred?: string) => {
     const next = await window.vaultApi.list();
@@ -141,6 +142,17 @@ export default function App() {
               <RefreshCw className={syncing ? "animate-spin" : ""} />
             </Button>
             <QuickNotesPanel vaultId={vaultId} version={version} />
+            <Button
+              variant={showBlame && view === "doc" ? "secondary" : "ghost"}
+              size="icon"
+              title={showBlame ? "Hide line history" : "Show line history"}
+              aria-label={showBlame ? "Hide line history" : "Show line history"}
+              aria-pressed={showBlame}
+              disabled={view !== "doc" || !activeId}
+              onClick={() => setShowBlame((value) => !value)}
+            >
+              <GitCommitHorizontal />
+            </Button>
             <Button variant={view === "graph" ? "secondary" : "ghost"} size="icon" title="Graph" onClick={() => setView(view === "graph" ? "doc" : "graph")}>
               <Network />
             </Button>
@@ -154,7 +166,7 @@ export default function App() {
             <GraphView vaultId={vaultId} activeId={activeId} onSelect={openDocument} version={version} />
           ) : (
             <div className="h-full overflow-auto">
-              <DocumentView vaultId={vaultId} docId={activeId} theme={theme} version={version} />
+              <DocumentView vaultId={vaultId} docId={activeId} theme={theme} version={version} showBlame={showBlame} />
             </div>
           )}
         </main>

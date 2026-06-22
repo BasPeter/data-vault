@@ -180,4 +180,25 @@
   .doc-content .mermaid {
     @apply my-6 flex justify-center rounded-lg border bg-white/5 p-4;
   }
+  .doc-content.blame-mode {
+    position: relative;
+    padding-left: 6.5rem;
+  }
+  .doc-content.blame-mode .blame-marker {
+    position: absolute;
+    left: 0;
+    width: 5.25rem;
+    color: var(--muted-foreground);
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: 0.65rem;
+    font-weight: 400;
+    line-height: 1rem;
+    text-align: right;
+    white-space: pre;
+    opacity: 0.72;
+    pointer-events: auto;
+  }
+  .doc-content.blame-mode .blame-marker:hover {
+    opacity: 1;
+  }
 }

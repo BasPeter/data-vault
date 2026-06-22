@@ -4,6 +4,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import type {
+  BlameLine,
   DirectoryMeta,
   GraphData,
   GraphNode,
@@ -72,6 +73,44 @@ function titleFor(html: string, fileName: string): string {
     ?.replace(/<[^>]+>/g, "")
     .trim();
   return meta.title || h1 || humanize(fileName);
+}
+
+function parseBlame(output: string): BlameLine[] {
+  const result: BlameLine[] = [];
+  let commit = "";
+  let lineNumber = 0;
+  let author = "Unknown";
+  let authorTime: number | null = null;
+  let summary = "";
+
+  for (const line of output.split("\n")) {
+    const header = line.match(/^([0-9a-f]{40,64}) \d+ (\d+)(?: \d+)?$/);
+    if (header) {
+      commit = header[1];
+      lineNumber = Number(header[2]);
+      author = "Unknown";
+      authorTime = null;
+      summary = "";
+    } else if (line.startsWith("author ")) {
+      author = line.slice(7);
+    } else if (line.startsWith("author-time ")) {
+      const parsed = Number(line.slice(12));
+      authorTime = Number.isFinite(parsed) ? parsed : null;
+    } else if (line.startsWith("summary ")) {
+      summary = line.slice(8);
+    } else if (line.startsWith("\t")) {
+      const uncommitted = /^0+$/.test(commit);
+      result.push({
+        lineNumber,
+        content: line.slice(1),
+        author: uncommitted ? "Not committed" : author,
+        timestamp: uncommitted || authorTime === null ? null : new Date(authorTime * 1000).toISOString(),
+        summary: uncommitted ? "Uncommitted line" : summary,
+        commit: uncommitted ? null : commit,
+      });
+    }
+  }
+  return result;
 }
 
 function readJson<T>(file: string, fallback: T): T {
@@ -314,6 +353,45 @@ export class VaultService {
   }
 
   document(vaultId: string, documentId: string): LoadedDoc {
+    const { candidate, canonical } = this.documentFile(vaultId, documentId);
+    const html = fs.readFileSync(canonical, "utf8");
+    const metadata = html.match(/^\s*<!--vault[\s\S]*?-->/i)?.[0] ?? "";
+    const content = html.slice(metadata.length);
+    const leadingWhitespace = content.match(/^\s*/)?.[0] ?? "";
+    const sourceStartLine = html.slice(0, metadata.length + leadingWhitespace.length).split(/\r?\n/).length;
+    return {
+      id: documentId.split(path.sep).join("/"),
+      title: titleFor(html, path.basename(candidate)),
+      meta: parseMeta(html),
+      html: content.trim(),
+      sourceStartLine,
+    };
+  }
+
+  async blame(vaultId: string, documentId: string): Promise<BlameLine[]> {
+    const vault = this.vault(vaultId);
+    const { canonical } = this.documentFile(vaultId, documentId);
+    const relative = path.relative(vault.repositoryPath, canonical).split(path.sep).join("/");
+    try {
+      const output = await this.git(vault.repositoryPath, ["blame", "--line-porcelain", "--", relative]);
+      return parseBlame(output);
+    } catch (error) {
+      // An untracked document has no Git history yet. Still show its source in
+      // blame mode and identify every line as uncommitted.
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/no such path|no such file|no such ref|fatal:.*path|bad revision/i.test(message)) throw error;
+      return fs.readFileSync(canonical, "utf8").split(/\r?\n/).map((content, index) => ({
+        lineNumber: index + 1,
+        content,
+        author: "Not committed",
+        timestamp: null,
+        summary: "Untracked line",
+        commit: null,
+      }));
+    }
+  }
+
+  private documentFile(vaultId: string, documentId: string): { candidate: string; canonical: string } {
     const root = this.documentsRoot(vaultId);
     if (!documentId || path.isAbsolute(documentId) || !documentId.toLowerCase().endsWith(".html")) {
       throw new Error("Invalid document ID.");
@@ -323,13 +401,7 @@ export class VaultService {
     const canonical = fs.realpathSync(candidate);
     if (!isWithin(root, canonical) || !fs.statSync(canonical).isFile()) throw new Error("Document not found.");
     if (fs.statSync(canonical).size > MAX_DOCUMENT_BYTES) throw new Error("Document is too large.");
-    const html = fs.readFileSync(canonical, "utf8");
-    return {
-      id: documentId.split(path.sep).join("/"),
-      title: titleFor(html, path.basename(candidate)),
-      meta: parseMeta(html),
-      html: html.replace(/^\s*<!--vault[\s\S]*?-->/i, "").trim(),
-    };
+    return { candidate, canonical };
   }
 
   quickNotes(vaultId: string): string {

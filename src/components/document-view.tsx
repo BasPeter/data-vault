@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { FileQuestion, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import type { LoadedDoc } from "@/types";
+import { cn } from "@/lib/utils";
+import type { BlameLine, LoadedDoc } from "@/types";
 import DOMPurify from "dompurify";
 
 type Status = "idle" | "loading" | "loaded" | "error" | "empty";
@@ -25,14 +26,18 @@ export function DocumentView({
   docId,
   theme,
   version,
+  showBlame,
 }: {
   vaultId: string;
   docId: string | null;
   theme: "light" | "dark";
   version: number;
+  showBlame: boolean;
 }) {
   const [doc, setDoc] = useState<LoadedDoc | null>(null);
   const [status, setStatus] = useState<Status>("empty");
+  const [blame, setBlame] = useState<BlameLine[] | null>(null);
+  const [blameError, setBlameError] = useState<string | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
   // Fetch the document fragment whenever the selection or vault version changes.
@@ -60,16 +65,41 @@ export function DocumentView({
     };
   }, [vaultId, docId, version]);
 
+  useEffect(() => {
+    if (!showBlame || !docId) return;
+    let cancelled = false;
+    setBlame(null);
+    setBlameError(null);
+    window.vaultApi.blame(vaultId, docId)
+      .then((lines) => { if (!cancelled) setBlame(lines); })
+      .catch((cause) => {
+        if (!cancelled) setBlameError(cause instanceof Error ? cause.message : String(cause));
+      });
+    return () => { cancelled = true; };
+  }, [vaultId, docId, version, showBlame]);
+
   // Inject the HTML and (re)render Mermaid diagrams. Re-runs on theme change.
   useEffect(() => {
     const el = contentRef.current;
     if (!el || status !== "loaded" || !doc) return;
-    el.innerHTML = DOMPurify.sanitize(doc.html, {
+    let cancelled = false;
+    let removeGutter = () => {};
+    const html = showBlame ? annotateSourceLines(doc.html, doc.sourceStartLine) : doc.html;
+    el.innerHTML = DOMPurify.sanitize(html, {
       USE_PROFILES: { html: true },
+      ADD_ATTR: ["data-vault-source-line"],
       FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "form"],
     });
-    renderMermaid(el).catch((err) => console.error("Mermaid render failed", err));
-  }, [doc, status, theme]);
+    renderMermaid(el)
+      .catch((err) => console.error("Mermaid render failed", err))
+      .then(() => {
+        if (!cancelled && showBlame && blame) removeGutter = installBlameGutter(el, blame);
+      });
+    return () => {
+      cancelled = true;
+      removeGutter();
+    };
+  }, [doc, status, theme, showBlame, blame]);
 
   if (status === "empty") {
     return (
@@ -99,7 +129,11 @@ export function DocumentView({
   }
 
   return (
-    <article className="mx-auto w-full max-w-4xl px-6 py-8">
+    <article className={cn("mx-auto w-full px-6 py-8", showBlame ? "max-w-5xl" : "max-w-4xl")}>
+      {showBlame && !blame && !blameError && (
+        <div className="text-muted-foreground mb-3 flex items-center gap-2 text-xs"><Loader2 className="size-3 animate-spin" />Loading line history…</div>
+      )}
+      {showBlame && blameError && <div role="alert" className="text-destructive mb-3 text-xs">Line history unavailable: {blameError}</div>}
       {(doc.meta.date || (doc.meta.tags && doc.meta.tags.length > 0)) && (
         <div className="mb-6 flex flex-wrap items-center gap-2">
           {doc.meta.date && (
@@ -112,9 +146,65 @@ export function DocumentView({
           ))}
         </div>
       )}
-      <div ref={contentRef} className="doc-content" />
+      <div ref={contentRef} className={cn("doc-content", showBlame && "blame-mode")} />
     </article>
   );
+}
+
+function annotateSourceLines(html: string, sourceStartLine: number): string {
+  const openingTag = /<([a-z][\w:-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+  return html.replace(openingTag, (tag, _name: string, offset: number) => {
+    const line = sourceStartLine + html.slice(0, offset).split("\n").length - 1;
+    return tag.replace(/\sdata-vault-source-line=(?:"[^"]*"|'[^']*'|[^\s>]+)/i, "")
+      .replace(/(\/?>)$/, ` data-vault-source-line="${line}"$1`);
+  });
+}
+
+function compactAuthor(author: string): string {
+  if (author.length <= 11) return author;
+  const initials = author.split(/\s+/).map((part) => part[0]).join("").slice(0, 3).toUpperCase();
+  return initials || author.slice(0, 11);
+}
+
+function installBlameGutter(container: HTMLElement, lines: BlameLine[]): () => void {
+  const byLine = new Map(lines.map((line) => [line.lineNumber, line]));
+  const shortDate = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "2-digit" });
+  const fullDate = new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeStyle: "short" });
+  const targets = Array.from(container.querySelectorAll<HTMLElement>(
+    ":is(h1, h2, h3, h4, p, blockquote, pre, li, table)[data-vault-source-line]",
+  ));
+  const entries: Array<{ target: HTMLElement; marker: HTMLSpanElement }> = [];
+
+  targets.forEach((element) => {
+    const history = byLine.get(Number(element.dataset.vaultSourceLine));
+    if (!history) return;
+    const parent = element.parentElement?.closest<HTMLElement>("[data-vault-source-line]");
+    if (parent?.dataset.vaultSourceLine === element.dataset.vaultSourceLine) return;
+    const edited = history.timestamp ? shortDate.format(new Date(history.timestamp)) : "Uncommitted";
+    const exact = history.timestamp ? fullDate.format(new Date(history.timestamp)) : "Uncommitted";
+    const marker = document.createElement("span");
+    marker.className = "blame-marker";
+    marker.textContent = `${compactAuthor(history.author)}\n${edited}`;
+    marker.title = `${history.author} — ${exact}${history.summary ? `\n${history.summary}` : ""}${history.commit ? `\n${history.commit}` : ""}`;
+    container.append(marker);
+    entries.push({ target: element, marker });
+  });
+
+  const align = () => {
+    const containerTop = container.getBoundingClientRect().top;
+    for (const { target, marker } of entries) {
+      marker.style.top = `${target.getBoundingClientRect().top - containerTop}px`;
+    }
+  };
+  align();
+  const observer = new ResizeObserver(align);
+  observer.observe(container);
+  window.addEventListener("resize", align);
+  return () => {
+    observer.disconnect();
+    window.removeEventListener("resize", align);
+    entries.forEach(({ marker }) => marker.remove());
+  };
 }
 
 function Placeholder({

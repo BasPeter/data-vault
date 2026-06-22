@@ -141,6 +141,10 @@ function registerIpc(): void {
     assertTrusted(event);
     return service.document(stringArgument(vaultId, "vault ID"), stringArgument(documentId, "document ID"));
   });
+  ipcMain.handle("vault:blame", (event, vaultId, documentId) => {
+    assertTrusted(event);
+    return service.blame(stringArgument(vaultId, "vault ID"), stringArgument(documentId, "document ID"));
+  });
   ipcMain.handle("vault:quick-notes", (event, vaultId) => {
     assertTrusted(event);
     return service.quickNotes(stringArgument(vaultId, "vault ID"));

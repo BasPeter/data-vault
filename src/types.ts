@@ -30,6 +30,16 @@ export type LoadedDoc = {
   title: string;
   meta: { title?: string; date?: string; tags?: string[] };
   html: string;
+  sourceStartLine: number;
+};
+
+export type BlameLine = {
+  lineNumber: number;
+  content: string;
+  author: string;
+  timestamp: string | null;
+  summary: string;
+  commit: string | null;
 };
 
 export type GraphNode = {
@@ -93,6 +103,7 @@ export type VaultApi = {
   updateVault: (vaultId: string, update: VaultUpdate) => Promise<VaultUpdateResult>;
   manifest: (vaultId: string) => Promise<Manifest>;
   document: (vaultId: string, documentId: string) => Promise<LoadedDoc>;
+  blame: (vaultId: string, documentId: string) => Promise<BlameLine[]>;
   quickNotes: (vaultId: string) => Promise<string>;
   saveQuickNotes: (vaultId: string, html: string) => Promise<void>;
   graph: (vaultId: string) => Promise<GraphData>;
