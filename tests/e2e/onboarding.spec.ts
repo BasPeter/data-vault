@@ -1,7 +1,7 @@
 import { captureScreenshot, cleanup, launchApp, stubDirectoryDialog } from "./electron-app";
 import { expect, test } from "@playwright/test";
 
-test("opens a local repository from the onboarding screen", async ({}, testInfo) => {
+test("opens a local repository and creates a second vault in one session", async ({}, testInfo) => {
   const launch = await launchApp({ seedVault: false });
   const { app, page, vaultDir } = launch;
   try {
@@ -18,22 +18,14 @@ test("opens a local repository from the onboarding screen", async ({}, testInfo)
     await expect(page.getByText("Documents")).toBeVisible();
     await expect(page.getByRole("button", { name: "Welcome" })).toBeVisible();
     await captureScreenshot(page, testInfo, "vault-opened");
-  } finally {
-    await app.close();
-    cleanup(launch);
-  }
-});
 
-test("creates an empty vault from the onboarding screen", async ({}, testInfo) => {
-  const launch = await launchApp({ seedVault: false });
-  const { app, page } = launch;
-  try {
-    await expect(page.getByRole("heading", { name: "Open a data vault" })).toBeVisible();
+    // Continue the same user journey through the workspace vault switcher.
+    await page.getByTestId("vault-switcher").click();
+    await page.getByRole("button", { name: "Create empty vault…" }).click();
+    const createDialog = page.getByRole("dialog", { name: "Create empty vault" });
+    await createDialog.getByPlaceholder("My vault").fill("My New Vault");
+    await createDialog.getByRole("button", { name: "Create" }).click();
 
-    await page.getByPlaceholder("New vault name").fill("My New Vault");
-    await page.getByRole("button", { name: "Create" }).click();
-
-    // The new vault opens straight into its starter Welcome document.
     await expect(page.getByTestId("vault-switcher")).toContainText("My New Vault");
     await expect(page.getByRole("button", { name: "Welcome" })).toBeVisible();
     await captureScreenshot(page, testInfo, "empty-vault-created");
