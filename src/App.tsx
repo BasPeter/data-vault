@@ -163,16 +163,18 @@ export default function App() {
   );
 }
 
-// The app header doubles as the draggable macOS title bar. When the sidebar is
-// collapsed the content reaches the window edge, so it gains left padding to
-// clear the inset traffic lights; when expanded the lights sit over the sidebar.
+// The app header doubles as the draggable title bar. macOS needs left space for
+// inset traffic lights; Windows needs a safe area for its native caption buttons.
 function AppHeader({ children }: { children: React.ReactNode }) {
   const { state } = useSidebar();
+  const macOS = window.vaultApi.platform === "darwin";
+  const windows = window.vaultApi.platform === "win32";
   return (
     <header
       className={cn(
         "app-drag bg-background sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b pr-4 transition-[padding] duration-200 ease-linear",
-        state === "collapsed" ? "pl-20" : "pl-4",
+        macOS && state === "collapsed" ? "pl-20" : "pl-4",
+        windows && "app-titlebar-safe-right",
       )}
     >
       {children}
@@ -181,9 +183,16 @@ function AppHeader({ children }: { children: React.ReactNode }) {
 }
 
 // Draggable strip for screens without the header (onboarding, loading) so the
-// window can still be moved past the inset traffic lights.
+// custom title-bar area can still move the window.
 function WindowDragStrip() {
-  return <div className="app-drag fixed inset-x-0 top-0 z-50 h-9" />;
+  return (
+    <div
+      className={cn(
+        "app-drag fixed inset-x-0 top-0 z-50",
+        window.vaultApi.platform === "win32" ? "h-14" : "h-9",
+      )}
+    />
+  );
 }
 
 function Onboarding({ onLocal, onCloned, error }: {

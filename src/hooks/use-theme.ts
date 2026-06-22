@@ -14,6 +14,7 @@ export function useTheme() {
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
     localStorage.setItem("vault-theme", theme);
+    void window.vaultApi.setTitleBarTheme(theme);
   }, [theme]);
 
   const toggle = useCallback(

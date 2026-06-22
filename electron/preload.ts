@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import type { VaultApi } from "../src/types";
 
 const api: VaultApi = {
+  platform: process.platform,
   list: () => ipcRenderer.invoke("vault:list"),
   chooseLocal: () => ipcRenderer.invoke("vault:choose-local"),
   clone: (url) => ipcRenderer.invoke("vault:clone", url),
@@ -16,6 +17,7 @@ const api: VaultApi = {
   updateStatus: () => ipcRenderer.invoke("app:update-status"),
   checkForUpdates: () => ipcRenderer.invoke("app:check-for-updates"),
   installUpdate: () => ipcRenderer.invoke("app:install-update"),
+  setTitleBarTheme: (theme) => ipcRenderer.invoke("app:set-title-bar-theme", theme),
   onUpdateStatus: (listener) => {
     const handler = (_event: Electron.IpcRendererEvent, status: Parameters<typeof listener>[0]) => listener(status);
     ipcRenderer.on("app:update-status", handler);

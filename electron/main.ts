@@ -88,6 +88,11 @@ function htmlArgument(value: unknown): string {
   return value;
 }
 
+function titleBarThemeArgument(value: unknown): "light" | "dark" {
+  if (value !== "light" && value !== "dark") throw new Error("Invalid title bar theme.");
+  return value;
+}
+
 // Re-install the generated agent skills whenever they are missing or outdated.
 // Best-effort: a read-only home directory or similar must never break the app,
 // so failures are logged and surfaced through the existing stale indicator.
@@ -155,6 +160,16 @@ function registerIpc(): void {
   ipcMain.handle("app:update-status", (event) => { assertTrusted(event); return updateStatus(); });
   ipcMain.handle("app:check-for-updates", (event) => { assertTrusted(event); return checkForUpdates(); });
   ipcMain.handle("app:install-update", (event) => { assertTrusted(event); installUpdate(); });
+  ipcMain.handle("app:set-title-bar-theme", (event, value) => {
+    assertTrusted(event);
+    const theme = titleBarThemeArgument(value);
+    if (process.platform !== "win32") return;
+    BrowserWindow.fromWebContents(event.sender)?.setTitleBarOverlay({
+      color: "#00000000",
+      symbolColor: theme === "dark" ? "#fafafa" : "#18181b",
+      height: 56,
+    });
+  });
   ipcMain.handle("skill:status", (event) => { assertTrusted(event); return skills.status(service.list()); });
   ipcMain.handle("skill:install", (event) => { assertTrusted(event); return skills.install(service.list()); });
 }
@@ -167,11 +182,16 @@ function createWindow(): void {
     minHeight: 560,
     show: false,
     icon: applicationIconPath(),
-    // Modern macOS chrome: hide the OS title bar and let the app header act as
-    // the draggable title bar with the traffic lights inset over it.
+    // Integrate native window controls into the app header: inset traffic lights
+    // on macOS and a Window Controls Overlay on Windows.
     ...(process.platform === "darwin"
       ? { titleBarStyle: "hiddenInset" as const, trafficLightPosition: { x: 16, y: 19 } }
-      : {}),
+      : process.platform === "win32"
+        ? {
+            titleBarStyle: "hidden" as const,
+            titleBarOverlay: { color: "#00000000", symbolColor: "#18181b", height: 56 },
+          }
+        : {}),
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.cjs"),
       nodeIntegration: false,

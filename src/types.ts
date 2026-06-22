@@ -85,6 +85,7 @@ export type SkillStatus = {
 };
 
 export type VaultApi = {
+  platform: NodeJS.Platform;
   list: () => Promise<VaultSummary[]>;
   chooseLocal: () => Promise<VaultSummary | null>;
   clone: (url: string) => Promise<VaultSummary>;
@@ -99,6 +100,7 @@ export type VaultApi = {
   updateStatus: () => Promise<UpdateStatus>;
   checkForUpdates: () => Promise<UpdateStatus>;
   installUpdate: () => Promise<void>;
+  setTitleBarTheme: (theme: "light" | "dark") => Promise<void>;
   onUpdateStatus: (listener: (status: UpdateStatus) => void) => () => void;
   skillStatus: () => Promise<SkillStatus>;
   installSkills: () => Promise<SkillStatus>;

@@ -113,6 +113,12 @@
   .app-no-drag {
     -webkit-app-region: no-drag;
   }
+  .app-titlebar-safe-right {
+    padding-right: max(
+      1rem,
+      calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 1rem)
+    ) !important;
+  }
 }
 
 /* Styling for the rendered HTML document fragments from documents/. */

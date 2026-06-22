@@ -19,6 +19,7 @@ import {
   SidebarMenuSub,
 } from "@/components/ui/sidebar";
 import type { TreeNode, VaultSummary } from "@/types";
+import { cn } from "@/lib/utils";
 import appIcon from "../../build/icon.svg";
 
 type Props = {
@@ -85,7 +86,12 @@ function TreeItems({
 export function AppSidebar({ tree, activeId, onSelect, vaultName, vaults }: Props) {
   return (
     <Sidebar>
-      <SidebarHeader className="app-drag border-b py-3 pr-4 pl-20">
+      <SidebarHeader
+        className={cn(
+          "app-drag border-b py-3 pr-4",
+          window.vaultApi.platform === "darwin" ? "pl-20" : "pl-4",
+        )}
+      >
         <div className="flex min-w-0 items-center gap-2.5">
           <img src={appIcon} alt="" className="size-8 shrink-0 object-contain" />
           <div className="flex min-w-0 flex-col">
