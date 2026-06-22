@@ -37,14 +37,18 @@ export type AppLaunch = {
  * `vaults.json` pointing at a fresh copy of the fixture vault is written before
  * launch, so the app opens straight into the workspace; otherwise it starts on
  * the onboarding screen.
+ *
+ * Pass `reuse` to relaunch against directories from an earlier launch (keeping
+ * the registry and any on-disk edits to the vault), which lets a test simulate
+ * restarting the app after editing `vault.json`.
  */
 export async function launchApp(
-  options: { seedVault?: boolean } = {},
+  options: { seedVault?: boolean; reuse?: { userDataDir: string; vaultDir: string } } = {},
 ): Promise<AppLaunch> {
   const seedVault = options.seedVault ?? true;
-  const userDataDir = mkdtempSync(path.join(tmpdir(), "data-vault-e2e-data-"));
-  const vaultDir = mkdtempSync(path.join(tmpdir(), "data-vault-e2e-vault-"));
-  cpSync(fixtureVault, vaultDir, { recursive: true });
+  const userDataDir = options.reuse?.userDataDir ?? mkdtempSync(path.join(tmpdir(), "data-vault-e2e-data-"));
+  const vaultDir = options.reuse?.vaultDir ?? mkdtempSync(path.join(tmpdir(), "data-vault-e2e-vault-"));
+  if (!options.reuse) cpSync(fixtureVault, vaultDir, { recursive: true });
 
   if (seedVault) {
     const registry = {

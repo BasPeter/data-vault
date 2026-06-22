@@ -156,7 +156,21 @@ export class VaultService {
   }
 
   list(): VaultSummary[] {
-    return this.registry().vaults.filter((vault) => fs.existsSync(vault.repositoryPath));
+    // Re-describe from each repository's vault.json on every read so hand- or
+    // agent-edits to name/defaultLanguage/structure surface without re-adding the
+    // vault. The registry only persists the id and the remote URL (which lives in
+    // git config, not vault.json); everything else is derived live. Fall back to
+    // the cached entry when the repository is momentarily unreadable.
+    return this.registry().vaults
+      .filter((vault) => fs.existsSync(vault.repositoryPath))
+      .map((vault) => {
+        try {
+          const fresh = this.describe(vault.id, vault.repositoryPath);
+          return vault.remoteUrl ? { ...fresh, remoteUrl: vault.remoteUrl } : fresh;
+        } catch {
+          return vault;
+        }
+      });
   }
 
   addLocal(repositoryPath: string): VaultSummary {

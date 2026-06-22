@@ -217,6 +217,55 @@ describe("VaultService", () => {
       .toBeUndefined();
   });
 
+  it("re-reads vault.json on every list so external edits surface", () => {
+    const root = temporaryDirectory();
+    const documents = path.join(root, "documents");
+    fs.mkdirSync(path.join(documents, "10-knowledge"), { recursive: true });
+    fs.writeFileSync(path.join(documents, "10-knowledge", "a.html"), "<h1>A</h1>");
+    fs.writeFileSync(path.join(root, "vault.json"), JSON.stringify({ name: "Before" }));
+
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = service.addLocal(root);
+    expect(vault.name).toBe("Before");
+    expect(vault.structure).toBeUndefined();
+
+    // Edit vault.json out-of-band (as an agent or the user would) — no app action.
+    fs.writeFileSync(
+      path.join(root, "vault.json"),
+      JSON.stringify({
+        name: "After",
+        defaultLanguage: "nl",
+        structure: { "10-knowledge": { title: "Knowledge base" } },
+      }),
+    );
+
+    const listed = service.list().find((candidate) => candidate.id === vault.id);
+    expect(listed?.name).toBe("After");
+    expect(listed?.defaultLanguage).toBe("nl");
+    expect(listed?.structure).toMatchObject({ "10-knowledge": { title: "Knowledge base" } });
+    // The live structure also reaches the manifest labels.
+    expect(service.manifest(vault.id).tree.find((node) => node.id === "10-knowledge"))
+      .toMatchObject({ label: "Knowledge base" });
+  });
+
+  it("keeps the cached remote URL when re-describing from disk", async () => {
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = await service.createEmpty("Vault");
+    // The remote lives in git config / the registry, not vault.json.
+    const remoteUrl = "https://127.0.0.1:1/vault.git";
+    await service.updateVault(vault.id, { remoteUrl });
+
+    // A later out-of-band edit to vault.json must not drop the remote.
+    fs.writeFileSync(
+      path.join(vault.repositoryPath, "vault.json"),
+      JSON.stringify({ name: "Renamed on disk" }),
+    );
+
+    const listed = service.list().find((candidate) => candidate.id === vault.id);
+    expect(listed?.name).toBe("Renamed on disk");
+    expect(listed?.remoteUrl).toBe(remoteUrl);
+  });
+
   it("sanitizes hostile structure metadata and keeps the manifest working", () => {
     const root = temporaryDirectory();
     const documents = path.join(root, "documents");
