@@ -195,7 +195,12 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   service = new VaultService(app.getPath("userData"));
-  skills = new SkillService();
+  // E2E runs launch against a throwaway `--user-data-dir`, but skills install to
+  // the home directory, which the Chromium switch does not isolate. Redirect the
+  // skills home into that same throwaway dir under test so automated runs never
+  // overwrite the developer's real ~/.claude and ~/.codex skills. Production
+  // keeps the default (the real home directory).
+  skills = new SkillService(process.env.NODE_ENV === "test" ? app.getPath("userData") : undefined);
   autoInstallSkills();
   configureUpdater();
   registerIpc();
