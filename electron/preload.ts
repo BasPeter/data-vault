@@ -4,9 +4,12 @@ import type { VaultApi } from "../src/types";
 const api: VaultApi = {
   platform: process.platform,
   list: () => ipcRenderer.invoke("vault:list"),
+  resetVaults: () => ipcRenderer.invoke("vault:reset"),
   chooseLocal: () => ipcRenderer.invoke("vault:choose-local"),
   clone: (url) => ipcRenderer.invoke("vault:clone", url),
   createEmpty: (name) => ipcRenderer.invoke("vault:create-empty", name),
+  cloneGitHubRepo: (fullName) => ipcRenderer.invoke("vault:clone-github-repo", fullName),
+  createGitHubVault: (input) => ipcRenderer.invoke("vault:create-github-vault", input),
   updateVault: (vaultId, update) => ipcRenderer.invoke("vault:update", vaultId, update),
   manifest: (vaultId) => ipcRenderer.invoke("vault:manifest", vaultId),
   document: (vaultId, documentId) => ipcRenderer.invoke("vault:document", vaultId, documentId),
@@ -28,6 +31,11 @@ const api: VaultApi = {
   },
   skillStatus: () => ipcRenderer.invoke("skill:status"),
   installSkills: () => ipcRenderer.invoke("skill:install"),
+  githubStatus: () => ipcRenderer.invoke("github:status"),
+  githubLoginStart: () => ipcRenderer.invoke("github:login-start"),
+  githubLoginComplete: () => ipcRenderer.invoke("github:login-complete"),
+  githubLogout: () => ipcRenderer.invoke("github:logout"),
+  githubRepos: () => ipcRenderer.invoke("github:repos"),
 };
 
 contextBridge.exposeInMainWorld("vaultApi", api);

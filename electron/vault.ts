@@ -131,6 +131,17 @@ function nameFromUrl(url: string): string {
   return humanize(last.replace(/\.git$/i, "")).trim();
 }
 
+function hasHtmlDocuments(directory: string): boolean {
+  if (!fs.existsSync(directory)) return false;
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    if (entry.name.startsWith(".") || entry.isSymbolicLink()) continue;
+    const absolute = path.join(directory, entry.name);
+    if (entry.isDirectory() && hasHtmlDocuments(absolute)) return true;
+    if (entry.isFile() && entry.name.toLowerCase().endsWith(".html")) return true;
+  }
+  return false;
+}
+
 function safeRepositoryUrl(url: string): boolean {
   if (!url || url.startsWith("-")) return false;
   if (/^git@[\w.-]+:[\w./-]+(?:\.git)?$/.test(url)) return true;
@@ -276,6 +287,10 @@ export class VaultService {
       });
   }
 
+  reset(): void {
+    this.save({ vaults: [] });
+  }
+
   addLocal(repositoryPath: string): VaultSummary {
     const canonical = fs.realpathSync(repositoryPath);
     const existing = this.list().find((vault) => vault.repositoryPath === canonical);
@@ -285,7 +300,7 @@ export class VaultService {
     return vault;
   }
 
-  async clone(url: string): Promise<VaultSummary> {
+  async clone(url: string, env?: NodeJS.ProcessEnv): Promise<VaultSummary> {
     if (!safeRepositoryUrl(url)) throw new Error("Use an HTTPS, SSH, or git@ repository URL.");
     const id = randomUUID();
     const target = path.join(this.repositoriesDirectory, id);
@@ -293,8 +308,9 @@ export class VaultService {
       await execFileAsync("git", ["clone", "--depth=1", url, target], {
         timeout: 120_000,
         maxBuffer: 10 * 1024 * 1024,
-        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0", ...(env ?? {}) },
       });
+      await this.ensureInitialized(target, nameFromUrl(url), env);
       const vault = { ...this.describe(id, target, nameFromUrl(url)), remoteUrl: url };
       this.save({ vaults: [...this.registry().vaults, vault] });
       return vault;
@@ -304,9 +320,10 @@ export class VaultService {
     }
   }
 
-  async createEmpty(name: string): Promise<VaultSummary> {
+  async createEmpty(name: string, remoteUrl?: string, env?: NodeJS.ProcessEnv): Promise<VaultSummary> {
     const trimmed = name.trim();
     if (!trimmed || trimmed.length > 200) throw new Error("Enter a vault name.");
+    if (remoteUrl !== undefined && !safeRepositoryUrl(remoteUrl)) throw new Error("Use an HTTPS, SSH, or git@ repository URL.");
     const id = randomUUID();
     const target = path.join(this.repositoriesDirectory, id);
     try {
@@ -323,9 +340,14 @@ export class VaultService {
         "-c", "user.email=data-vault@localhost",
         "commit", "-m", "Initialize vault",
       ]);
+      if (remoteUrl) {
+        await this.git(target, ["remote", "add", "origin", remoteUrl]);
+        await this.git(target, ["push", "-u", "origin", "HEAD"], env);
+      }
       const vault = this.describe(id, target);
-      this.save({ vaults: [...this.registry().vaults, vault] });
-      return vault;
+      const next = remoteUrl ? { ...vault, remoteUrl } : vault;
+      this.save({ vaults: [...this.registry().vaults, next] });
+      return next;
     } catch (error) {
       fs.rmSync(target, { recursive: true, force: true });
       throw error;
@@ -408,6 +430,30 @@ export class VaultService {
       env: env ? { ...process.env, ...env } : process.env,
     });
     return result.stdout.trim();
+  }
+
+  private async ensureInitialized(repositoryPath: string, name: string, env?: NodeJS.ProcessEnv): Promise<void> {
+    const documents = path.join(repositoryPath, "documents");
+    const vaultConfig = path.join(repositoryPath, "vault.json");
+    fs.mkdirSync(documents, { recursive: true });
+    if (!fs.existsSync(vaultConfig)) {
+      fs.writeFileSync(
+        vaultConfig,
+        `${JSON.stringify({ schemaVersion: 1, name, documentsDirectory: "documents" }, null, 2)}\n`,
+      );
+    }
+    if (!hasHtmlDocuments(documents)) {
+      fs.writeFileSync(path.join(documents, "welcome.html"), WELCOME_DOCUMENT);
+    }
+    const status = await this.git(repositoryPath, ["status", "--porcelain"]);
+    if (!status) return;
+    await this.git(repositoryPath, ["add", "-A"]);
+    await this.git(repositoryPath, [
+      "-c", "user.name=Data Vault",
+      "-c", "user.email=data-vault@localhost",
+      "commit", "-m", "Initialize vault",
+    ]);
+    if (env) await this.git(repositoryPath, ["push", "-u", "origin", "HEAD"], env);
   }
 
   manifest(vaultId: string): Manifest {

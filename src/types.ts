@@ -80,6 +80,39 @@ export type VaultUpdateResult = {
   push?: { ok: boolean; message?: string };
 };
 
+export type GitHubStatus = {
+  authenticated: boolean;
+  login?: string;
+  name?: string;
+  avatarUrl?: string;
+  scopes?: string[];
+};
+
+export type GitHubLoginStart = {
+  userCode: string;
+  verificationUri: string;
+  expiresAt: string;
+};
+
+export type GitHubRepo = {
+  id: number;
+  name: string;
+  fullName: string;
+  owner: string;
+  private: boolean;
+  htmlUrl: string;
+  cloneUrl: string;
+  defaultBranch: string | null;
+  description: string | null;
+  updatedAt: string;
+};
+
+export type GitHubCreateRepoInput = {
+  name: string;
+  private: boolean;
+  description?: string;
+};
+
 export type UpdateStatus = {
   state: "idle" | "checking" | "available" | "downloading" | "downloaded" | "not-available" | "error";
   currentVersion: string;
@@ -116,9 +149,12 @@ export type SkillStatus = {
 export type VaultApi = {
   platform: NodeJS.Platform;
   list: () => Promise<VaultSummary[]>;
+  resetVaults: () => Promise<VaultSummary[]>;
   chooseLocal: () => Promise<VaultSummary | null>;
   clone: (url: string) => Promise<VaultSummary>;
   createEmpty: (name: string) => Promise<VaultSummary>;
+  cloneGitHubRepo: (fullName: string) => Promise<VaultSummary>;
+  createGitHubVault: (input: GitHubCreateRepoInput) => Promise<VaultSummary>;
   updateVault: (vaultId: string, update: VaultUpdate) => Promise<VaultUpdateResult>;
   manifest: (vaultId: string) => Promise<Manifest>;
   document: (vaultId: string, documentId: string) => Promise<LoadedDoc>;
@@ -136,6 +172,11 @@ export type VaultApi = {
   onUpdateStatus: (listener: (status: UpdateStatus) => void) => () => void;
   skillStatus: () => Promise<SkillStatus>;
   installSkills: () => Promise<SkillStatus>;
+  githubStatus: () => Promise<GitHubStatus>;
+  githubLoginStart: () => Promise<GitHubLoginStart>;
+  githubLoginComplete: () => Promise<GitHubStatus>;
+  githubLogout: () => Promise<GitHubStatus>;
+  githubRepos: () => Promise<GitHubRepo[]>;
 };
 
 declare global {
