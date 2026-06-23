@@ -1,6 +1,6 @@
 {
   "name": "data-vault",
-  "version": "0.10.8",
+  "version": "0.10.9",
   "private": true,
   "description": "A desktop viewer for Git-backed HTML knowledge vaults.",
   "repository": "https://github.com/BasPeter/data-vault.git",
