@@ -69,7 +69,8 @@ test("uses the workspace features in one session", async ({ appLaunch }, testInf
     await expect(page.getByRole("heading", { name: "Quick notes" })).toBeVisible();
     await expect(page.getByText("No quick notes yet.")).toBeVisible();
     await page.getByRole("button", { name: "Edit quick notes" }).click();
-    await page.getByRole("textbox", { name: "Quick notes HTML" })
+    await page
+      .getByRole("textbox", { name: "Quick notes HTML" })
       .fill("<h2>Test note</h2><p>Captured by the e2e suite.</p>");
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("heading", { name: "Test note" })).toBeVisible();
@@ -159,8 +160,9 @@ test("uses the workspace features in one session", async ({ appLaunch }, testInf
     await expect(page.getByLabel("Default language")).toHaveValue("nl");
     await openStructure();
     await expect(page.getByRole("textbox", { name: "10-knowledge title" })).toHaveValue("Knowledge Hub");
-    await expect(page.getByRole("textbox", { name: "10-knowledge description" }))
-      .toHaveValue("Curated reference docs.");
+    await expect(page.getByRole("textbox", { name: "10-knowledge description" })).toHaveValue(
+      "Curated reference docs.",
+    );
     await expect(page.getByRole("textbox", { name: "30-archive title" })).toHaveValue("Archive");
     await captureScreenshot(page, testInfo, "vault-structure-reopened");
   });

@@ -2,7 +2,14 @@ import path from "node:path";
 import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from "electron";
 import { VaultService } from "./vault";
 import { SkillService } from "./skills";
-import { changelog, checkForUpdates, configureUpdater, installUpdate, securityAssessmentPrompt, updateStatus } from "./updater";
+import {
+  changelog,
+  checkForUpdates,
+  configureUpdater,
+  installUpdate,
+  securityAssessmentPrompt,
+  updateStatus,
+} from "./updater";
 import type { VaultStructure, VaultUpdate } from "../src/types";
 
 // Bounds for the optional vault.json `structure` tree, mirrored from
@@ -43,7 +50,8 @@ function optionalText(value: unknown, name: string): string {
 function structureArgument(value: unknown): VaultStructure {
   let remaining = STRUCTURE_MAX_NODES;
   function level(input: unknown, depth: number): VaultStructure {
-    if (typeof input !== "object" || input === null || Array.isArray(input)) throw new Error("Invalid vault structure.");
+    if (typeof input !== "object" || input === null || Array.isArray(input))
+      throw new Error("Invalid vault structure.");
     if (depth > STRUCTURE_MAX_DEPTH) throw new Error("Vault structure is too deep.");
     const output: VaultStructure = {};
     for (const [key, raw] of Object.entries(input as Record<string, unknown>)) {
@@ -68,7 +76,8 @@ function updateArgument(value: unknown): VaultUpdate {
   const result: VaultUpdate = {};
   if (update.name !== undefined) result.name = stringArgument(update.name, "vault name");
   if (update.remoteUrl !== undefined) result.remoteUrl = stringArgument(update.remoteUrl, "remote URL");
-  if (update.defaultLanguage !== undefined) result.defaultLanguage = optionalText(update.defaultLanguage, "default language");
+  if (update.defaultLanguage !== undefined)
+    result.defaultLanguage = optionalText(update.defaultLanguage, "default language");
   if (update.structure !== undefined) result.structure = structureArgument(update.structure);
   if (
     result.name === undefined &&
@@ -114,7 +123,10 @@ function autoInstallSkills(): void {
 }
 
 function registerIpc(): void {
-  ipcMain.handle("vault:list", (event) => { assertTrusted(event); return service.list(); });
+  ipcMain.handle("vault:list", (event) => {
+    assertTrusted(event);
+    return service.list();
+  });
   ipcMain.handle("vault:choose-local", async (event) => {
     assertTrusted(event);
     const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
@@ -169,10 +181,22 @@ function registerIpc(): void {
     assertTrusted(event);
     return service.sync(stringArgument(vaultId, "vault ID"));
   });
-  ipcMain.handle("app:update-status", (event) => { assertTrusted(event); return updateStatus(); });
-  ipcMain.handle("app:check-for-updates", (event) => { assertTrusted(event); return checkForUpdates(); });
-  ipcMain.handle("app:install-update", (event) => { assertTrusted(event); installUpdate(); });
-  ipcMain.handle("app:changelog", (event) => { assertTrusted(event); return changelog(); });
+  ipcMain.handle("app:update-status", (event) => {
+    assertTrusted(event);
+    return updateStatus();
+  });
+  ipcMain.handle("app:check-for-updates", (event) => {
+    assertTrusted(event);
+    return checkForUpdates();
+  });
+  ipcMain.handle("app:install-update", (event) => {
+    assertTrusted(event);
+    installUpdate();
+  });
+  ipcMain.handle("app:changelog", (event) => {
+    assertTrusted(event);
+    return changelog();
+  });
   ipcMain.handle("app:security-assessment-prompt", (event, version) => {
     assertTrusted(event);
     return securityAssessmentPrompt(optionalVersionArgument(version));
@@ -187,8 +211,14 @@ function registerIpc(): void {
       height: 56,
     });
   });
-  ipcMain.handle("skill:status", (event) => { assertTrusted(event); return skills.status(service.list()); });
-  ipcMain.handle("skill:install", (event) => { assertTrusted(event); return skills.install(service.list()); });
+  ipcMain.handle("skill:status", (event) => {
+    assertTrusted(event);
+    return skills.status(service.list());
+  });
+  ipcMain.handle("skill:install", (event) => {
+    assertTrusted(event);
+    return skills.install(service.list());
+  });
 }
 
 function createWindow(): void {
@@ -250,7 +280,11 @@ app.whenReady().then(() => {
     app.dock?.setIcon(applicationIconPath());
   }
   createWindow();
-  app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
 });
 
-app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit();
+});

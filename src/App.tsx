@@ -56,7 +56,9 @@ export default function App() {
   };
 
   useEffect(() => {
-    refreshVaults().catch((cause) => setError(String(cause))).finally(() => setLoading(false));
+    refreshVaults()
+      .catch((cause) => setError(String(cause)))
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -65,10 +67,11 @@ export default function App() {
       setActiveId(null);
       return;
     }
-    window.vaultApi.manifest(vaultId)
+    window.vaultApi
+      .manifest(vaultId)
       .then((next) => {
         setManifest(next);
-        setActiveId((current) => current && documentLabel(next.tree, current) ? current : firstDocument(next.tree));
+        setActiveId((current) => (current && documentLabel(next.tree, current) ? current : firstDocument(next.tree)));
       })
       .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
   }, [vaultId, version]);
@@ -117,7 +120,13 @@ export default function App() {
 
   return (
     <SidebarProvider>
-      <AppSidebar tree={manifest.tree} activeId={activeId} onSelect={openDocument} vaultName={vault.name} vaults={vaults} />
+      <AppSidebar
+        tree={manifest.tree}
+        activeId={activeId}
+        onSelect={openDocument}
+        vaultName={vault.name}
+        vaults={vaults}
+      />
       <SidebarInset>
         <AppHeader>
           <SidebarTrigger className="app-no-drag -ml-1" />
@@ -126,7 +135,10 @@ export default function App() {
             <VaultSwitcher
               vaults={vaults}
               vaultId={vaultId}
-              onSwitch={(id) => { setVaultId(id); setActiveId(null); }}
+              onSwitch={(id) => {
+                setVaultId(id);
+                setActiveId(null);
+              }}
               onLocal={addLocal}
               onRefresh={async (preferred) => {
                 await refreshVaults(preferred);
@@ -153,14 +165,23 @@ export default function App() {
             >
               <GitCommitHorizontal />
             </Button>
-            <Button variant={view === "graph" ? "secondary" : "ghost"} size="icon" title="Graph" onClick={() => setView(view === "graph" ? "doc" : "graph")}>
+            <Button
+              variant={view === "graph" ? "secondary" : "ghost"}
+              size="icon"
+              title="Graph"
+              onClick={() => setView(view === "graph" ? "doc" : "graph")}
+            >
               <Network />
             </Button>
             <GuidedTour />
             <ThemeToggle theme={theme} onToggle={toggle} />
           </div>
         </AppHeader>
-        {error && <div role="alert" className="border-destructive/50 bg-destructive/10 border-b px-4 py-2 text-sm">{error}</div>}
+        {error && (
+          <div role="alert" className="border-destructive/50 bg-destructive/10 border-b px-4 py-2 text-sm">
+            {error}
+          </div>
+        )}
         <main className="min-h-0 flex-1">
           {view === "graph" ? (
             <GraphView vaultId={vaultId} activeId={activeId} onSelect={openDocument} version={version} />
@@ -198,16 +219,15 @@ function AppHeader({ children }: { children: React.ReactNode }) {
 // custom title-bar area can still move the window.
 function WindowDragStrip() {
   return (
-    <div
-      className={cn(
-        "app-drag fixed inset-x-0 top-0 z-50",
-        window.vaultApi.platform === "win32" ? "h-14" : "h-9",
-      )}
-    />
+    <div className={cn("app-drag fixed inset-x-0 top-0 z-50", window.vaultApi.platform === "win32" ? "h-14" : "h-9")} />
   );
 }
 
-function Onboarding({ onLocal, onCloned, error }: {
+function Onboarding({
+  onLocal,
+  onCloned,
+  error,
+}: {
   onLocal: () => Promise<void>;
   onCloned: (preferred?: string) => Promise<void>;
   error: string | null;
@@ -236,20 +256,49 @@ function Onboarding({ onLocal, onCloned, error }: {
       <div className="bg-card w-full max-w-lg rounded-xl border p-8 shadow-sm">
         <Database className="text-primary mb-4 size-10" />
         <h1 className="text-2xl font-semibold">Open a data vault</h1>
-        <p className="text-muted-foreground mt-2 text-sm">Clone a Git repository, open an existing local clone, or create a new vault.</p>
+        <p className="text-muted-foreground mt-2 text-sm">
+          Clone a Git repository, open an existing local clone, or create a new vault.
+        </p>
         <div className="mt-6 flex gap-2">
-          <Input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://github.com/company/vault.git" />
-          <Button onClick={clone} disabled={!url.trim() || busy}><GitBranch />{busy ? "Cloning…" : "Clone"}</Button>
+          <Input
+            value={url}
+            onChange={(event) => setUrl(event.target.value)}
+            placeholder="https://github.com/company/vault.git"
+          />
+          <Button onClick={clone} disabled={!url.trim() || busy}>
+            <GitBranch />
+            {busy ? "Cloning…" : "Clone"}
+          </Button>
         </div>
-        <div className="my-5 flex items-center gap-3"><Separator className="flex-1" /><span className="text-muted-foreground text-xs">OR</span><Separator className="flex-1" /></div>
+        <div className="my-5 flex items-center gap-3">
+          <Separator className="flex-1" />
+          <span className="text-muted-foreground text-xs">OR</span>
+          <Separator className="flex-1" />
+        </div>
         <div className="flex gap-2">
           <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="New vault name" />
-          <Button variant="outline" onClick={create} disabled={!name.trim() || busy}><Plus />{busy ? "Creating…" : "Create"}</Button>
+          <Button variant="outline" onClick={create} disabled={!name.trim() || busy}>
+            <Plus />
+            {busy ? "Creating…" : "Create"}
+          </Button>
         </div>
-        <div className="my-5 flex items-center gap-3"><Separator className="flex-1" /><span className="text-muted-foreground text-xs">OR</span><Separator className="flex-1" /></div>
-        <Button variant="outline" className="w-full" onClick={onLocal}><FolderOpen />Open local repository</Button>
-        <div className="mt-3 flex justify-center"><UpdateButton showLabel /></div>
-        {(error || localError) && <p role="alert" className="text-destructive mt-4 text-sm">{localError || error}</p>}
+        <div className="my-5 flex items-center gap-3">
+          <Separator className="flex-1" />
+          <span className="text-muted-foreground text-xs">OR</span>
+          <Separator className="flex-1" />
+        </div>
+        <Button variant="outline" className="w-full" onClick={onLocal}>
+          <FolderOpen />
+          Open local repository
+        </Button>
+        <div className="mt-3 flex justify-center">
+          <UpdateButton showLabel />
+        </div>
+        {(error || localError) && (
+          <p role="alert" className="text-destructive mt-4 text-sm">
+            {localError || error}
+          </p>
+        )}
       </div>
     </div>
   );

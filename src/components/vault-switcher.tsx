@@ -157,7 +157,15 @@ function GithubImportDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (!busy) { setError(null); onOpenChange(next); } }}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!busy) {
+          setError(null);
+          onOpenChange(next);
+        }
+      }}
+    >
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add vault from GitHub</DialogTitle>
@@ -167,14 +175,23 @@ function GithubImportDialog({
           autoFocus
           value={url}
           onChange={(event) => setUrl(event.target.value)}
-          onKeyDown={(event) => { if (event.key === "Enter" && url.trim() && !busy) void submit(); }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && url.trim() && !busy) void submit();
+          }}
           placeholder="https://github.com/company/vault.git"
         />
-        {error && <p role="alert" className="text-destructive text-sm">{error}</p>}
+        {error && (
+          <p role="alert" className="text-destructive text-sm">
+            {error}
+          </p>
+        )}
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>Cancel</Button>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
+            Cancel
+          </Button>
           <Button onClick={submit} disabled={!url.trim() || busy}>
-            <GitBranch />{busy ? "Cloning…" : "Clone"}
+            <GitBranch />
+            {busy ? "Cloning…" : "Clone"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -211,24 +228,43 @@ function CreateEmptyDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (!busy) { setError(null); onOpenChange(next); } }}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!busy) {
+          setError(null);
+          onOpenChange(next);
+        }
+      }}
+    >
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Create empty vault</DialogTitle>
-          <DialogDescription>Start a new local vault repository. You can add a remote later in vault settings.</DialogDescription>
+          <DialogDescription>
+            Start a new local vault repository. You can add a remote later in vault settings.
+          </DialogDescription>
         </DialogHeader>
         <Input
           autoFocus
           value={name}
           onChange={(event) => setName(event.target.value)}
-          onKeyDown={(event) => { if (event.key === "Enter" && name.trim() && !busy) void submit(); }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && name.trim() && !busy) void submit();
+          }}
           placeholder="My vault"
         />
-        {error && <p role="alert" className="text-destructive text-sm">{error}</p>}
+        {error && (
+          <p role="alert" className="text-destructive text-sm">
+            {error}
+          </p>
+        )}
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>Cancel</Button>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
+            Cancel
+          </Button>
           <Button onClick={submit} disabled={!name.trim() || busy}>
-            <Plus />{busy ? "Creating…" : "Create"}
+            <Plus />
+            {busy ? "Creating…" : "Create"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -329,20 +365,36 @@ function VaultSettingsDialog({
   const directoryCount = countDirectories(structure);
 
   return (
-    <Dialog open={vault !== null} onOpenChange={(next) => { if (!busy) onOpenChange(next); }}>
+    <Dialog
+      open={vault !== null}
+      onOpenChange={(next) => {
+        if (!busy) onOpenChange(next);
+      }}
+    >
       <DialogContent className={cn("max-h-[85vh] overflow-y-auto", view === "structure" && "sm:max-w-2xl")}>
         {view === "settings" ? (
           <>
             <DialogHeader>
               <DialogTitle>Vault settings</DialogTitle>
-              <DialogDescription>Setting a remote configures origin and pushes using your system Git credentials.</DialogDescription>
+              <DialogDescription>
+                Setting a remote configures origin and pushes using your system Git credentials.
+              </DialogDescription>
             </DialogHeader>
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium" htmlFor="vault-name">Name</label>
-              <Input id="vault-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="My vault" />
+              <label className="text-sm font-medium" htmlFor="vault-name">
+                Name
+              </label>
+              <Input
+                id="vault-name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="My vault"
+              />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium" htmlFor="vault-remote">Remote URL</label>
+              <label className="text-sm font-medium" htmlFor="vault-remote">
+                Remote URL
+              </label>
               <Input
                 id="vault-remote"
                 value={remoteUrl}
@@ -351,40 +403,64 @@ function VaultSettingsDialog({
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium" htmlFor="vault-language">Default language</label>
+              <label className="text-sm font-medium" htmlFor="vault-language">
+                Default language
+              </label>
               <Input
                 id="vault-language"
                 value={defaultLanguage}
                 onChange={(event) => setDefaultLanguage(event.target.value)}
                 placeholder="en"
               />
-              <p className="text-muted-foreground text-xs">Language tag suggested to Claude and Codex when writing documents.</p>
+              <p className="text-muted-foreground text-xs">
+                Language tag suggested to Claude and Codex when writing documents.
+              </p>
             </div>
             <div className="flex flex-col gap-1.5">
               <span className="text-sm font-medium">Desired structure</span>
               <p className="text-muted-foreground text-xs">
-                Describe the directory layout this vault should grow into. Shared with Claude and Codex when they write documents.
+                Describe the directory layout this vault should grow into. Shared with Claude and Codex when they write
+                documents.
               </p>
               <Button variant="outline" className="justify-start" onClick={() => setView("structure")}>
                 <FolderTree />
                 Set up desired structure
                 <span className="text-muted-foreground ml-auto text-xs">
-                  {directoryCount > 0 ? `${directoryCount} ${directoryCount === 1 ? "directory" : "directories"}` : "none yet"}
+                  {directoryCount > 0
+                    ? `${directoryCount} ${directoryCount === 1 ? "directory" : "directories"}`
+                    : "none yet"}
                 </span>
               </Button>
             </div>
-            {error && <p role="alert" className="text-destructive text-sm">{error}</p>}
-            {notice && <p role="alert" className="text-sm text-amber-600 dark:text-amber-500">{notice}</p>}
+            {error && (
+              <p role="alert" className="text-destructive text-sm">
+                {error}
+              </p>
+            )}
+            {notice && (
+              <p role="alert" className="text-sm text-amber-600 dark:text-amber-500">
+                {notice}
+              </p>
+            )}
             <DialogFooter>
-              <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>Cancel</Button>
-              <Button onClick={submit} disabled={busy || !name.trim()}>{busy ? "Saving…" : "Save"}</Button>
+              <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
+                Cancel
+              </Button>
+              <Button onClick={submit} disabled={busy || !name.trim()}>
+                {busy ? "Saving…" : "Save"}
+              </Button>
             </DialogFooter>
           </>
         ) : (
           <>
             <DialogHeader>
               <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon-sm" aria-label="Back to settings" onClick={() => setView("settings")}>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Back to settings"
+                  onClick={() => setView("settings")}
+                >
                   <ArrowLeft />
                 </Button>
                 <DialogTitle>Desired structure</DialogTitle>
@@ -394,13 +470,24 @@ function VaultSettingsDialog({
               </DialogDescription>
             </DialogHeader>
             {vault && <VaultStructureEditor vault={vault} tree={tree} structure={structure} onChange={setStructure} />}
-            {error && <p role="alert" className="text-destructive text-sm">{error}</p>}
-            {notice && <p role="alert" className="text-sm text-amber-600 dark:text-amber-500">{notice}</p>}
+            {error && (
+              <p role="alert" className="text-destructive text-sm">
+                {error}
+              </p>
+            )}
+            {notice && (
+              <p role="alert" className="text-sm text-amber-600 dark:text-amber-500">
+                {notice}
+              </p>
+            )}
             <DialogFooter>
               <Button variant="ghost" onClick={() => setView("settings")} disabled={busy}>
-                <ArrowLeft />Back
+                <ArrowLeft />
+                Back
               </Button>
-              <Button onClick={submit} disabled={busy || !name.trim()}>{busy ? "Saving…" : "Save"}</Button>
+              <Button onClick={submit} disabled={busy || !name.trim()}>
+                {busy ? "Saving…" : "Save"}
+              </Button>
             </DialogFooter>
           </>
         )}

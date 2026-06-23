@@ -36,25 +36,35 @@ export function configureUpdater(): void {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.on("checking-for-update", () => publish({ state: "checking", currentVersion: app.getVersion() }));
-  autoUpdater.on("update-available", (info) => publish({
-    state: "available",
-    currentVersion: app.getVersion(),
-    version: info.version,
-    latestReleaseNotes: releaseNotesText(info),
-  }));
+  autoUpdater.on("update-available", (info) =>
+    publish({
+      state: "available",
+      currentVersion: app.getVersion(),
+      version: info.version,
+      latestReleaseNotes: releaseNotesText(info),
+    }),
+  );
   autoUpdater.on("update-not-available", () => publish({ state: "not-available", currentVersion: app.getVersion() }));
-  autoUpdater.on("download-progress", (progress) => publish({
-    state: "downloading", currentVersion: app.getVersion(), version: status.version,
-    percent: Math.max(0, Math.min(100, progress.percent)),
-    latestReleaseNotes: status.latestReleaseNotes,
-  }));
-  autoUpdater.on("update-downloaded", (info) => publish({
-    state: "downloaded",
-    currentVersion: app.getVersion(),
-    version: info.version,
-    latestReleaseNotes: releaseNotesText(info) ?? status.latestReleaseNotes,
-  }));
-  autoUpdater.on("error", (error) => publish({ state: "error", currentVersion: app.getVersion(), message: error.message }));
+  autoUpdater.on("download-progress", (progress) =>
+    publish({
+      state: "downloading",
+      currentVersion: app.getVersion(),
+      version: status.version,
+      percent: Math.max(0, Math.min(100, progress.percent)),
+      latestReleaseNotes: status.latestReleaseNotes,
+    }),
+  );
+  autoUpdater.on("update-downloaded", (info) =>
+    publish({
+      state: "downloaded",
+      currentVersion: app.getVersion(),
+      version: info.version,
+      latestReleaseNotes: releaseNotesText(info) ?? status.latestReleaseNotes,
+    }),
+  );
+  autoUpdater.on("error", (error) =>
+    publish({ state: "error", currentVersion: app.getVersion(), message: error.message }),
+  );
   scheduleAutomaticChecks();
 }
 
@@ -67,9 +77,13 @@ function scheduleAutomaticChecks(): void {
   timer.unref?.();
 }
 
-export function updateStatus(): UpdateStatus { return status; }
+export function updateStatus(): UpdateStatus {
+  return status;
+}
 
-export function changelog(): AppChangelog { return APP_CHANGELOG; }
+export function changelog(): AppChangelog {
+  return APP_CHANGELOG;
+}
 
 function releaseForVersion(version?: string): AppChangelogRelease | undefined {
   if (!version) return APP_CHANGELOG.releases[0];
@@ -78,7 +92,8 @@ function releaseForVersion(version?: string): AppChangelogRelease | undefined {
 
 export function securityAssessmentPrompt(version?: string): string {
   const release = releaseForVersion(version);
-  const targetVersion = release?.version ?? version?.replace(/^v/, "") ?? APP_CHANGELOG.releases[0]?.version ?? app.getVersion();
+  const targetVersion =
+    release?.version ?? version?.replace(/^v/, "") ?? APP_CHANGELOG.releases[0]?.version ?? app.getVersion();
   const updateReleaseNotes = status.version === targetVersion ? status.latestReleaseNotes : undefined;
   const commits = release?.commits.length
     ? release.commits.map((commit) => `- ${commit.shortHash} ${commit.subject}`).join("\n")
@@ -106,14 +121,22 @@ Return:
 
 export async function checkForUpdates(): Promise<UpdateStatus> {
   if (!app.isPackaged) {
-    publish({ state: "error", currentVersion: app.getVersion(), message: "Update checks are available only in an installed build." });
+    publish({
+      state: "error",
+      currentVersion: app.getVersion(),
+      message: "Update checks are available only in an installed build.",
+    });
     return status;
   }
   if (["checking", "available", "downloading"].includes(status.state)) return status;
   try {
     await autoUpdater.checkForUpdates();
   } catch (cause) {
-    publish({ state: "error", currentVersion: app.getVersion(), message: cause instanceof Error ? cause.message : String(cause) });
+    publish({
+      state: "error",
+      currentVersion: app.getVersion(),
+      message: cause instanceof Error ? cause.message : String(cause),
+    });
   }
   return status;
 }

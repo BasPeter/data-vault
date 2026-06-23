@@ -5,9 +5,12 @@ import type { SkillStatus, VaultSummary } from "@/types";
 
 function headline(status: SkillStatus): string {
   switch (status.state) {
-    case "current": return "Agent skills are up to date";
-    case "outdated": return "Agent skills need updating";
-    default: return "Set up agent skills";
+    case "current":
+      return "Agent skills are up to date";
+    case "outdated":
+      return "Agent skills need updating";
+    default:
+      return "Set up agent skills";
   }
 }
 
@@ -25,9 +28,12 @@ function detail(status: SkillStatus): string {
 function actionLabel(status: SkillStatus, busy: boolean): string {
   if (busy) return "Installing…";
   switch (status.state) {
-    case "not-installed": return "Install skills";
-    case "outdated": return "Update skills";
-    default: return "Re-install skills";
+    case "not-installed":
+      return "Install skills";
+    case "outdated":
+      return "Update skills";
+    default:
+      return "Re-install skills";
   }
 }
 
@@ -39,7 +45,8 @@ export function AgentSkillsPanel({ vaults }: { vaults: VaultSummary[] }) {
   const [busy, setBusy] = useState(false);
 
   const refreshStatus = useCallback(() => {
-    window.vaultApi.skillStatus()
+    window.vaultApi
+      .skillStatus()
       .then((nextStatus) => {
         setStatus(nextStatus);
         setStatusError(false);
@@ -49,7 +56,9 @@ export function AgentSkillsPanel({ vaults }: { vaults: VaultSummary[] }) {
 
   // Re-check whenever the registered vaults change so the stale indicator
   // appears after a vault is added, removed, or renamed.
-  const signature = vaults.map((vault) => `${vault.id}:${vault.name}:${vault.repositoryPath}:${vault.remoteUrl ?? ""}`).join("|");
+  const signature = vaults
+    .map((vault) => `${vault.id}:${vault.name}:${vault.repositoryPath}:${vault.remoteUrl ?? ""}`)
+    .join("|");
   useEffect(() => {
     refreshStatus();
     window.addEventListener("focus", refreshStatus);
@@ -91,21 +100,14 @@ export function AgentSkillsPanel({ vaults }: { vaults: VaultSummary[] }) {
   return (
     <div className="bg-sidebar-accent/40 rounded-lg border p-3">
       <div className="flex items-center gap-2">
-        <span className="text-muted-foreground [&_svg]:size-4">
-          {statusError ? <TriangleAlert /> : <Sparkles />}
-        </span>
-        <p className="text-sm font-medium">
-          {statusError ? "Could not check agent skills" : headline(status!)}
-        </p>
-        {stale && (
-          <span
-            aria-hidden
-            className="bg-destructive ml-auto size-2 shrink-0 rounded-full"
-          />
-        )}
+        <span className="text-muted-foreground [&_svg]:size-4">{statusError ? <TriangleAlert /> : <Sparkles />}</span>
+        <p className="text-sm font-medium">{statusError ? "Could not check agent skills" : headline(status!)}</p>
+        {stale && <span aria-hidden className="bg-destructive ml-auto size-2 shrink-0 rounded-full" />}
       </div>
       <p className="text-muted-foreground mt-1.5 text-xs leading-relaxed">
-        {statusError ? "Try the check again. If the problem continues, the skills may not be writable." : detail(status!)}
+        {statusError
+          ? "Try the check again. If the problem continues, the skills may not be writable."
+          : detail(status!)}
       </p>
       <p className="text-muted-foreground/80 mt-1.5 text-xs leading-relaxed">
         Installs the <span className="font-medium">vault-guide</span> and{" "}

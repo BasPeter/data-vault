@@ -1,11 +1,7 @@
 import { FileText, Folder, FolderOpen } from "lucide-react";
 import { AgentSkillsPanel } from "@/components/agent-skills-panel";
 import { UpdateButton } from "@/components/update-button";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Sidebar,
   SidebarContent,
@@ -43,11 +39,7 @@ function TreeItems({
     <SidebarMenu>
       {nodes.map((node) =>
         node.type === "folder" ? (
-          <Collapsible
-            key={node.id}
-            defaultOpen
-            className="group/collapsible"
-          >
+          <Collapsible key={node.id} defaultOpen className="group/collapsible">
             <SidebarMenuItem>
               <CollapsibleTrigger asChild>
                 <SidebarMenuButton title={node.description}>
@@ -58,21 +50,14 @@ function TreeItems({
               </CollapsibleTrigger>
               <CollapsibleContent>
                 <SidebarMenuSub>
-                  <TreeItems
-                    nodes={node.children}
-                    activeId={activeId}
-                    onSelect={onSelect}
-                  />
+                  <TreeItems nodes={node.children} activeId={activeId} onSelect={onSelect} />
                 </SidebarMenuSub>
               </CollapsibleContent>
             </SidebarMenuItem>
           </Collapsible>
         ) : (
           <SidebarMenuItem key={node.id}>
-            <SidebarMenuButton
-              isActive={activeId === node.id}
-              onClick={() => onSelect(node.id)}
-            >
+            <SidebarMenuButton isActive={activeId === node.id} onClick={() => onSelect(node.id)}>
               <FileText />
               <span>{node.label}</span>
             </SidebarMenuButton>
@@ -87,10 +72,7 @@ export function AppSidebar({ tree, activeId, onSelect, vaultName, vaults }: Prop
   return (
     <Sidebar>
       <SidebarHeader
-        className={cn(
-          "app-drag border-b py-3 pr-4",
-          window.vaultApi.platform === "darwin" ? "pl-20" : "pl-4",
-        )}
+        className={cn("app-drag border-b py-3 pr-4", window.vaultApi.platform === "darwin" ? "pl-20" : "pl-4")}
       >
         <div className="flex min-w-0 items-center gap-2.5">
           <AppIcon className="size-8 shrink-0" />
@@ -106,9 +88,7 @@ export function AppSidebar({ tree, activeId, onSelect, vaultName, vaults }: Prop
           {tree.length ? (
             <TreeItems nodes={tree} activeId={activeId} onSelect={onSelect} />
           ) : (
-            <p className="text-muted-foreground px-2 py-1 text-xs">
-              No documents found.
-            </p>
+            <p className="text-muted-foreground px-2 py-1 text-xs">No documents found.</p>
           )}
         </SidebarGroup>
       </SidebarContent>
@@ -123,13 +103,7 @@ export function AppSidebar({ tree, activeId, onSelect, vaultName, vaults }: Prop
 
 function AppIcon({ className }: { className?: string }) {
   return (
-    <svg
-      aria-hidden="true"
-      className={className}
-      viewBox="0 0 134 181"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
+    <svg aria-hidden="true" className={className} viewBox="0 0 134 181" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path
         fillRule="evenodd"
         clipRule="evenodd"

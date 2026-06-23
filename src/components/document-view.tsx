@@ -49,7 +49,8 @@ export function DocumentView({
     }
     let cancelled = false;
     setStatus("loading");
-    window.vaultApi.document(vaultId, docId)
+    window.vaultApi
+      .document(vaultId, docId)
       .then((data: LoadedDoc) => {
         if (cancelled) return;
         setDoc(data);
@@ -70,12 +71,17 @@ export function DocumentView({
     let cancelled = false;
     setBlame(null);
     setBlameError(null);
-    window.vaultApi.blame(vaultId, docId)
-      .then((lines) => { if (!cancelled) setBlame(lines); })
+    window.vaultApi
+      .blame(vaultId, docId)
+      .then((lines) => {
+        if (!cancelled) setBlame(lines);
+      })
       .catch((cause) => {
         if (!cancelled) setBlameError(cause instanceof Error ? cause.message : String(cause));
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [vaultId, docId, version, showBlame]);
 
   // Inject the HTML and (re)render Mermaid diagrams. Re-runs on theme change.
@@ -111,12 +117,7 @@ export function DocumentView({
     );
   }
   if (status === "loading") {
-    return (
-      <Placeholder
-        icon={<Loader2 className="size-10 animate-spin" />}
-        title="Loading…"
-      />
-    );
+    return <Placeholder icon={<Loader2 className="size-10 animate-spin" />} title="Loading…" />;
   }
   if (status === "error" || !doc) {
     return (
@@ -131,14 +132,19 @@ export function DocumentView({
   return (
     <article className={cn("mx-auto w-full px-6 py-8", showBlame ? "max-w-5xl" : "max-w-4xl")}>
       {showBlame && !blame && !blameError && (
-        <div className="text-muted-foreground mb-3 flex items-center gap-2 text-xs"><Loader2 className="size-3 animate-spin" />Loading line history…</div>
+        <div className="text-muted-foreground mb-3 flex items-center gap-2 text-xs">
+          <Loader2 className="size-3 animate-spin" />
+          Loading line history…
+        </div>
       )}
-      {showBlame && blameError && <div role="alert" className="text-destructive mb-3 text-xs">Line history unavailable: {blameError}</div>}
+      {showBlame && blameError && (
+        <div role="alert" className="text-destructive mb-3 text-xs">
+          Line history unavailable: {blameError}
+        </div>
+      )}
       {(doc.meta.date || (doc.meta.tags && doc.meta.tags.length > 0)) && (
         <div className="mb-6 flex flex-wrap items-center gap-2">
-          {doc.meta.date && (
-            <span className="text-muted-foreground text-sm">{doc.meta.date}</span>
-          )}
+          {doc.meta.date && <span className="text-muted-foreground text-sm">{doc.meta.date}</span>}
           {doc.meta.tags?.map((tag) => (
             <Badge key={tag} variant="secondary">
               {tag}
@@ -155,14 +161,20 @@ function annotateSourceLines(html: string, sourceStartLine: number): string {
   const openingTag = /<([a-z][\w:-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
   return html.replace(openingTag, (tag, _name: string, offset: number) => {
     const line = sourceStartLine + html.slice(0, offset).split("\n").length - 1;
-    return tag.replace(/\sdata-vault-source-line=(?:"[^"]*"|'[^']*'|[^\s>]+)/i, "")
+    return tag
+      .replace(/\sdata-vault-source-line=(?:"[^"]*"|'[^']*'|[^\s>]+)/i, "")
       .replace(/(\/?>)$/, ` data-vault-source-line="${line}"$1`);
   });
 }
 
 function compactAuthor(author: string): string {
   if (author.length <= 11) return author;
-  const initials = author.split(/\s+/).map((part) => part[0]).join("").slice(0, 3).toUpperCase();
+  const initials = author
+    .split(/\s+/)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 3)
+    .toUpperCase();
   return initials || author.slice(0, 11);
 }
 
@@ -170,9 +182,11 @@ function installBlameGutter(container: HTMLElement, lines: BlameLine[]): () => v
   const byLine = new Map(lines.map((line) => [line.lineNumber, line]));
   const shortDate = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "2-digit" });
   const fullDate = new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeStyle: "short" });
-  const targets = Array.from(container.querySelectorAll<HTMLElement>(
-    ":is(h1, h2, h3, h4, p, blockquote, pre, li, table)[data-vault-source-line]",
-  ));
+  const targets = Array.from(
+    container.querySelectorAll<HTMLElement>(
+      ":is(h1, h2, h3, h4, p, blockquote, pre, li, table)[data-vault-source-line]",
+    ),
+  );
   const entries: Array<{ target: HTMLElement; marker: HTMLSpanElement }> = [];
 
   targets.forEach((element) => {
@@ -207,15 +221,7 @@ function installBlameGutter(container: HTMLElement, lines: BlameLine[]): () => v
   };
 }
 
-function Placeholder({
-  icon,
-  title,
-  subtitle,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  subtitle?: string;
-}) {
+function Placeholder({ icon, title, subtitle }: { icon: React.ReactNode; title: string; subtitle?: string }) {
   return (
     <div className="text-muted-foreground flex h-full flex-col items-center justify-center gap-3 p-10 text-center">
       {icon}

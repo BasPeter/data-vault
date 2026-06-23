@@ -116,11 +116,12 @@ function parseStructure(text: string): VaultStructure {
   try {
     value = JSON.parse(text);
   } catch (cause) {
-    throw new Error(`Invalid JSON: ${cause instanceof Error ? cause.message : String(cause)}`);
+    throw new Error(`Invalid JSON: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
   }
   let remaining = STRUCTURE_MAX_NODES;
   const level = (input: unknown, depth: number): VaultStructure => {
-    if (typeof input !== "object" || input === null || Array.isArray(input)) throw new Error("Each level must be an object.");
+    if (typeof input !== "object" || input === null || Array.isArray(input))
+      throw new Error("Each level must be an object.");
     if (depth > STRUCTURE_MAX_DEPTH) throw new Error("Structure is nested too deeply.");
     const output: VaultStructure = {};
     for (const [key, raw] of Object.entries(input as Record<string, unknown>)) {
@@ -160,9 +161,8 @@ function folderPaths(tree: TreeNode[], out: string[] = []): string[] {
 // can act on to draft the structure from the documents already in the repo.
 function buildAgentPrompt(vault: VaultSummary, tree: TreeNode[]): string {
   const folders = folderPaths(tree);
-  const current = vault.structure && Object.keys(vault.structure).length
-    ? JSON.stringify(vault.structure, null, 2)
-    : "(none yet)";
+  const current =
+    vault.structure && Object.keys(vault.structure).length ? JSON.stringify(vault.structure, null, 2) : "(none yet)";
   return [
     "You are organising a Data Vault knowledge repository.",
     "",
@@ -259,8 +259,12 @@ export function VaultStructureEditor({ vault, tree, structure, onChange }: Vault
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <div className="bg-muted flex rounded-md p-0.5">
-          <ModeTab active={mode === "visual"} onClick={() => setMode("visual")}>Visual</ModeTab>
-          <ModeTab active={mode === "json"} onClick={enterJson}>JSON</ModeTab>
+          <ModeTab active={mode === "visual"} onClick={() => setMode("visual")}>
+            Visual
+          </ModeTab>
+          <ModeTab active={mode === "json"} onClick={enterJson}>
+            JSON
+          </ModeTab>
         </div>
         <div className="ml-auto flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={copyPrompt}>
@@ -299,7 +303,8 @@ export function VaultStructureEditor({ vault, tree, structure, onChange }: Vault
             className="self-start"
             onClick={() => setNodes((rows) => [...rows, plannedNode("", {})])}
           >
-            <FolderPlus />Add directory
+            <FolderPlus />
+            Add directory
           </Button>
           <p className="text-muted-foreground text-xs">
             <span className="text-foreground font-medium">Planned</span> directories are a blueprint and need not exist
@@ -315,10 +320,25 @@ export function VaultStructureEditor({ vault, tree, structure, onChange }: Vault
             value={jsonText}
             onChange={(event) => setJsonText(event.target.value)}
           />
-          {jsonError && <p role="alert" className="text-destructive text-sm">{jsonError}</p>}
+          {jsonError && (
+            <p role="alert" className="text-destructive text-sm">
+              {jsonError}
+            </p>
+          )}
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" size="sm" onClick={() => { setJsonError(null); setMode("visual"); }}>Discard</Button>
-            <Button size="sm" onClick={applyJson}>Apply JSON</Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setJsonError(null);
+                setMode("visual");
+              }}
+            >
+              Discard
+            </Button>
+            <Button size="sm" onClick={applyJson}>
+              Apply JSON
+            </Button>
           </div>
         </div>
       )}
@@ -407,7 +427,8 @@ function NodeRow({
               placeholder="Description (optional)"
             />
             <Button variant="ghost" size="xs" className="self-start" onClick={() => onAddChild(node.uid)}>
-              <Plus />Add child
+              <Plus />
+              Add child
             </Button>
           </>
         )}
@@ -415,7 +436,14 @@ function NodeRow({
       {open && node.children.length > 0 && (
         <div className="flex flex-col gap-2 px-2.5 pb-2.5">
           {node.children.map((child) => (
-            <NodeRow key={child.uid} node={child} depth={1} onPatch={onPatch} onAddChild={onAddChild} onRemove={onRemove} />
+            <NodeRow
+              key={child.uid}
+              node={child}
+              depth={1}
+              onPatch={onPatch}
+              onAddChild={onAddChild}
+              onRemove={onRemove}
+            />
           ))}
         </div>
       )}

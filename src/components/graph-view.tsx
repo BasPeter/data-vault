@@ -59,7 +59,8 @@ export function GraphView({
   const linksRef = useRef<SimLink[]>([]);
 
   useEffect(() => {
-    window.vaultApi.graph(vaultId)
+    window.vaultApi
+      .graph(vaultId)
       .then(setData)
       .catch(() => setData({ nodes: [], links: [] }));
   }, [vaultId, version]);
@@ -92,10 +93,19 @@ export function GraphView({
     const links: SimLink[] = data.links.map((l) => ({ ...l }));
 
     const sim = forceSimulation(nodes)
-      .force("link", forceLink<SimNode, SimLink>(links).id((d) => d.id).distance(90).strength(0.6))
+      .force(
+        "link",
+        forceLink<SimNode, SimLink>(links)
+          .id((d) => d.id)
+          .distance(90)
+          .strength(0.6),
+      )
       .force("charge", forceManyBody().strength(-320))
       .force("center", forceCenter(w / 2, h / 2))
-      .force("collide", forceCollide<SimNode>().radius((d) => radius(d) + 14))
+      .force(
+        "collide",
+        forceCollide<SimNode>().radius((d) => radius(d) + 14),
+      )
       .force("x", forceX(w / 2).strength(0.04))
       .force("y", forceY(h / 2).strength(0.04))
       .on("tick", () => setTick((t) => t + 1));
@@ -130,8 +140,7 @@ export function GraphView({
     return map;
   }, [data]);
 
-  const isLit = (id: string) =>
-    !hovered || hovered === id || neighbors.get(hovered)?.has(id);
+  const isLit = (id: string) => !hovered || hovered === id || neighbors.get(hovered)?.has(id);
 
   // Convert a client point into graph-space (accounting for pan/zoom).
   const toGraph = (clientX: number, clientY: number) => {
@@ -219,10 +228,7 @@ export function GraphView({
   const links = linksRef.current;
 
   return (
-    <div
-      ref={containerRef}
-      className="relative h-full w-full overflow-hidden bg-background"
-    >
+    <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-background">
       {data && data.nodes.length === 0 && (
         <div className="text-muted-foreground absolute inset-0 flex items-center justify-center text-sm">
           No documents to display.
@@ -270,14 +276,7 @@ export function GraphView({
                 onPointerLeave={() => setHovered((h) => (h === n.id ? null : h))}
                 onClick={() => onSelect(n.id)}
               >
-                {active && (
-                  <circle
-                    r={r + 4}
-                    fill="none"
-                    className="stroke-primary"
-                    strokeWidth={2 / transform.k}
-                  />
-                )}
+                {active && <circle r={r + 4} fill="none" className="stroke-primary" strokeWidth={2 / transform.k} />}
                 <circle r={r} fill={colorFor(n.folder)} stroke="white" strokeWidth={1.5 / transform.k} />
                 <text
                   y={r + 11}
@@ -299,10 +298,7 @@ export function GraphView({
         <div className="bg-card/80 absolute bottom-3 left-3 rounded-md border p-2 text-xs backdrop-blur">
           {Object.entries(FOLDER_COLORS).map(([folder, color]) => (
             <div key={folder} className="flex items-center gap-2 py-0.5">
-              <span
-                className="inline-block size-2.5 rounded-full"
-                style={{ backgroundColor: color }}
-              />
+              <span className="inline-block size-2.5 rounded-full" style={{ backgroundColor: color }} />
               <span className="text-muted-foreground">{folder}</span>
             </div>
           ))}

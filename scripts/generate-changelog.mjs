@@ -12,16 +12,20 @@ function git(args) {
 
 function packageMetadata() {
   const pkg = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
-  const repositoryUrl = typeof pkg.repository === "string"
-    ? pkg.repository
-    : pkg.repository && typeof pkg.repository.url === "string"
-      ? pkg.repository.url
-      : undefined;
+  const repositoryUrl =
+    typeof pkg.repository === "string"
+      ? pkg.repository
+      : pkg.repository && typeof pkg.repository.url === "string"
+        ? pkg.repository.url
+        : undefined;
   return { version: pkg.version, repositoryUrl };
 }
 
 function versionKey(tag) {
-  return tag.replace(/^v/, "").split(".").map((part) => Number.parseInt(part, 10));
+  return tag
+    .replace(/^v/, "")
+    .split(".")
+    .map((part) => Number.parseInt(part, 10));
 }
 
 function compareVersions(left, right) {
@@ -62,15 +66,19 @@ if (packageVersion && !tags.includes(packageTag)) {
   });
 }
 
-releases.push(...tags.map((tag, index) => {
-  const previous = tags[index - 1];
-  const range = previous ? `${previous}..${tag}` : tag;
-  return {
-    version: tag.replace(/^v/, ""),
-    date: git(["log", "-1", "--format=%cI", tag]),
-    commits: commitsForRange(range),
-  };
-}).reverse());
+releases.push(
+  ...tags
+    .map((tag, index) => {
+      const previous = tags[index - 1];
+      const range = previous ? `${previous}..${tag}` : tag;
+      return {
+        version: tag.replace(/^v/, ""),
+        date: git(["log", "-1", "--format=%cI", tag]),
+        commits: commitsForRange(range),
+      };
+    })
+    .reverse(),
+);
 
 const changelog = {
   generatedAt: git(["show", "-s", "--format=%cI", "HEAD"]),

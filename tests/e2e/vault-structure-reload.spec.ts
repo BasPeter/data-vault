@@ -68,8 +68,9 @@ test("surfaces out-of-band vault.json structure edits after a restart", async ({
     await relaunch.page.getByRole("button", { name: "Set up desired structure" }).click();
     await expect(relaunch.page.getByRole("heading", { name: "Desired structure" })).toBeVisible();
     await expect(relaunch.page.getByRole("textbox", { name: "10-knowledge title" })).toHaveValue("Knowledge Hub");
-    await expect(relaunch.page.getByRole("textbox", { name: "10-knowledge description" }))
-      .toHaveValue("Curated reference docs.");
+    await expect(relaunch.page.getByRole("textbox", { name: "10-knowledge description" })).toHaveValue(
+      "Curated reference docs.",
+    );
     await expect(relaunch.page.getByRole("textbox", { name: "30-archive title" })).toHaveValue("Archive");
     await captureScreenshot(relaunch.page, testInfo, "structure-after-restart");
   } finally {

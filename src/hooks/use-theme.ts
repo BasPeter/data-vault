@@ -17,10 +17,7 @@ export function useTheme() {
     void window.vaultApi.setTitleBarTheme(theme);
   }, [theme]);
 
-  const toggle = useCallback(
-    () => setTheme((t) => (t === "dark" ? "light" : "dark")),
-    [],
-  );
+  const toggle = useCallback(() => setTheme((t) => (t === "dark" ? "light" : "dark")), []);
 
   return { theme, toggle };
 }

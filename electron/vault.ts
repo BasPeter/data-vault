@@ -51,7 +51,10 @@ function parseMeta(html: string): LoadedDoc["meta"] {
     const [, rawKey, rawValue] = match;
     const key = rawKey.toLowerCase();
     if (key === "tags") {
-      meta.tags = rawValue.split(",").map((tag) => tag.trim()).filter(Boolean);
+      meta.tags = rawValue
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean);
     } else if (key === "title" || key === "date") {
       meta[key] = rawValue.trim();
     }
@@ -69,7 +72,8 @@ function humanize(value: string): string {
 
 function titleFor(html: string, fileName: string): string {
   const meta = parseMeta(html);
-  const h1 = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1]
+  const h1 = html
+    .match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1]
     ?.replace(/<[^>]+>/g, "")
     .trim();
   return meta.title || h1 || humanize(fileName);
@@ -127,7 +131,11 @@ function isWithin(root: string, candidate: string): boolean {
 
 function nameFromUrl(url: string): string {
   const withoutQuery = url.split(/[?#]/)[0];
-  const last = withoutQuery.replace(/[/:]+$/, "").split(/[/:]/).pop() ?? "";
+  const last =
+    withoutQuery
+      .replace(/[/:]+$/, "")
+      .split(/[/:]/)
+      .pop() ?? "";
   return humanize(last.replace(/\.git$/i, "")).trim();
 }
 
@@ -154,20 +162,36 @@ function gitErrorOutput(error: unknown): string {
   return parts.join("\n").trim();
 }
 
-function gitCredentialFailureMessage(url: string | undefined, action: string, retryAction: string, error: unknown): string | null {
+function gitCredentialFailureMessage(
+  url: string | undefined,
+  action: string,
+  retryAction: string,
+  error: unknown,
+): string | null {
   const output = gitErrorOutput(error);
-  const credentialPromptFailed = /could not read Username|terminal prompts disabled|failed to execute prompt script|\/dev\/tty|git-credential/i
-    .test(output);
-  const missingCredentialHelper = /gh(?:\.exe)?['"]?.*No such file or directory|No such file or directory.*gh(?:\.exe)?/i
-    .test(output);
+  const credentialPromptFailed =
+    /could not read Username|terminal prompts disabled|failed to execute prompt script|\/dev\/tty|git-credential/i.test(
+      output,
+    );
+  const missingCredentialHelper =
+    /gh(?:\.exe)?['"]?.*No such file or directory|No such file or directory.*gh(?:\.exe)?/i.test(output);
 
   if (!credentialPromptFailed && !missingCredentialHelper) return null;
 
   let host = "the Git server";
   if (url) {
-    try { host = new URL(url).hostname || host; } catch {}
+    try {
+      host = new URL(url).hostname || host;
+    } catch {
+      // Keep the generic host label when the URL cannot be parsed.
+    }
   }
-  const diagnostic = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).slice(-4).join(" ");
+  const diagnostic = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(-4)
+    .join(" ");
   return [
     `Data Vault could not ${action} because Git needs credentials for ${host}, but no working credential prompt is available.`,
     "To fix this, open a terminal and sign in with GitHub CLI:",
@@ -177,7 +201,9 @@ function gitCredentialFailureMessage(url: string | undefined, action: string, re
     "git config --global --unset credential.helper",
     `Then try ${retryAction} again. For private repositories, also confirm that your account has repository access. You can use an SSH URL instead after setting up an SSH key.`,
     diagnostic ? `Git said: ${diagnostic}` : "",
-  ].filter(Boolean).join("\n\n");
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 export function cloneFailureMessage(url: string, error: unknown): string {
@@ -185,12 +211,19 @@ export function cloneFailureMessage(url: string, error: unknown): string {
   if (credentialMessage) return credentialMessage;
 
   const output = gitErrorOutput(error);
-  const diagnostic = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).slice(-6).join("\n");
+  const diagnostic = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(-6)
+    .join("\n");
   return [
     "Data Vault could not clone this repository.",
     "Check that the repository URL is correct, reachable from this computer, and accessible with your Git credentials.",
     diagnostic ? `Git said:\n${diagnostic}` : "",
-  ].filter(Boolean).join("\n\n");
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 export function syncFailureMessage(url: string | undefined, error: unknown): string {
@@ -198,12 +231,19 @@ export function syncFailureMessage(url: string | undefined, error: unknown): str
   if (credentialMessage) return credentialMessage;
 
   const output = gitErrorOutput(error);
-  const diagnostic = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).slice(-6).join("\n");
+  const diagnostic = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(-6)
+    .join("\n");
   return [
     "Data Vault could not refresh this vault.",
     "Check that the remote repository is reachable from this computer and accessible with your Git credentials.",
     diagnostic ? `Git said:\n${diagnostic}` : "",
-  ].filter(Boolean).join("\n\n");
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 function isSafeSegment(key: string): boolean {
@@ -264,8 +304,8 @@ export class VaultService {
     // vault. The registry only persists the id and the remote URL (which lives in
     // git config, not vault.json); everything else is derived live. Fall back to
     // the cached entry when the repository is momentarily unreadable.
-    return this.registry().vaults
-      .filter((vault) => fs.existsSync(vault.repositoryPath))
+    return this.registry()
+      .vaults.filter((vault) => fs.existsSync(vault.repositoryPath))
       .map((vault) => {
         try {
           const fresh = this.describe(vault.id, vault.repositoryPath);
@@ -300,7 +340,7 @@ export class VaultService {
       return vault;
     } catch (error) {
       fs.rmSync(target, { recursive: true, force: true });
-      throw new Error(cloneFailureMessage(url, error));
+      throw new Error(cloneFailureMessage(url, error), { cause: error });
     }
   }
 
@@ -319,9 +359,13 @@ export class VaultService {
       await this.git(target, ["init", "-b", "main"]);
       await this.git(target, ["add", "-A"]);
       await this.git(target, [
-        "-c", "user.name=Data Vault",
-        "-c", "user.email=data-vault@localhost",
-        "commit", "-m", "Initialize vault",
+        "-c",
+        "user.name=Data Vault",
+        "-c",
+        "user.email=data-vault@localhost",
+        "commit",
+        "-m",
+        "Initialize vault",
       ]);
       const vault = this.describe(id, target);
       this.save({ vaults: [...this.registry().vaults, vault] });
@@ -445,14 +489,17 @@ export class VaultService {
       // blame mode and identify every line as uncommitted.
       const message = error instanceof Error ? error.message : String(error);
       if (!/no such path|no such file|no such ref|fatal:.*path|bad revision/i.test(message)) throw error;
-      return fs.readFileSync(canonical, "utf8").split(/\r?\n/).map((content, index) => ({
-        lineNumber: index + 1,
-        content,
-        author: "Not committed",
-        timestamp: null,
-        summary: "Untracked line",
-        commit: null,
-      }));
+      return fs
+        .readFileSync(canonical, "utf8")
+        .split(/\r?\n/)
+        .map((content, index) => ({
+          lineNumber: index + 1,
+          content,
+          author: "Not committed",
+          timestamp: null,
+          summary: "Untracked line",
+          commit: null,
+        }));
     }
   }
 
@@ -480,7 +527,10 @@ export class VaultService {
     if (fs.statSync(canonical).size > MAX_DOCUMENT_BYTES + Buffer.byteLength(QUICK_NOTES_HEADER)) {
       throw new Error("Quick notes are too large.");
     }
-    return fs.readFileSync(canonical, "utf8").replace(/^\s*<!--vault[\s\S]*?-->/i, "").trim();
+    return fs
+      .readFileSync(canonical, "utf8")
+      .replace(/^\s*<!--vault[\s\S]*?-->/i, "")
+      .trim();
   }
 
   saveQuickNotes(vaultId: string, html: string): void {
@@ -511,7 +561,11 @@ export class VaultService {
       const html = this.document(vaultId, node.id).html;
       for (const match of html.matchAll(/href=["']#([^"']+)["']/g)) {
         let target: string;
-        try { target = decodeURIComponent(match[1]); } catch { continue; }
+        try {
+          target = decodeURIComponent(match[1]);
+        } catch {
+          continue;
+        }
         if (!ids.has(target) || target === node.id) continue;
         const key = [node.id, target].sort().join("\0");
         if (seen.has(key)) continue;
@@ -530,19 +584,22 @@ export class VaultService {
   async sync(vaultId: string): Promise<{ ahead: number; behind: number; pulled: boolean }> {
     const vault = this.vault(vaultId);
     const git = async (args: string[]) =>
-      (await execFileAsync("git", ["-C", vault.repositoryPath, ...args], {
-        timeout: 120_000,
-        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
-      })).stdout.trim();
+      (
+        await execFileAsync("git", ["-C", vault.repositoryPath, ...args], {
+          timeout: 120_000,
+          env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+        })
+      ).stdout.trim();
     try {
       const upstream = await git(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]);
       await git(["fetch", "--quiet"]);
       const [ahead = 0, behind = 0] = (await git(["rev-list", "--left-right", "--count", `HEAD...${upstream}`]))
-        .split(/\s+/).map(Number);
+        .split(/\s+/)
+        .map(Number);
       if (behind > 0) await git(["pull", "--ff-only", "--quiet"]);
       return { ahead, behind, pulled: behind > 0 };
     } catch (error) {
-      throw new Error(syncFailureMessage(vault.remoteUrl, error));
+      throw new Error(syncFailureMessage(vault.remoteUrl, error), { cause: error });
     }
   }
 
@@ -601,7 +658,9 @@ export class VaultService {
 
   private walk(root: string, directory: string, meta?: VaultStructure): TreeNode[] {
     const nodes: TreeNode[] = [];
-    for (const entry of fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+    for (const entry of fs
+      .readdirSync(directory, { withFileTypes: true })
+      .sort((a, b) => a.name.localeCompare(b.name))) {
       if (entry.name.startsWith(".") || entry.name.startsWith("_") || entry.isSymbolicLink()) continue;
       if (directory === root && entry.name.toLowerCase() === QUICK_NOTES_FILE) continue;
       const absolute = path.join(directory, entry.name);
@@ -622,7 +681,13 @@ export class VaultService {
       } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".html")) {
         const html = fs.statSync(absolute).size <= MAX_DOCUMENT_BYTES ? fs.readFileSync(absolute, "utf8") : "";
         const meta = parseMeta(html);
-        nodes.push({ type: "doc", id, label: titleFor(html, entry.name), date: meta.date ?? null, tags: meta.tags ?? [] });
+        nodes.push({
+          type: "doc",
+          id,
+          label: titleFor(html, entry.name),
+          date: meta.date ?? null,
+          tags: meta.tags ?? [],
+        });
       }
     }
     return [...nodes.filter((node) => node.type === "folder"), ...nodes.filter((node) => node.type === "doc")];

@@ -2,13 +2,7 @@ import { useEffect, useState } from "react";
 import DOMPurify from "dompurify";
 import { Check, Clipboard, Download, FileText, RefreshCw, RotateCcw, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { AppChangelog, AppChangelogRelease, UpdateStatus } from "@/types";
@@ -21,23 +15,35 @@ const BUSY_STATES = ["checking", "available", "downloading"];
 
 function headline(status: UpdateStatus): string {
   switch (status.state) {
-    case "checking": return "Checking for updates…";
-    case "available": return `Version ${status.version ?? "…"} found`;
-    case "downloading": return `Downloading version ${status.version ?? "…"}…`;
-    case "downloaded": return `Version ${status.version ?? ""} is ready to install`.trim();
-    case "not-available": return "You're up to date";
-    case "error": return "Update check failed";
-    default: return "Check for updates";
+    case "checking":
+      return "Checking for updates…";
+    case "available":
+      return `Version ${status.version ?? "…"} found`;
+    case "downloading":
+      return `Downloading version ${status.version ?? "…"}…`;
+    case "downloaded":
+      return `Version ${status.version ?? ""} is ready to install`.trim();
+    case "not-available":
+      return "You're up to date";
+    case "error":
+      return "Update check failed";
+    default:
+      return "Check for updates";
   }
 }
 
 function detail(status: UpdateStatus): string {
   switch (status.state) {
-    case "downloading": return `${Math.round(status.percent ?? 0)}% downloaded`;
-    case "downloaded": return "Data Vault will restart to finish installing.";
-    case "error": return status.message ?? "Unknown error.";
-    case "available": return "Downloading in the background…";
-    default: return `Installed version ${status.currentVersion || "unknown"}.`;
+    case "downloading":
+      return `${Math.round(status.percent ?? 0)}% downloaded`;
+    case "downloaded":
+      return "Data Vault will restart to finish installing.";
+    case "error":
+      return status.message ?? "Unknown error.";
+    case "available":
+      return "Downloading in the background…";
+    default:
+      return `Installed version ${status.currentVersion || "unknown"}.`;
   }
 }
 
@@ -109,7 +115,8 @@ export function UpdateButton({ showLabel = false }: { showLabel?: boolean }) {
 
   useEffect(() => {
     const unsubscribe = window.vaultApi.onUpdateStatus(setStatus);
-    window.vaultApi.updateStatus()
+    window.vaultApi
+      .updateStatus()
       .then(setStatus)
       .catch((cause) => setStatus({ state: "error", currentVersion: "", message: String(cause) }));
     return unsubscribe;
@@ -117,7 +124,8 @@ export function UpdateButton({ showLabel = false }: { showLabel?: boolean }) {
 
   useEffect(() => {
     if (!changelogOpen || changelog) return;
-    window.vaultApi.changelog()
+    window.vaultApi
+      .changelog()
       .then((nextChangelog) => {
         setChangelog(nextChangelog);
         setChangelogError(null);
@@ -138,12 +146,18 @@ export function UpdateButton({ showLabel = false }: { showLabel?: boolean }) {
   );
 
   const recheck = () => {
-    window.vaultApi.checkForUpdates()
-      .catch((cause) => setStatus({ ...status, state: "error", message: cause instanceof Error ? cause.message : String(cause) }));
+    window.vaultApi
+      .checkForUpdates()
+      .catch((cause) =>
+        setStatus({ ...status, state: "error", message: cause instanceof Error ? cause.message : String(cause) }),
+      );
   };
   const installAndRestart = () => {
-    window.vaultApi.installUpdate()
-      .catch((cause) => setStatus({ ...status, state: "error", message: cause instanceof Error ? cause.message : String(cause) }));
+    window.vaultApi
+      .installUpdate()
+      .catch((cause) =>
+        setStatus({ ...status, state: "error", message: cause instanceof Error ? cause.message : String(cause) }),
+      );
   };
   const showChangelog = () => {
     setOpen(false);
@@ -224,9 +238,7 @@ export function UpdateButton({ showLabel = false }: { showLabel?: boolean }) {
         <DialogContent className="max-w-2xl gap-0 p-0">
           <DialogHeader className="border-b px-6 py-5">
             <DialogTitle>Data Vault changelog</DialogTitle>
-            <DialogDescription>
-              Versions and bundled commits generated from the release tags.
-            </DialogDescription>
+            <DialogDescription>Versions and bundled commits generated from the release tags.</DialogDescription>
           </DialogHeader>
 
           <div className="flex items-center justify-between gap-3 border-b px-6 py-3">
@@ -245,7 +257,9 @@ export function UpdateButton({ showLabel = false }: { showLabel?: boolean }) {
             ) : changelog ? (
               <>
                 {updateFeedHasSeparateRelease && <UpdateFeedRelease status={status} />}
-                {changelog.releases.map((release) => <ChangelogRelease key={release.version} release={release} />)}
+                {changelog.releases.map((release) => (
+                  <ChangelogRelease key={release.version} release={release} />
+                ))}
               </>
             ) : (
               <div className="text-muted-foreground flex items-center gap-2 py-6 text-sm">

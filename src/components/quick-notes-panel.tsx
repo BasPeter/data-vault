@@ -2,19 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import DOMPurify from "dompurify";
 import { Pencil, StickyNote, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
-const sanitize = (html: string) => DOMPurify.sanitize(html, {
-  USE_PROFILES: { html: true },
-  FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "form"],
-});
+const sanitize = (html: string) =>
+  DOMPurify.sanitize(html, {
+    USE_PROFILES: { html: true },
+    FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "form"],
+  });
 
 export function QuickNotesPanel({ vaultId, version }: { vaultId: string; version: number }) {
   const [open, setOpen] = useState(false);
@@ -32,12 +26,17 @@ export function QuickNotesPanel({ vaultId, version }: { vaultId: string; version
     setDraft("");
     setEditing(false);
     setError(null);
-    window.vaultApi.quickNotes(vaultId)
-      .then((notes) => { if (!cancelled) setHtml(notes); })
+    window.vaultApi
+      .quickNotes(vaultId)
+      .then((notes) => {
+        if (!cancelled) setHtml(notes);
+      })
       .catch((cause) => {
         if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [open, vaultId, version]);
 
   const onOpenChange = (next: boolean) => {
@@ -92,17 +91,33 @@ export function QuickNotesPanel({ vaultId, version }: { vaultId: string; version
                 </Button>
               </>
             ) : (
-              <Button size="icon" variant="ghost" onClick={startEditing} title="Edit quick notes" aria-label="Edit quick notes">
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={startEditing}
+                title="Edit quick notes"
+                aria-label="Edit quick notes"
+              >
                 <Pencil />
               </Button>
             )}
-            <Button size="icon" variant="ghost" onClick={() => onOpenChange(false)} title="Close" aria-label="Close quick notes">
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => onOpenChange(false)}
+              title="Close"
+              aria-label="Close quick notes"
+            >
               <X />
             </Button>
           </div>
         </SheetHeader>
         <div className="flex-1 overflow-auto p-4">
-          {error && <p role="alert" className="text-destructive mb-2 text-sm">{error}</p>}
+          {error && (
+            <p role="alert" className="text-destructive mb-2 text-sm">
+              {error}
+            </p>
+          )}
           {editing ? (
             <textarea
               className="bg-background h-full min-h-96 w-full resize-none rounded border p-2 font-mono text-sm"

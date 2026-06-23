@@ -72,10 +72,7 @@ export async function launchApp(
  * resolves to a fixture path instead of blocking on an OS dialog. Runs in the
  * privileged main-process context and touches no shipped application code.
  */
-export async function stubDirectoryDialog(
-  app: ElectronApplication,
-  directory: string,
-): Promise<void> {
+export async function stubDirectoryDialog(app: ElectronApplication, directory: string): Promise<void> {
   await app.evaluate(async ({ dialog }, dir) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [dir] });
   }, directory);
@@ -87,11 +84,7 @@ export async function stubDirectoryDialog(
  * report and written as a flat PNG under `screenshots/`, so CI can upload an
  * easily browsable gallery of every flow as its own artifact.
  */
-export async function captureScreenshot(
-  page: Page,
-  testInfo: TestInfo,
-  name: string,
-): Promise<void> {
+export async function captureScreenshot(page: Page, testInfo: TestInfo, name: string): Promise<void> {
   const body = await page.screenshot();
   await testInfo.attach(name, { body, contentType: "image/png" });
   mkdirSync(screenshotsDir, { recursive: true });

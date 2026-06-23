@@ -13,6 +13,23 @@ function temporaryDirectory(): string {
   return directory;
 }
 
+function trySymlink(target: string, link: string, type?: fs.symlink.Type): boolean {
+  try {
+    fs.symlinkSync(target, link, type);
+    return true;
+  } catch (error) {
+    if (
+      process.platform === "win32" &&
+      error instanceof Error &&
+      "code" in error &&
+      (error as NodeJS.ErrnoException).code === "EPERM"
+    ) {
+      return false;
+    }
+    throw error;
+  }
+}
+
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
     fs.rmSync(directory, { recursive: true, force: true });
@@ -90,8 +107,22 @@ describe("VaultService", () => {
     const vault = service.addLocal(root);
 
     await expect(service.blame(vault.id, "draft.html")).resolves.toEqual([
-      { lineNumber: 1, content: "<h1>Draft</h1>", author: "Not committed", timestamp: null, summary: "Untracked line", commit: null },
-      { lineNumber: 2, content: "<p>Work</p>", author: "Not committed", timestamp: null, summary: "Untracked line", commit: null },
+      {
+        lineNumber: 1,
+        content: "<h1>Draft</h1>",
+        author: "Not committed",
+        timestamp: null,
+        summary: "Untracked line",
+        commit: null,
+      },
+      {
+        lineNumber: 2,
+        content: "<p>Work</p>",
+        author: "Not committed",
+        timestamp: null,
+        summary: "Untracked line",
+        commit: null,
+      },
     ]);
   });
 
@@ -123,13 +154,21 @@ describe("VaultService", () => {
     const documents = path.join(root, "documents");
     fs.mkdirSync(documents);
     fs.writeFileSync(path.join(root, "outside.html"), "<h1>Outside</h1>");
-    fs.symlinkSync(path.join(root, "outside.html"), path.join(documents, "link.html"));
+    const linkedFile = trySymlink(path.join(root, "outside.html"), path.join(documents, "link.html"), "file");
+    if (!linkedFile) {
+      const outsideDirectory = path.join(root, "outside-directory");
+      fs.mkdirSync(outsideDirectory);
+      fs.writeFileSync(path.join(outsideDirectory, "outside.html"), "<h1>Outside</h1>");
+      expect(trySymlink(outsideDirectory, path.join(documents, "link"), "junction")).toBe(true);
+    }
 
     const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
     const vault = service.addLocal(root);
 
     expect(() => service.document(vault.id, "../outside.html")).toThrow("Document not found");
-    expect(() => service.document(vault.id, "link.html")).toThrow("Document not found");
+    expect(() => service.document(vault.id, linkedFile ? "link.html" : "link/outside.html")).toThrow(
+      "Document not found",
+    );
     expect(service.manifest(vault.id).tree).toEqual([]);
   });
 
@@ -150,8 +189,9 @@ describe("VaultService", () => {
     service.saveQuickNotes(vault.id, "<h2>Updated</h2>");
 
     expect(service.quickNotes(vault.id)).toBe("<h2>Updated</h2>");
-    expect(fs.readFileSync(path.join(documents, "quick-notes.html"), "utf8"))
-      .toBe("<!--vault\ntitle: Quick notes\n-->\n<h2>Updated</h2>");
+    expect(fs.readFileSync(path.join(documents, "quick-notes.html"), "utf8")).toBe(
+      "<!--vault\ntitle: Quick notes\n-->\n<h2>Updated</h2>",
+    );
   });
 
   it("rejects oversized quick notes and symlink destinations", () => {
@@ -160,16 +200,19 @@ describe("VaultService", () => {
     fs.mkdirSync(documents);
     const outside = path.join(root, "outside.html");
     fs.writeFileSync(outside, "outside");
-    fs.symlinkSync(outside, path.join(documents, "quick-notes.html"));
+    const quickNotes = path.join(documents, "quick-notes.html");
+    const linkedFile = trySymlink(outside, quickNotes, "file");
+    if (!linkedFile) fs.mkdirSync(quickNotes);
 
     const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
     const vault = service.addLocal(root);
 
     expect(() => service.quickNotes(vault.id)).toThrow("Quick notes file is invalid");
     expect(() => service.saveQuickNotes(vault.id, "changed")).toThrow("Quick notes file is invalid");
-    expect(() => service.saveQuickNotes(vault.id, "x".repeat(2 * 1024 * 1024 + 1)))
-      .toThrow("Quick notes are too large");
-    expect(fs.readFileSync(outside, "utf8")).toBe("outside");
+    expect(() => service.saveQuickNotes(vault.id, "x".repeat(2 * 1024 * 1024 + 1))).toThrow(
+      "Quick notes are too large",
+    );
+    if (linkedFile) expect(fs.readFileSync(outside, "utf8")).toBe("outside");
   });
 
   it("creates an empty vault with a committed starter document", async () => {
@@ -179,8 +222,7 @@ describe("VaultService", () => {
     expect(vault.name).toBe("My Notes");
     expect(fs.existsSync(path.join(vault.repositoryPath, ".git"))).toBe(true);
     expect(fs.existsSync(path.join(vault.repositoryPath, "documents"))).toBe(true);
-    expect(JSON.parse(fs.readFileSync(path.join(vault.repositoryPath, "vault.json"), "utf8")).name)
-      .toBe("My Notes");
+    expect(JSON.parse(fs.readFileSync(path.join(vault.repositoryPath, "vault.json"), "utf8")).name).toBe("My Notes");
 
     const manifest = service.manifest(vault.id);
     expect(manifest.tree).toHaveLength(1);
@@ -203,8 +245,7 @@ describe("VaultService", () => {
 
     expect(result.vault.name).toBe("After");
     expect(result.push).toBeUndefined();
-    expect(JSON.parse(fs.readFileSync(path.join(vault.repositoryPath, "vault.json"), "utf8")).name)
-      .toBe("After");
+    expect(JSON.parse(fs.readFileSync(path.join(vault.repositoryPath, "vault.json"), "utf8")).name).toBe("After");
     expect(service.list().find((candidate) => candidate.id === vault.id)?.name).toBe("After");
   });
 
@@ -220,16 +261,14 @@ describe("VaultService", () => {
     expect(result.push?.ok).toBe(false);
     expect(service.list().find((candidate) => candidate.id === vault.id)?.remoteUrl).toBe(remoteUrl);
 
-    const remote = execFileSync("git", ["-C", vault.repositoryPath, "remote", "get-url", "origin"])
-      .toString().trim();
+    const remote = execFileSync("git", ["-C", vault.repositoryPath, "remote", "get-url", "origin"]).toString().trim();
     expect(remote).toBe(remoteUrl);
   });
 
   it("rejects an unsafe remote URL", async () => {
     const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
     const vault = await service.createEmpty("Vault");
-    await expect(service.updateVault(vault.id, { remoteUrl: "not a url" }))
-      .rejects.toThrow("HTTPS, SSH, or git@");
+    await expect(service.updateVault(vault.id, { remoteUrl: "not a url" })).rejects.toThrow("HTTPS, SSH, or git@");
   });
 
   it("applies structure titles and descriptions to folder nodes", () => {
@@ -260,7 +299,8 @@ describe("VaultService", () => {
 
     const knowledge = tree.find((node) => node.id === "10-knowledge");
     expect(knowledge).toMatchObject({ type: "folder", label: "Knowledge base", description: "Reference material." });
-    const playbooks = knowledge?.type === "folder" ? knowledge.children.find((c) => c.id === "10-knowledge/playbooks") : undefined;
+    const playbooks =
+      knowledge?.type === "folder" ? knowledge.children.find((c) => c.id === "10-knowledge/playbooks") : undefined;
     expect(playbooks).toMatchObject({ type: "folder", label: "Playbooks" });
     // Folders without metadata keep the humanized fallback label and no description.
     const plain = tree.find((node) => node.id === "20-plain");
@@ -289,8 +329,9 @@ describe("VaultService", () => {
 
     // Clearing the language removes it from vault.json.
     await service.updateVault(vault.id, { defaultLanguage: "" });
-    expect(JSON.parse(fs.readFileSync(path.join(vault.repositoryPath, "vault.json"), "utf8")).defaultLanguage)
-      .toBeUndefined();
+    expect(
+      JSON.parse(fs.readFileSync(path.join(vault.repositoryPath, "vault.json"), "utf8")).defaultLanguage,
+    ).toBeUndefined();
   });
 
   it("re-reads vault.json on every list so external edits surface", () => {
@@ -320,8 +361,9 @@ describe("VaultService", () => {
     expect(listed?.defaultLanguage).toBe("nl");
     expect(listed?.structure).toMatchObject({ "10-knowledge": { title: "Knowledge base" } });
     // The live structure also reaches the manifest labels.
-    expect(service.manifest(vault.id).tree.find((node) => node.id === "10-knowledge"))
-      .toMatchObject({ label: "Knowledge base" });
+    expect(service.manifest(vault.id).tree.find((node) => node.id === "10-knowledge")).toMatchObject({
+      label: "Knowledge base",
+    });
   });
 
   it("keeps the cached remote URL when re-describing from disk", async () => {
@@ -332,10 +374,7 @@ describe("VaultService", () => {
     await service.updateVault(vault.id, { remoteUrl });
 
     // A later out-of-band edit to vault.json must not drop the remote.
-    fs.writeFileSync(
-      path.join(vault.repositoryPath, "vault.json"),
-      JSON.stringify({ name: "Renamed on disk" }),
-    );
+    fs.writeFileSync(path.join(vault.repositoryPath, "vault.json"), JSON.stringify({ name: "Renamed on disk" }));
 
     const listed = service.list().find((candidate) => candidate.id === vault.id);
     expect(listed?.name).toBe("Renamed on disk");

@@ -19,8 +19,8 @@ security invariant in `AGENTS.md`.
 
 ## Motivation
 
-Today the app helps agents *write* vault documents via the `vault-guide` skill.
-There is no companion guidance for *reviewing* existing documents, so review
+Today the app helps agents _write_ vault documents via the `vault-guide` skill.
+There is no companion guidance for _reviewing_ existing documents, so review
 prompts have to re-describe the vault format and conventions every time. A
 dedicated, version-controlled reviewer skill gives Claude and Codex a stable,
 vault-aware checklist:
@@ -67,7 +67,7 @@ type SkillId = "vault-guide" | "document-reviewer";
 
 interface SkillDefinition {
   name: SkillId;
-  version: string;                       // bump to mark installed copies outdated
+  version: string; // bump to mark installed copies outdated
   render(vaults: VaultSummary[]): string;
 }
 ```

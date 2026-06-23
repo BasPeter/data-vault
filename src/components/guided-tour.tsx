@@ -55,13 +55,7 @@ export function GuidedTour() {
 
   return (
     <>
-      <Button
-        variant="ghost"
-        size="icon"
-        title="Guided tour"
-        aria-label="Start guided tour"
-        onClick={start}
-      >
+      <Button variant="ghost" size="icon" title="Guided tour" aria-label="Start guided tour" onClick={start}>
         <CircleHelp />
       </Button>
       {open && (
@@ -90,12 +84,7 @@ export function GuidedTour() {
                 Step {step + 1} of {STEPS.length}
               </span>
               <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setStep((value) => value - 1)}
-                  disabled={isFirst}
-                >
+                <Button variant="outline" size="sm" onClick={() => setStep((value) => value - 1)} disabled={isFirst}>
                   <ChevronLeft />
                   Back
                 </Button>

@@ -278,10 +278,7 @@ export class SkillService {
   private readonly bases: string[];
 
   constructor(homeDirectory: string = os.homedir()) {
-    this.bases = [
-      path.join(homeDirectory, ".claude", "skills"),
-      path.join(homeDirectory, ".codex", "skills"),
-    ];
+    this.bases = [path.join(homeDirectory, ".claude", "skills"), path.join(homeDirectory, ".codex", "skills")];
   }
 
   // Backwards-compatible accessor for the primary skill's rendered SKILL.md.
@@ -329,11 +326,8 @@ export class SkillService {
           continue;
         }
         const marker = readJson<Marker>(path.join(directory, skill.markerFile));
-        if (
-          !marker ||
-          marker.fingerprint !== current ||
-          fs.readFileSync(skillFile, "utf8") !== expectedContent
-        ) matches = false;
+        if (!marker || marker.fingerprint !== current || fs.readFileSync(skillFile, "utf8") !== expectedContent)
+          matches = false;
       }
     }
     const state: SkillStatus["state"] = !installed ? "not-installed" : matches ? "current" : "outdated";

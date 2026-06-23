@@ -20,7 +20,12 @@ afterEach(() => {
 });
 
 const vaultA: VaultSummary = { id: "a", name: "Knowledge", repositoryPath: "/vaults/knowledge" };
-const vaultB: VaultSummary = { id: "b", name: "Work", repositoryPath: "/vaults/work", remoteUrl: "git@example.com:team/work.git" };
+const vaultB: VaultSummary = {
+  id: "b",
+  name: "Work",
+  repositoryPath: "/vaults/work",
+  remoteUrl: "git@example.com:team/work.git",
+};
 const vaultWithMeta: VaultSummary = {
   id: "c",
   name: "Annotated",
