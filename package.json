@@ -80,6 +80,10 @@
       {
         "from": "build/icon.png",
         "to": "icon.png"
+      },
+      {
+        "from": "build/icon.win.png",
+        "to": "icon.win.png"
       }
     ],
     "publish": [
@@ -100,7 +104,7 @@
       "notarize": true
     },
     "win": {
-      "icon": "build/icon.png",
+      "icon": "build/icon.win.png",
       "target": "nsis"
     },
     "linux": {

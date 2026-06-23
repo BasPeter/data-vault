@@ -27,7 +27,8 @@ let vaultChangePoll: NodeJS.Timeout | null = null;
 const watchedVaults = new Map<string, string>();
 
 function applicationIconPath(): string {
-  return app.isPackaged ? path.join(process.resourcesPath, "icon.png") : path.resolve("build/icon.png");
+  const iconName = process.platform === "win32" ? "icon.win.png" : "icon.png";
+  return app.isPackaged ? path.join(process.resourcesPath, iconName) : path.resolve("build", iconName);
 }
 
 function assertTrusted(event: IpcMainInvokeEvent): void {
