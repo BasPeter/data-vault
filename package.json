@@ -11,7 +11,7 @@
   "main": "out/main/index.js",
   "type": "module",
   "scripts": {
-    "postinstall": "install-electron --no",
+    "postinstall": "install-electron --no && node scripts/install-git-hooks.mjs",
     "prebuild": "node scripts/generate-changelog.mjs",
     "icon": "electron scripts/render-icon.mjs",
     "dev": "electron-vite dev",

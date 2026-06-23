@@ -65,11 +65,14 @@ Examples:
 
 1. Re-check `git status --porcelain`.
 2. If there are no changes, report that nothing can be committed and stop.
-3. Stage with `git add .` unless the user requested narrower staging.
-4. Commit using the approved message in multiline-safe form.
-5. Run `git status --short` and show resulting state.
-6. Ask whether the user wants to push.
-7. Do not push unless explicitly requested.
+3. Run `npm run format:check`.
+4. Run `npm run lint`.
+5. If either check fails, report the failure and do not commit.
+6. Stage with `git add .` unless the user requested narrower staging.
+7. Commit using the approved message in multiline-safe form.
+8. Run `git status --short` and show resulting state.
+9. Ask whether the user wants to push.
+10. Do not push unless explicitly requested.
 
 ## Expected Outcomes
 
