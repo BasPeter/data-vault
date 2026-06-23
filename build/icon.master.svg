@@ -2,8 +2,7 @@
   <!--
     macOS app-icon master. The artwork body fills 824x824 of the 1024 grid
     (~80%, the Apple icon safe area) so the icon renders at the same visual
-    size as native apps. Regenerate build/icon.png from this with the
-    scripts/build-icon.mjs rasterizer.
+    size as native apps. Regenerate build/icon.png from this with npm run icon.
   -->
   <rect x="100" y="100" width="824" height="824" rx="185" ry="185" fill="#1C1C1E"/>
   <g transform="translate(312 242) scale(2.9834)">
