@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import DOMPurify from "dompurify";
 import { Check, Clipboard, Download, FileText, RefreshCw, RotateCcw, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -54,6 +55,10 @@ function formatDate(value: string): string {
   return new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric" }).format(date);
 }
 
+function sanitizeReleaseNotes(html: string): string {
+  return DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
+}
+
 function ChangelogRelease({ release }: { release: AppChangelogRelease }) {
   return (
     <section className="border-b py-4 last:border-b-0">
@@ -79,15 +84,17 @@ function ChangelogRelease({ release }: { release: AppChangelogRelease }) {
 
 function UpdateFeedRelease({ status }: { status: UpdateStatus }) {
   if (!status.version || !status.latestReleaseNotes) return null;
+  const releaseNotes = sanitizeReleaseNotes(status.latestReleaseNotes);
   return (
     <section className="border-b py-4">
       <div className="flex items-baseline justify-between gap-3">
         <h3 className="text-sm font-semibold tabular-nums">Version {status.version}</h3>
         <p className="text-muted-foreground text-xs whitespace-nowrap">Update feed</p>
       </div>
-      <p className="text-muted-foreground mt-2 whitespace-pre-wrap text-xs leading-relaxed">
-        {status.latestReleaseNotes}
-      </p>
+      <div
+        className="text-muted-foreground mt-2 text-xs leading-relaxed [&_a]:font-medium [&_a]:underline [&_a]:underline-offset-4 [&_code]:font-mono [&_p]:my-2 [&_tt]:font-mono"
+        dangerouslySetInnerHTML={{ __html: releaseNotes }}
+      />
     </section>
   );
 }
