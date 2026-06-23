@@ -194,6 +194,24 @@ describe("VaultService", () => {
     );
   });
 
+  it("changes the content signature when a document changes", () => {
+    const root = temporaryDirectory();
+    const documents = path.join(root, "documents");
+    fs.mkdirSync(documents);
+    fs.writeFileSync(path.join(documents, "document.html"), "<h1>Before</h1>");
+    fs.writeFileSync(path.join(documents, "quick-notes.html"), "<p>Scratch</p>");
+
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = service.addLocal(root);
+    const before = service.contentSignature(vault.id);
+
+    fs.writeFileSync(path.join(documents, "quick-notes.html"), "<p>Updated scratch</p>");
+    expect(service.contentSignature(vault.id)).toBe(before);
+
+    fs.writeFileSync(path.join(documents, "document.html"), "<h1>After</h1><p>New content</p>");
+    expect(service.contentSignature(vault.id)).not.toBe(before);
+  });
+
   it("rejects oversized quick notes and symlink destinations", () => {
     const root = temporaryDirectory();
     const documents = path.join(root, "documents");

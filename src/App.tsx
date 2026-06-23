@@ -67,6 +67,7 @@ export default function App() {
       setActiveId(null);
       return;
     }
+    window.vaultApi.watch(vaultId).catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
     window.vaultApi
       .manifest(vaultId)
       .then((next) => {
@@ -75,6 +76,12 @@ export default function App() {
       })
       .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
   }, [vaultId, version]);
+
+  useEffect(() => {
+    return window.vaultApi.onVaultChanged((changedVaultId) => {
+      if (changedVaultId === vaultId) setVersion((value) => value + 1);
+    });
+  }, [vaultId]);
 
   useEffect(() => {
     const onHash = () => setActiveId(decodeURIComponent(location.hash.slice(1)) || null);

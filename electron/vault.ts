@@ -533,6 +533,36 @@ export class VaultService {
       .trim();
   }
 
+  contentSignature(vaultId: string): string {
+    const vault = this.vault(vaultId);
+    const root = this.documentsRoot(vaultId);
+    const entries: string[] = [];
+    const configFile = path.join(vault.repositoryPath, "vault.json");
+    if (fs.existsSync(configFile)) {
+      const stats = fs.statSync(configFile);
+      entries.push(`vault.json:${stats.mtimeMs}:${stats.size}`);
+    }
+
+    const visit = (directory: string) => {
+      for (const entry of fs
+        .readdirSync(directory, { withFileTypes: true })
+        .sort((a, b) => a.name.localeCompare(b.name))) {
+        if (entry.name.startsWith(".") || entry.name.startsWith("_") || entry.isSymbolicLink()) continue;
+        if (directory === root && entry.name.toLowerCase() === QUICK_NOTES_FILE) continue;
+        const absolute = path.join(directory, entry.name);
+        if (entry.isDirectory()) {
+          visit(absolute);
+        } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".html")) {
+          const stats = fs.statSync(absolute);
+          entries.push(`${path.relative(root, absolute).split(path.sep).join("/")}:${stats.mtimeMs}:${stats.size}`);
+        }
+      }
+    };
+
+    visit(root);
+    return entries.join("\n");
+  }
+
   saveQuickNotes(vaultId: string, html: string): void {
     if (Buffer.byteLength(html, "utf8") > MAX_DOCUMENT_BYTES) {
       throw new Error("Quick notes are too large.");

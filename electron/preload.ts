@@ -10,6 +10,7 @@ const api: VaultApi = {
   updateVault: (vaultId, update) => ipcRenderer.invoke("vault:update", vaultId, update),
   manifest: (vaultId) => ipcRenderer.invoke("vault:manifest", vaultId),
   document: (vaultId, documentId) => ipcRenderer.invoke("vault:document", vaultId, documentId),
+  watch: (vaultId) => ipcRenderer.invoke("vault:watch", vaultId),
   blame: (vaultId, documentId) => ipcRenderer.invoke("vault:blame", vaultId, documentId),
   quickNotes: (vaultId) => ipcRenderer.invoke("vault:quick-notes", vaultId),
   saveQuickNotes: (vaultId, html) => ipcRenderer.invoke("vault:save-quick-notes", vaultId, html),
@@ -25,6 +26,11 @@ const api: VaultApi = {
     const handler = (_event: Electron.IpcRendererEvent, status: Parameters<typeof listener>[0]) => listener(status);
     ipcRenderer.on("app:update-status", handler);
     return () => ipcRenderer.removeListener("app:update-status", handler);
+  },
+  onVaultChanged: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, vaultId: string) => listener(vaultId);
+    ipcRenderer.on("vault:changed", handler);
+    return () => ipcRenderer.removeListener("vault:changed", handler);
   },
   skillStatus: () => ipcRenderer.invoke("skill:status"),
   installSkills: () => ipcRenderer.invoke("skill:install"),

@@ -23,6 +23,8 @@ app.setName(APPLICATION_NAME);
 
 let service: VaultService;
 let skills: SkillService;
+let vaultChangePoll: NodeJS.Timeout | null = null;
+const watchedVaults = new Map<string, string>();
 
 function applicationIconPath(): string {
   return app.isPackaged ? path.join(process.resourcesPath, "icon.png") : path.resolve("build/icon.png");
@@ -122,6 +124,36 @@ function autoInstallSkills(): void {
   }
 }
 
+function broadcastVaultChanged(vaultId: string): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send("vault:changed", vaultId);
+  }
+}
+
+function pollWatchedVaults(): void {
+  for (const [vaultId, previous] of watchedVaults) {
+    try {
+      const next = service.contentSignature(vaultId);
+      if (next !== previous) {
+        watchedVaults.set(vaultId, next);
+        broadcastVaultChanged(vaultId);
+      }
+    } catch {
+      watchedVaults.delete(vaultId);
+      broadcastVaultChanged(vaultId);
+    }
+  }
+  if (watchedVaults.size === 0 && vaultChangePoll) {
+    clearInterval(vaultChangePoll);
+    vaultChangePoll = null;
+  }
+}
+
+function watchVault(vaultId: string): void {
+  watchedVaults.set(vaultId, service.contentSignature(vaultId));
+  if (!vaultChangePoll) vaultChangePoll = setInterval(pollWatchedVaults, 1500);
+}
+
 function registerIpc(): void {
   ipcMain.handle("vault:list", (event) => {
     assertTrusted(event);
@@ -160,6 +192,10 @@ function registerIpc(): void {
   ipcMain.handle("vault:document", (event, vaultId, documentId) => {
     assertTrusted(event);
     return service.document(stringArgument(vaultId, "vault ID"), stringArgument(documentId, "document ID"));
+  });
+  ipcMain.handle("vault:watch", (event, vaultId) => {
+    assertTrusted(event);
+    watchVault(stringArgument(vaultId, "vault ID"));
   });
   ipcMain.handle("vault:blame", (event, vaultId, documentId) => {
     assertTrusted(event);
