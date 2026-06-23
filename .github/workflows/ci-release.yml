@@ -73,22 +73,9 @@ jobs:
           retention-days: 7
 
   package:
-    name: Package for ${{ matrix.name }}
+    name: Package Windows x64
     needs: [test, e2e]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Linux
-            os: ubuntu-latest
-            artifact: data-vault-linux
-          - name: macOS
-            os: macos-latest
-            artifact: data-vault-macos
-          - name: Windows
-            os: windows-latest
-            artifact: data-vault-windows
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -102,49 +89,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build non-macOS installers
-        if: matrix.name != 'macOS'
-        run: npm run dist -- --publish never
+      - name: Build Windows x64 installer
+        run: npm run dist:win:x64 -- --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
-      - name: Build unsigned macOS installers
-        if: matrix.name == 'macOS' && !(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
-        run: npm run dist -- --publish never
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
-
-      - name: Prepare App Store Connect API key
-        if: matrix.name == 'macOS' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-        shell: bash
-        env:
-          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY }}
-        run: |
-          printf '%s' "$APPLE_API_KEY_BASE64" | base64 -D > "$RUNNER_TEMP/AuthKey.p8"
-          chmod 600 "$RUNNER_TEMP/AuthKey.p8"
-
-      - name: Build signed and notarized macOS installers
-        if: matrix.name == 'macOS' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-        run: npm run dist -- --publish never --config.forceCodeSigning=true
-        env:
-          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          APPLE_API_KEY: ${{ runner.temp }}/AuthKey.p8
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-
-      - name: Upload installers
+      - name: Upload Windows x64 installer
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.artifact }}
+          name: data-vault-windows-x64
           if-no-files-found: error
           path: |
-            dist/*.AppImage
-            dist/*.deb
-            dist/*.dmg
             dist/*.exe
-            dist/*.zip
             dist/*.yml
             dist/*.blockmap
 

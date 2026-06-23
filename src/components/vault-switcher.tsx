@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { ArrowLeft, Check, ChevronsUpDown, FolderOpen, FolderTree, GitBranch, Plus, Settings } from "lucide-react";
+import { ArrowLeft, Check, ChevronsUpDown, FolderOpen, FolderTree, GitBranch, Github, Plus, RotateCcw, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,7 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Separator } from "@/components/ui/separator";
 import { VaultStructureEditor } from "@/components/vault-structure-editor";
 import { cn } from "@/lib/utils";
-import type { TreeNode, VaultStructure, VaultSummary, VaultUpdate } from "@/types";
+import type { GitHubLoginStart, GitHubRepo, GitHubStatus, TreeNode, VaultStructure, VaultSummary, VaultUpdate } from "@/types";
 
 type VaultSwitcherProps = {
   vaults: VaultSummary[];
@@ -22,11 +22,13 @@ type VaultSwitcherProps = {
   onSwitch: (id: string) => void;
   onLocal: () => Promise<void> | void;
   onRefresh: (preferred?: string) => Promise<void>;
+  onReset: () => Promise<void>;
 };
 
-export function VaultSwitcher({ vaults, vaultId, onSwitch, onLocal, onRefresh }: VaultSwitcherProps) {
+export function VaultSwitcher({ vaults, vaultId, onSwitch, onLocal, onRefresh, onReset }: VaultSwitcherProps) {
   const [open, setOpen] = useState(false);
   const [dialog, setDialog] = useState<"github" | "create" | null>(null);
+  const [resetOpen, setResetOpen] = useState(false);
   const [settingsVault, setSettingsVault] = useState<VaultSummary | null>(null);
   const active = vaults.find((vault) => vault.id === vaultId);
 
@@ -93,6 +95,15 @@ export function VaultSwitcher({ vaults, vaultId, onSwitch, onLocal, onRefresh }:
               setOpen(false);
             }}
           />
+          <Separator className="my-1" />
+          <ActionItem
+            icon={<RotateCcw />}
+            label="Reset app…"
+            onClick={() => {
+              setResetOpen(true);
+              setOpen(false);
+            }}
+          />
         </PopoverContent>
       </Popover>
 
@@ -111,6 +122,7 @@ export function VaultSwitcher({ vaults, vaultId, onSwitch, onLocal, onRefresh }:
         onOpenChange={(next) => !next && setSettingsVault(null)}
         onDone={onRefresh}
       />
+      <ResetVaultsDialog open={resetOpen} onOpenChange={setResetOpen} onReset={onReset} />
     </>
   );
 }
@@ -128,16 +140,15 @@ function ActionItem({ icon, label, onClick }: { icon: ReactNode; label: string; 
   );
 }
 
-function GithubImportDialog({
+function ResetVaultsDialog({
   open,
   onOpenChange,
-  onDone,
+  onReset,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onDone: (preferred?: string) => Promise<void>;
+  onReset: () => Promise<void>;
 }) {
-  const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -145,9 +156,7 @@ function GithubImportDialog({
     setBusy(true);
     setError(null);
     try {
-      const vault = await window.vaultApi.clone(url.trim());
-      await onDone(vault.id);
-      setUrl("");
+      await onReset();
       onOpenChange(false);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -160,22 +169,213 @@ function GithubImportDialog({
     <Dialog open={open} onOpenChange={(next) => { if (!busy) { setError(null); onOpenChange(next); } }}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add vault from GitHub</DialogTitle>
-          <DialogDescription>Clone a Git repository over HTTPS, SSH, or git@.</DialogDescription>
+          <DialogTitle>Reset app</DialogTitle>
+          <DialogDescription>
+            Forget all registered vaults and return to the first-start screen. Local folders and GitHub repositories are not deleted.
+          </DialogDescription>
         </DialogHeader>
-        <Input
-          autoFocus
-          value={url}
-          onChange={(event) => setUrl(event.target.value)}
-          onKeyDown={(event) => { if (event.key === "Enter" && url.trim() && !busy) void submit(); }}
-          placeholder="https://github.com/company/vault.git"
-        />
         {error && <p role="alert" className="text-destructive text-sm">{error}</p>}
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>Cancel</Button>
-          <Button onClick={submit} disabled={!url.trim() || busy}>
-            <GitBranch />{busy ? "Cloning…" : "Clone"}
+          <Button variant="destructive" onClick={submit} disabled={busy}>
+            <RotateCcw />{busy ? "Resetting..." : "Reset"}
           </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function GithubImportDialog({
+  open,
+  onOpenChange,
+  onDone,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onDone: (preferred?: string) => Promise<void>;
+}) {
+  const [status, setStatus] = useState<GitHubStatus>({ authenticated: false });
+  const [login, setLogin] = useState<GitHubLoginStart | null>(null);
+  const [repos, setRepos] = useState<GitHubRepo[]>([]);
+  const [mode, setMode] = useState<"existing" | "create">("existing");
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState("");
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [isPrivate, setIsPrivate] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    setError(null);
+    void window.vaultApi.githubStatus()
+      .then(async (next) => {
+        if (!active) return;
+        setStatus(next);
+        if (next.authenticated) {
+          const list = await window.vaultApi.githubRepos();
+          if (active) setRepos(list);
+        }
+      })
+      .catch((cause) => {
+        if (active) setError(cause instanceof Error ? cause.message : String(cause));
+      });
+    return () => {
+      active = false;
+    };
+  }, [open]);
+
+  const connect = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const start = await window.vaultApi.githubLoginStart();
+      setLogin(start);
+      const next = await window.vaultApi.githubLoginComplete();
+      setStatus(next);
+      setLogin(null);
+      setRepos(await window.vaultApi.githubRepos());
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cloneSelected = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const vault = await window.vaultApi.cloneGitHubRepo(selected);
+      await onDone(vault.id);
+      setSelected("");
+      onOpenChange(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const createRepository = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const vault = await window.vaultApi.createGitHubVault({
+        name: name.trim(),
+        private: isPrivate,
+        description: description.trim() || undefined,
+      });
+      await onDone(vault.id);
+      setName("");
+      setDescription("");
+      setIsPrivate(true);
+      onOpenChange(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const filtered = repos.filter((repo) => {
+    const needle = query.trim().toLowerCase();
+    return !needle || repo.fullName.toLowerCase().includes(needle) || repo.description?.toLowerCase().includes(needle);
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => { if (!busy) { setError(null); onOpenChange(next); } }}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Add vault from GitHub</DialogTitle>
+          <DialogDescription>
+            {status.authenticated ? `Connected as ${status.login}` : "Connect GitHub to use or create a vault repository."}
+          </DialogDescription>
+        </DialogHeader>
+        {!status.authenticated ? (
+          <div className="flex flex-col gap-3">
+            <Button onClick={connect} disabled={busy} className="self-start">
+              <Github />{busy ? "Connecting..." : "Connect GitHub"}
+            </Button>
+            {login && (
+              <div className="border-border rounded-md border p-3 text-sm">
+                <div className="text-muted-foreground">Enter this code at GitHub</div>
+                <div className="mt-1 font-mono text-lg font-semibold">{login.userCode}</div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <div className="bg-muted flex rounded-md p-1">
+              <Button variant={mode === "existing" ? "secondary" : "ghost"} className="flex-1" onClick={() => setMode("existing")}>
+                <GitBranch />Existing repo
+              </Button>
+              <Button variant={mode === "create" ? "secondary" : "ghost"} className="flex-1" onClick={() => setMode("create")}>
+                <Plus />New repo
+              </Button>
+            </div>
+            {mode === "existing" ? (
+              <>
+                <Input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search repositories" />
+                <div className="border-border max-h-72 overflow-y-auto rounded-md border">
+                  {filtered.map((repo) => (
+                    <button
+                      key={repo.id}
+                      type="button"
+                      className={cn(
+                        "hover:bg-accent flex w-full items-start gap-3 px-3 py-2 text-left text-sm",
+                        selected === repo.fullName && "bg-accent",
+                      )}
+                      onClick={() => setSelected(repo.fullName)}
+                    >
+                      <Check className={cn("mt-0.5 size-4 shrink-0", selected === repo.fullName ? "opacity-100" : "opacity-0")} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium">{repo.fullName}</span>
+                        {repo.description && <span className="text-muted-foreground line-clamp-2 block">{repo.description}</span>}
+                      </span>
+                      <span className="text-muted-foreground shrink-0 text-xs">{repo.private ? "private" : "public"}</span>
+                    </button>
+                  ))}
+                  {filtered.length === 0 && <div className="text-muted-foreground px-3 py-6 text-center text-sm">No repositories found.</div>}
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <Input
+                  autoFocus
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  placeholder="vault-name"
+                />
+                <Input
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  placeholder="Description"
+                />
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={isPrivate} onChange={(event) => setIsPrivate(event.target.checked)} />
+                  Private repository
+                </label>
+              </div>
+            )}
+          </div>
+        )}
+        {error && <p role="alert" className="text-destructive text-sm">{error}</p>}
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>Cancel</Button>
+          {status.authenticated && mode === "existing" && (
+            <Button onClick={cloneSelected} disabled={!selected || busy}>
+              <GitBranch />{busy ? "Cloning..." : "Use repository"}
+            </Button>
+          )}
+          {status.authenticated && mode === "create" && (
+            <Button onClick={createRepository} disabled={!name.trim() || busy}>
+              <Plus />{busy ? "Creating..." : "Create repository"}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -2,8 +2,9 @@ import path from "node:path";
 import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from "electron";
 import { VaultService } from "./vault";
 import { SkillService } from "./skills";
+import { GitHubService } from "./github";
 import { checkForUpdates, configureUpdater, installUpdate, updateStatus } from "./updater";
-import type { VaultStructure, VaultUpdate } from "../src/types";
+import type { GitHubCreateRepoInput, VaultStructure, VaultUpdate } from "../src/types";
 
 // Bounds for the optional vault.json `structure` tree, mirrored from
 // electron/vault.ts. The renderer is trusted but validated defensively.
@@ -16,6 +17,7 @@ app.setName(APPLICATION_NAME);
 
 let service: VaultService;
 let skills: SkillService;
+let github: GitHubService;
 
 function applicationIconPath(): string {
   return app.isPackaged ? path.join(process.resourcesPath, "icon.png") : path.resolve("build/icon.png");
@@ -93,6 +95,22 @@ function titleBarThemeArgument(value: unknown): "light" | "dark" {
   return value;
 }
 
+function githubRepoFullNameArgument(value: unknown): string {
+  const fullName = stringArgument(value, "repository name").trim();
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(fullName)) throw new Error("Invalid GitHub repository.");
+  return fullName;
+}
+
+function githubCreateRepoArgument(value: unknown): GitHubCreateRepoInput {
+  if (typeof value !== "object" || value === null) throw new Error("Invalid repository.");
+  const input = value as Record<string, unknown>;
+  const name = stringArgument(input.name, "repository name").trim();
+  if (typeof input.private !== "boolean") throw new Error("Choose repository visibility.");
+  const result: GitHubCreateRepoInput = { name, private: input.private };
+  if (input.description !== undefined) result.description = optionalText(input.description, "repository description");
+  return result;
+}
+
 // Re-install the generated agent skills whenever they are missing or outdated.
 // Best-effort: a read-only home directory or similar must never break the app,
 // so failures are logged and surfaced through the existing stale indicator.
@@ -107,6 +125,12 @@ function autoInstallSkills(): void {
 
 function registerIpc(): void {
   ipcMain.handle("vault:list", (event) => { assertTrusted(event); return service.list(); });
+  ipcMain.handle("vault:reset", (event) => {
+    assertTrusted(event);
+    service.reset();
+    autoInstallSkills();
+    return service.list();
+  });
   ipcMain.handle("vault:choose-local", async (event) => {
     assertTrusted(event);
     const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
@@ -124,6 +148,23 @@ function registerIpc(): void {
   ipcMain.handle("vault:create-empty", async (event, name) => {
     assertTrusted(event);
     const vault = await service.createEmpty(stringArgument(name, "vault name"));
+    autoInstallSkills();
+    return vault;
+  });
+  ipcMain.handle("vault:clone-github-repo", async (event, fullName) => {
+    assertTrusted(event);
+    const target = githubRepoFullNameArgument(fullName);
+    const repos = await github.repositories();
+    const repo = repos.find((candidate) => candidate.fullName === target);
+    if (!repo) throw new Error("GitHub repository not found.");
+    const vault = await github.withGitAuth((env) => service.clone(repo.cloneUrl, env));
+    autoInstallSkills();
+    return vault;
+  });
+  ipcMain.handle("vault:create-github-vault", async (event, input) => {
+    assertTrusted(event);
+    const repo = await github.createRepository(githubCreateRepoArgument(input));
+    const vault = await github.withGitAuth((env) => service.createEmpty(repo.name, repo.cloneUrl, env));
     autoInstallSkills();
     return vault;
   });
@@ -176,6 +217,16 @@ function registerIpc(): void {
   });
   ipcMain.handle("skill:status", (event) => { assertTrusted(event); return skills.status(service.list()); });
   ipcMain.handle("skill:install", (event) => { assertTrusted(event); return skills.install(service.list()); });
+  ipcMain.handle("github:status", (event) => { assertTrusted(event); return github.status(); });
+  ipcMain.handle("github:login-start", async (event) => {
+    assertTrusted(event);
+    const login = await github.startLogin();
+    void shell.openExternal(login.verificationUri);
+    return login;
+  });
+  ipcMain.handle("github:login-complete", (event) => { assertTrusted(event); return github.completeLogin(); });
+  ipcMain.handle("github:logout", (event) => { assertTrusted(event); return github.logout(); });
+  ipcMain.handle("github:repos", (event) => { assertTrusted(event); return github.repositories(); });
 }
 
 function createWindow(): void {
@@ -219,6 +270,7 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   service = new VaultService(app.getPath("userData"));
+  github = new GitHubService(app.getPath("userData"));
   // E2E runs launch against a throwaway `--user-data-dir`, but skills install to
   // the home directory, which the Chromium switch does not isolate. Redirect the
   // skills home into that same throwaway dir under test so automated runs never

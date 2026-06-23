@@ -165,6 +165,17 @@ describe("VaultService", () => {
     await expect(service.createEmpty("   ")).rejects.toThrow("Enter a vault name");
   });
 
+  it("forgets registered vaults without deleting repository files", async () => {
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = await service.createEmpty("Vault");
+
+    service.reset();
+
+    expect(service.list()).toEqual([]);
+    expect(fs.existsSync(path.join(vault.repositoryPath, "vault.json"))).toBe(true);
+    expect(fs.existsSync(path.join(vault.repositoryPath, "documents", "welcome.html"))).toBe(true);
+  });
+
   it("renames a vault without touching the remote", async () => {
     const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
     const vault = await service.createEmpty("Before");

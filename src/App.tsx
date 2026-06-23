@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { Database, FolderOpen, GitBranch, GitCommitHorizontal, Network, Plus, RefreshCw } from "lucide-react";
+import { Database, FolderOpen, GitBranch, GitCommitHorizontal, Github, Network, Plus, RefreshCw } from "lucide-react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { DocumentView } from "@/components/document-view";
 import { GraphView } from "@/components/graph-view";
 import { GuidedTour } from "@/components/guided-tour";
 import { QuickNotesPanel } from "@/components/quick-notes-panel";
-import { VaultSwitcher } from "@/components/vault-switcher";
+import { GithubImportDialog, VaultSwitcher } from "@/components/vault-switcher";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { UpdateButton } from "@/components/update-button";
 import { Button } from "@/components/ui/button";
@@ -95,6 +95,17 @@ export default function App() {
     }
   };
 
+  const resetVaults = async () => {
+    setError(null);
+    await window.vaultApi.resetVaults();
+    setVaults([]);
+    setVaultId(null);
+    setManifest({ tree: [] });
+    setActiveId(null);
+    setView("doc");
+    location.hash = "";
+  };
+
   const sync = async () => {
     if (!vaultId) return;
     setSyncing(true);
@@ -134,6 +145,7 @@ export default function App() {
                 // active vault is unchanged (e.g. after editing folder titles).
                 setVersion((value) => value + 1);
               }}
+              onReset={resetVaults}
             />
           </div>
           <span className="text-muted-foreground truncate text-sm">{view === "graph" ? "Graph" : title}</span>
@@ -212,6 +224,7 @@ function Onboarding({ onLocal, onCloned, error }: {
   onCloned: (preferred?: string) => Promise<void>;
   error: string | null;
 }) {
+  const [githubOpen, setGithubOpen] = useState(false);
   const [url, setUrl] = useState("");
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -233,11 +246,17 @@ function Onboarding({ onLocal, onCloned, error }: {
   return (
     <div className="bg-muted/30 flex min-h-screen items-center justify-center p-6">
       <WindowDragStrip />
-      <div className="bg-card w-full max-w-lg rounded-xl border p-8 shadow-sm">
+      <div className="bg-card w-full max-w-xl rounded-xl border p-8 shadow-sm">
         <Database className="text-primary mb-4 size-10" />
         <h1 className="text-2xl font-semibold">Open a data vault</h1>
-        <p className="text-muted-foreground mt-2 text-sm">Clone a Git repository, open an existing local clone, or create a new vault.</p>
-        <div className="mt-6 flex gap-2">
+        <p className="text-muted-foreground mt-2 text-sm">Connect GitHub, choose an existing repository, or create a new vault repository.</p>
+        <Button className="mt-6 h-12 w-full justify-start gap-3 text-left" onClick={() => setGithubOpen(true)}>
+          <Github className="size-5" />
+          Connect GitHub
+          <span className="ml-auto text-xs font-normal opacity-80">repositories and setup</span>
+        </Button>
+        <div className="my-5 flex items-center gap-3"><Separator className="flex-1" /><span className="text-muted-foreground text-xs">LOCAL OPTIONS</span><Separator className="flex-1" /></div>
+        <div className="flex gap-2">
           <Input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://github.com/company/vault.git" />
           <Button onClick={clone} disabled={!url.trim() || busy}><GitBranch />{busy ? "Cloning…" : "Clone"}</Button>
         </div>
@@ -251,6 +270,7 @@ function Onboarding({ onLocal, onCloned, error }: {
         <div className="mt-3 flex justify-center"><UpdateButton showLabel /></div>
         {(error || localError) && <p role="alert" className="text-destructive mt-4 text-sm">{localError || error}</p>}
       </div>
+      <GithubImportDialog open={githubOpen} onOpenChange={setGithubOpen} onDone={onCloned} />
     </div>
   );
 }
