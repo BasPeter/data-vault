@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Database, FolderOpen, GitBranch, GitCommitHorizontal, Network, Plus, RefreshCw } from "lucide-react";
+import { Database, FileDown, FolderOpen, GitBranch, GitCommitHorizontal, Network, Plus, RefreshCw } from "lucide-react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { DocumentView } from "@/components/document-view";
 import { GraphView } from "@/components/graph-view";
@@ -47,6 +47,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [savingPdf, setSavingPdf] = useState(false);
   const [showBlame, setShowBlame] = useState(false);
 
   const refreshVaults = async (preferred?: string) => {
@@ -119,6 +120,19 @@ export default function App() {
     }
   };
 
+  const savePdf = async () => {
+    if (!vaultId || !activeId || view !== "doc") return;
+    setSavingPdf(true);
+    setError(null);
+    try {
+      await window.vaultApi.saveDocumentPdf(vaultId, activeId);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setSavingPdf(false);
+    }
+  };
+
   if (loading) return <CenteredMessage title="Loading vaults…" />;
   if (!vaultId) return <Onboarding onLocal={addLocal} onCloned={refreshVaults} error={error} />;
 
@@ -161,6 +175,16 @@ export default function App() {
               <RefreshCw className={syncing ? "animate-spin" : ""} />
             </Button>
             <QuickNotesPanel vaultId={vaultId} version={version} />
+            <Button
+              variant="ghost"
+              size="icon"
+              title="Save document as PDF"
+              aria-label="Save document as PDF"
+              disabled={view !== "doc" || !activeId || savingPdf}
+              onClick={savePdf}
+            >
+              <FileDown className={savingPdf ? "animate-pulse" : ""} />
+            </Button>
             <Button
               variant={showBlame && view === "doc" ? "secondary" : "ghost"}
               size="icon"

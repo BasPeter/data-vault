@@ -80,6 +80,11 @@ export type VaultUpdateResult = {
   push?: { ok: boolean; message?: string };
 };
 
+export type SavePdfResult = {
+  saved: boolean;
+  filePath?: string;
+};
+
 export type UpdateStatus = {
   state: "idle" | "checking" | "available" | "downloading" | "downloaded" | "not-available" | "error";
   currentVersion: string;
@@ -122,6 +127,7 @@ export type VaultApi = {
   updateVault: (vaultId: string, update: VaultUpdate) => Promise<VaultUpdateResult>;
   manifest: (vaultId: string) => Promise<Manifest>;
   document: (vaultId: string, documentId: string) => Promise<LoadedDoc>;
+  saveDocumentPdf: (vaultId: string, documentId: string) => Promise<SavePdfResult>;
   watch: (vaultId: string) => Promise<void>;
   blame: (vaultId: string, documentId: string) => Promise<BlameLine[]>;
   quickNotes: (vaultId: string) => Promise<string>;

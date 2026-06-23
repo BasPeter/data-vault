@@ -10,6 +10,7 @@ const api: VaultApi = {
   updateVault: (vaultId, update) => ipcRenderer.invoke("vault:update", vaultId, update),
   manifest: (vaultId) => ipcRenderer.invoke("vault:manifest", vaultId),
   document: (vaultId, documentId) => ipcRenderer.invoke("vault:document", vaultId, documentId),
+  saveDocumentPdf: (vaultId, documentId) => ipcRenderer.invoke("vault:save-document-pdf", vaultId, documentId),
   watch: (vaultId) => ipcRenderer.invoke("vault:watch", vaultId),
   blame: (vaultId, documentId) => ipcRenderer.invoke("vault:blame", vaultId, documentId),
   quickNotes: (vaultId) => ipcRenderer.invoke("vault:quick-notes", vaultId),

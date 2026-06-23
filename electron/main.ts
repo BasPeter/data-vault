@@ -1,4 +1,5 @@
 import path from "node:path";
+import fs from "node:fs";
 import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from "electron";
 import { VaultService } from "./vault";
 import { SkillService } from "./skills";
@@ -100,6 +101,16 @@ function htmlArgument(value: unknown): string {
   return value;
 }
 
+function pdfFileName(title: string, fallback: string): string {
+  const base = (title || fallback)
+    .replace(/\.html$/i, "")
+    .replace(/[<>:"/\\|?*]/g, " ")
+    .replaceAll(/./g, (character) => (character.charCodeAt(0) < 32 ? " " : character))
+    .replace(/\s+/g, " ")
+    .trim();
+  return `${base || "document"}.pdf`;
+}
+
 function optionalVersionArgument(value: unknown): string | undefined {
   if (value === undefined || value === null || value === "") return undefined;
   if (typeof value !== "string" || !/^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(value)) {
@@ -193,6 +204,28 @@ function registerIpc(): void {
   ipcMain.handle("vault:document", (event, vaultId, documentId) => {
     assertTrusted(event);
     return service.document(stringArgument(vaultId, "vault ID"), stringArgument(documentId, "document ID"));
+  });
+  ipcMain.handle("vault:save-document-pdf", async (event, vaultId, documentId) => {
+    assertTrusted(event);
+    const id = stringArgument(documentId, "document ID");
+    const doc = service.document(stringArgument(vaultId, "vault ID"), id);
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window) throw new Error("No application window available.");
+
+    const result = await dialog.showSaveDialog(window, {
+      title: "Save document as PDF",
+      defaultPath: pdfFileName(doc.title, path.basename(id)),
+      filters: [{ name: "PDF", extensions: ["pdf"] }],
+    });
+    if (result.canceled || !result.filePath) return { saved: false };
+
+    const pdf = await window.webContents.printToPDF({
+      pageSize: "A4",
+      printBackground: true,
+      margins: { marginType: "default" },
+    });
+    fs.writeFileSync(result.filePath, pdf);
+    return { saved: true, filePath: result.filePath };
   });
   ipcMain.handle("vault:watch", (event, vaultId) => {
     assertTrusted(event);
