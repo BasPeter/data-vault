@@ -18,6 +18,8 @@ const api: VaultApi = {
   updateStatus: () => ipcRenderer.invoke("app:update-status"),
   checkForUpdates: () => ipcRenderer.invoke("app:check-for-updates"),
   installUpdate: () => ipcRenderer.invoke("app:install-update"),
+  changelog: () => ipcRenderer.invoke("app:changelog"),
+  securityAssessmentPrompt: (version) => ipcRenderer.invoke("app:security-assessment-prompt", version),
   setTitleBarTheme: (theme) => ipcRenderer.invoke("app:set-title-bar-theme", theme),
   onUpdateStatus: (listener) => {
     const handler = (_event: Electron.IpcRendererEvent, status: Parameters<typeof listener>[0]) => listener(status);

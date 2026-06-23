@@ -2,7 +2,7 @@ import path from "node:path";
 import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from "electron";
 import { VaultService } from "./vault";
 import { SkillService } from "./skills";
-import { checkForUpdates, configureUpdater, installUpdate, updateStatus } from "./updater";
+import { changelog, checkForUpdates, configureUpdater, installUpdate, securityAssessmentPrompt, updateStatus } from "./updater";
 import type { VaultStructure, VaultUpdate } from "../src/types";
 
 // Bounds for the optional vault.json `structure` tree, mirrored from
@@ -88,6 +88,14 @@ function htmlArgument(value: unknown): string {
   return value;
 }
 
+function optionalVersionArgument(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string" || !/^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(value)) {
+    throw new Error("Invalid version.");
+  }
+  return value;
+}
+
 function titleBarThemeArgument(value: unknown): "light" | "dark" {
   if (value !== "light" && value !== "dark") throw new Error("Invalid title bar theme.");
   return value;
@@ -164,6 +172,11 @@ function registerIpc(): void {
   ipcMain.handle("app:update-status", (event) => { assertTrusted(event); return updateStatus(); });
   ipcMain.handle("app:check-for-updates", (event) => { assertTrusted(event); return checkForUpdates(); });
   ipcMain.handle("app:install-update", (event) => { assertTrusted(event); installUpdate(); });
+  ipcMain.handle("app:changelog", (event) => { assertTrusted(event); return changelog(); });
+  ipcMain.handle("app:security-assessment-prompt", (event, version) => {
+    assertTrusted(event);
+    return securityAssessmentPrompt(optionalVersionArgument(version));
+  });
   ipcMain.handle("app:set-title-bar-theme", (event, value) => {
     assertTrusted(event);
     const theme = titleBarThemeArgument(value);

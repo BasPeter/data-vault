@@ -85,7 +85,26 @@ export type UpdateStatus = {
   currentVersion: string;
   version?: string;
   percent?: number;
+  latestReleaseNotes?: string;
   message?: string;
+};
+
+export type AppChangelogCommit = {
+  hash: string;
+  shortHash: string;
+  subject: string;
+};
+
+export type AppChangelogRelease = {
+  version: string;
+  date: string;
+  commits: AppChangelogCommit[];
+};
+
+export type AppChangelog = {
+  generatedAt: string;
+  repositoryUrl?: string;
+  releases: AppChangelogRelease[];
 };
 
 export type SkillStatus = {
@@ -111,6 +130,8 @@ export type VaultApi = {
   updateStatus: () => Promise<UpdateStatus>;
   checkForUpdates: () => Promise<UpdateStatus>;
   installUpdate: () => Promise<void>;
+  changelog: () => Promise<AppChangelog>;
+  securityAssessmentPrompt: (version?: string) => Promise<string>;
   setTitleBarTheme: (theme: "light" | "dark") => Promise<void>;
   onUpdateStatus: (listener: (status: UpdateStatus) => void) => () => void;
   skillStatus: () => Promise<SkillStatus>;

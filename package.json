@@ -1,6 +1,6 @@
 {
   "name": "data-vault",
-  "version": "0.10.2",
+  "version": "0.10.3",
   "private": true,
   "description": "A desktop viewer for Git-backed HTML knowledge vaults.",
   "repository": "https://github.com/BasPeter/data-vault.git",
@@ -12,6 +12,7 @@
   "type": "module",
   "scripts": {
     "postinstall": "install-electron --no",
+    "prebuild": "node scripts/generate-changelog.mjs",
     "icon": "bash scripts/build-icon.sh",
     "dev": "electron-vite dev",
     "build": "tsc -b && electron-vite build",
