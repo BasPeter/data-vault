@@ -7,16 +7,15 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const source = path.join(root, "build", "icon.master.svg");
 const outputs = [
   { file: path.join(root, "build", "icon.png"), scale: 1 },
-  { file: path.join(root, "build", "icon.win.png"), scale: 1.12 },
+  { file: path.join(root, "build", "icon.win.png"), scale: 1.06 },
 ];
 
 function scaleSvg(svg, scale) {
   if (scale === 1) return svg;
 
-  const offset = 512 * (1 - scale);
   return svg.replace(
     />([\s\S]*)<\/svg>\s*$/,
-    `><g transform="translate(${offset} ${offset}) scale(${scale})">$1</g></svg>`,
+    `><g transform="translate(512 512) scale(${scale}) translate(-512 -512)">$1</g></svg>`,
   );
 }
 
