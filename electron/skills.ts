@@ -7,8 +7,8 @@ import type { SkillStatus, VaultStructure, VaultSummary } from "../src/types";
 
 // Bump a skill's version when its SKILL.md template or guidance changes so that
 // installed copies are reported as outdated and re-installed.
-const VAULT_GUIDE_VERSION = "4";
-const DOCUMENT_REVIEWER_VERSION = "2";
+const VAULT_GUIDE_VERSION = "5";
+const DOCUMENT_REVIEWER_VERSION = "3";
 const SKILL_FILE = "SKILL.md";
 
 // A generated agent skill. Each skill renders an independent SKILL.md and tracks
@@ -84,9 +84,9 @@ function vaultPayload(vaults: VaultSummary[]): unknown {
 
 function renderVaultGuide(vaults: VaultSummary[]): string {
   const description =
-    "Read, create, edit, and cross-link documents across Bas Peter Dijkema's local " +
-    "Data Vault knowledge repositories. Use when asked to look something up in a " +
-    "vault, take notes, or update vault documents.";
+    "Read, create, edit, and cross-link documents across the user's local Data " +
+    "Vault knowledge repositories. Use when asked to look something up in a vault, " +
+    "take notes, or update vault documents.";
   const vaults_ = vaultSection(
     vaults,
     "_No vaults are registered yet. Open the Data Vault app and add a vault, then re-install this skill._",
@@ -177,8 +177,8 @@ ${vaults_}
 
 function renderDocumentReviewer(vaults: VaultSummary[]): string {
   const description =
-    "Check that documents in Bas Peter Dijkema's local Data Vault knowledge " +
-    "repositories are structurally correct and conform to vault setup and rules: " +
+    "Check that documents in the user's local Data Vault knowledge repositories " +
+    "are structurally correct and conform to vault setup and rules: " +
     "format, metadata, link integrity, naming, placement, and cross-vault privacy. " +
     "Use when asked to review, audit, or check vault documents.";
   const vaults_ = vaultSection(

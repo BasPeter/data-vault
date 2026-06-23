@@ -153,6 +153,70 @@ function safeRepositoryUrl(url: string): boolean {
   }
 }
 
+function gitErrorOutput(error: unknown): string {
+  const parts: string[] = [];
+  if (typeof error === "object" && error !== null) {
+    const record = error as Record<string, unknown>;
+    if (typeof record.stderr === "string") parts.push(record.stderr);
+    if (typeof record.stdout === "string") parts.push(record.stdout);
+  }
+  if (error instanceof Error) parts.push(error.message);
+  else if (typeof error === "string") parts.push(error);
+  return parts.join("\n").trim();
+}
+
+function gitCredentialFailureMessage(url: string | undefined, action: string, retryAction: string, error: unknown): string | null {
+  const output = gitErrorOutput(error);
+  const credentialPromptFailed = /could not read Username|terminal prompts disabled|failed to execute prompt script|\/dev\/tty|git-credential/i
+    .test(output);
+  const missingCredentialHelper = /gh(?:\.exe)?['"]?.*No such file or directory|No such file or directory.*gh(?:\.exe)?/i
+    .test(output);
+
+  if (!credentialPromptFailed && !missingCredentialHelper) return null;
+
+  let host = "the Git server";
+  if (url) {
+    try { host = new URL(url).hostname || host; } catch {}
+  }
+  const diagnostic = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).slice(-4).join(" ");
+  return [
+    `Data Vault could not ${action} because Git needs credentials for ${host}, but no working credential prompt is available.`,
+    "To fix this, open a terminal and sign in with GitHub CLI:",
+    "gh auth login",
+    "gh auth setup-git",
+    "If Git is configured to use a missing gh.exe, reinstall GitHub CLI or remove the broken helper with:",
+    "git config --global --unset credential.helper",
+    `Then try ${retryAction} again. For private repositories, also confirm that your account has repository access. You can use an SSH URL instead after setting up an SSH key.`,
+    diagnostic ? `Git said: ${diagnostic}` : "",
+  ].filter(Boolean).join("\n\n");
+}
+
+export function cloneFailureMessage(url: string, error: unknown): string {
+  const credentialMessage = gitCredentialFailureMessage(url, "clone this repository", "cloning the vault", error);
+  if (credentialMessage) return credentialMessage;
+
+  const output = gitErrorOutput(error);
+  const diagnostic = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).slice(-6).join("\n");
+  return [
+    "Data Vault could not clone this repository.",
+    "Check that the repository URL is correct, reachable from this computer, and accessible with your Git credentials.",
+    diagnostic ? `Git said:\n${diagnostic}` : "",
+  ].filter(Boolean).join("\n\n");
+}
+
+export function syncFailureMessage(url: string | undefined, error: unknown): string {
+  const credentialMessage = gitCredentialFailureMessage(url, "refresh this vault", "refreshing the vault", error);
+  if (credentialMessage) return credentialMessage;
+
+  const output = gitErrorOutput(error);
+  const diagnostic = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).slice(-6).join("\n");
+  return [
+    "Data Vault could not refresh this vault.",
+    "Check that the remote repository is reachable from this computer and accessible with your Git credentials.",
+    diagnostic ? `Git said:\n${diagnostic}` : "",
+  ].filter(Boolean).join("\n\n");
+}
+
 function isSafeSegment(key: string): boolean {
   return key.length > 0 && key !== "." && key !== ".." && !/[/\\]/.test(key);
 }
@@ -247,12 +311,18 @@ export class VaultService {
     });
     try {
       await this.ensureInitialized(target, nameFromUrl(url), env);
+    try {
+      await execFileAsync("git", ["clone", "--depth=1", url, target], {
+        timeout: 120_000,
+        maxBuffer: 10 * 1024 * 1024,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+      });
       const vault = { ...this.describe(id, target, nameFromUrl(url)), remoteUrl: url };
       this.save({ vaults: [...this.registry().vaults, vault] });
       return vault;
     } catch (error) {
       fs.rmSync(target, { recursive: true, force: true });
-      throw error;
+      throw new Error(cloneFailureMessage(url, error));
     }
   }
 
@@ -512,13 +582,20 @@ export class VaultService {
   async sync(vaultId: string): Promise<{ ahead: number; behind: number; pulled: boolean }> {
     const vault = this.vault(vaultId);
     const git = async (args: string[]) =>
-      (await execFileAsync("git", ["-C", vault.repositoryPath, ...args], { timeout: 120_000 })).stdout.trim();
-    const upstream = await git(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]);
-    await git(["fetch", "--quiet"]);
-    const [ahead = 0, behind = 0] = (await git(["rev-list", "--left-right", "--count", `HEAD...${upstream}`]))
-      .split(/\s+/).map(Number);
-    if (behind > 0) await git(["pull", "--ff-only", "--quiet"]);
-    return { ahead, behind, pulled: behind > 0 };
+      (await execFileAsync("git", ["-C", vault.repositoryPath, ...args], {
+        timeout: 120_000,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+      })).stdout.trim();
+    try {
+      const upstream = await git(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]);
+      await git(["fetch", "--quiet"]);
+      const [ahead = 0, behind = 0] = (await git(["rev-list", "--left-right", "--count", `HEAD...${upstream}`]))
+        .split(/\s+/).map(Number);
+      if (behind > 0) await git(["pull", "--ff-only", "--quiet"]);
+      return { ahead, behind, pulled: behind > 0 };
+    } catch (error) {
+      throw new Error(syncFailureMessage(vault.remoteUrl, error));
+    }
   }
 
   private registry(): Registry {

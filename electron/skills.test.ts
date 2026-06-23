@@ -43,6 +43,7 @@ describe("SkillService", () => {
   it("renders the vault format guide and each registered vault", () => {
     const skill = new SkillService(temporaryDirectory()).render([vaultA, vaultB]);
     expect(skill).toContain("name: vault-guide");
+    expect(skill).toContain("across the user's local Data Vault knowledge repositories");
     expect(skill).toContain("## Vault format");
     expect(skill).toContain("Knowledge");
     expect(skill).toContain("/vaults/knowledge");
@@ -94,6 +95,7 @@ describe("SkillService", () => {
     new SkillService(home).install([vaultA, vaultWithMeta]);
     const skill = fs.readFileSync(path.join(reviewerDir(home, ".claude"), "SKILL.md"), "utf8");
     expect(skill).toContain("name: document-reviewer");
+    expect(skill).toContain("documents in the user's local Data Vault knowledge repositories");
     expect(skill).toContain("# Document Reviewer");
     expect(skill).toContain("## Structural checks");
     expect(skill).toContain("Link integrity");

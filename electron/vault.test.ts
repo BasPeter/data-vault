@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { VaultService } from "./vault";
+import { cloneFailureMessage, syncFailureMessage, VaultService } from "./vault";
 
 const temporaryDirectories: string[] = [];
 
@@ -20,6 +20,36 @@ afterEach(() => {
 });
 
 describe("VaultService", () => {
+  it("turns Git credential prompt clone failures into actionable guidance", () => {
+    const error = {
+      stderr: [
+        "Cloning into 'C:\\Users\\tab-revenboe\\AppData\\Roaming\\Data Vault\\repositories\\65d8ccda'...",
+        "'C:\\Users\\tab-revenboe\\.local\\gh-cli\\bin\\gh.exe' auth git-credential get: line 1: C:\\Users\\tab-revenboe\\.local\\gh-cli\\bin\\gh.exe: No such file or directory",
+        "bash: line 1: /dev/tty: No such device or address",
+        "error: failed to execute prompt script (exit code 1)",
+        "fatal: could not read Username for 'https://github.com': No such file or directory",
+      ].join("\n"),
+    };
+    const message = cloneFailureMessage("https://github.com/ctechmssv/datavault", error);
+
+    expect(message).toContain("Git needs credentials for github.com");
+    expect(message).toContain("gh auth login");
+    expect(message).toContain("gh auth setup-git");
+    expect(message).toContain("git config --global --unset credential.helper");
+    expect(message).toContain("private repositories");
+    expect(message).not.toContain("Command failed: git clone");
+  });
+
+  it("turns Git credential prompt refresh failures into actionable guidance", () => {
+    const message = syncFailureMessage("https://github.com/ctechmssv/datavault", {
+      stderr: "fatal: could not read Username for 'https://github.com': terminal prompts disabled",
+    });
+
+    expect(message).toContain("Data Vault could not refresh this vault");
+    expect(message).toContain("gh auth login");
+    expect(message).toContain("Then try refreshing the vault again");
+  });
+
   it("returns author and edit time for each document source line", async () => {
     const root = temporaryDirectory();
     const documents = path.join(root, "documents");

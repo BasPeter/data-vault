@@ -5,6 +5,8 @@ import { SkillService } from "./skills";
 import { GitHubService } from "./github";
 import { checkForUpdates, configureUpdater, installUpdate, updateStatus } from "./updater";
 import type { GitHubCreateRepoInput, VaultStructure, VaultUpdate } from "../src/types";
+import { changelog, checkForUpdates, configureUpdater, installUpdate, securityAssessmentPrompt, updateStatus } from "./updater";
+import type { VaultStructure, VaultUpdate } from "../src/types";
 
 // Bounds for the optional vault.json `structure` tree, mirrored from
 // electron/vault.ts. The renderer is trusted but validated defensively.
@@ -86,6 +88,14 @@ function updateArgument(value: unknown): VaultUpdate {
 function htmlArgument(value: unknown): string {
   if (typeof value !== "string" || Buffer.byteLength(value, "utf8") > 2 * 1024 * 1024) {
     throw new Error("Invalid quick notes HTML.");
+  }
+  return value;
+}
+
+function optionalVersionArgument(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string" || !/^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(value)) {
+    throw new Error("Invalid version.");
   }
   return value;
 }
@@ -205,6 +215,11 @@ function registerIpc(): void {
   ipcMain.handle("app:update-status", (event) => { assertTrusted(event); return updateStatus(); });
   ipcMain.handle("app:check-for-updates", (event) => { assertTrusted(event); return checkForUpdates(); });
   ipcMain.handle("app:install-update", (event) => { assertTrusted(event); installUpdate(); });
+  ipcMain.handle("app:changelog", (event) => { assertTrusted(event); return changelog(); });
+  ipcMain.handle("app:security-assessment-prompt", (event, version) => {
+    assertTrusted(event);
+    return securityAssessmentPrompt(optionalVersionArgument(version));
+  });
   ipcMain.handle("app:set-title-bar-theme", (event, value) => {
     assertTrusted(event);
     const theme = titleBarThemeArgument(value);
