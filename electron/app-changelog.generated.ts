@@ -2,13 +2,30 @@
 import type { AppChangelog } from "../src/types";
 
 export const APP_CHANGELOG = {
-  "generatedAt": "2026-06-23T09:45:48+02:00",
+  "generatedAt": "2026-06-23T10:24:12+02:00",
   "repositoryUrl": "https://github.com/BasPeter/data-vault.git",
   "releases": [
     {
+      "version": "0.10.4",
+      "date": "2026-06-23T10:24:12+02:00",
+      "commits": [
+        {
+          "hash": "7e3cf94032525103ebbbc78c306c9afe4980b6a7",
+          "shortHash": "7e3cf94",
+          "subject": "Remove personal name from skill descriptions"
+        }
+      ]
+    },
+    {
       "version": "0.10.3",
-      "date": "2026-06-23T09:45:48+02:00",
-      "commits": []
+      "date": "2026-06-23T10:06:45+02:00",
+      "commits": [
+        {
+          "hash": "5aa8be0a991c7aea8463df660d1b79278c1eed0d",
+          "shortHash": "5aa8be0",
+          "subject": "Add app changelog and security prompt"
+        }
+      ]
     },
     {
       "version": "0.10.2",
