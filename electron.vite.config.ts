@@ -6,6 +6,10 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
+    // The GitHub OAuth device-flow client id is public (not a secret) and is baked
+    // in at build time. Maintainers supply it via DATA_VAULT_GITHUB_CLIENT_ID; an
+    // empty value disables GitHub sign-in.
+    define: { __GITHUB_CLIENT_ID__: JSON.stringify(process.env.DATA_VAULT_GITHUB_CLIENT_ID ?? "") },
     build: { rollupOptions: { input: { index: path.resolve("electron/main.ts") } } },
   },
   preload: {

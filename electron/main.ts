@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from "electron";
 import { VaultService } from "./vault";
 import { SkillService } from "./skills";
+import { GitHubService } from "./github";
 import {
   changelog,
   checkForUpdates,
@@ -24,6 +25,7 @@ app.setName(APPLICATION_NAME);
 
 let service: VaultService;
 let skills: SkillService;
+let github: GitHubService;
 let vaultChangePoll: NodeJS.Timeout | null = null;
 const watchedVaults = new Map<string, string>();
 
@@ -49,6 +51,35 @@ function stringArgument(value: unknown, name: string): string {
 function optionalText(value: unknown, name: string): string {
   if (typeof value !== "string" || value.length > STRUCTURE_MAX_TEXT) throw new Error(`Invalid ${name}.`);
   return value;
+}
+
+// `owner/repo`, each segment limited to GitHub's allowed characters. Rejecting
+// stray characters also keeps the https://github.com/<fullName>.git URL we build
+// well-formed.
+function repoFullNameArgument(value: unknown): string {
+  if (typeof value !== "string" || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value) || value.length > 256) {
+    throw new Error("Invalid repository name.");
+  }
+  return value;
+}
+
+// A GitHub login: letters, digits, and hyphens, up to 39 characters.
+function loginArgument(value: unknown): string {
+  if (typeof value !== "string" || !/^[A-Za-z\d-]{1,39}$/.test(value)) {
+    throw new Error("Invalid GitHub account.");
+  }
+  return value;
+}
+
+function createRepoArgument(value: unknown): { name: string; private: boolean; account: string } {
+  if (typeof value !== "object" || value === null) throw new Error("Invalid repository details.");
+  const record = value as Record<string, unknown>;
+  const name = record.name;
+  if (typeof name !== "string" || !/^[A-Za-z0-9_.-]+$/.test(name) || name.length > 100) {
+    throw new Error("Repository names may use letters, numbers, hyphens, underscores, and dots.");
+  }
+  if (typeof record.private !== "boolean") throw new Error("Invalid repository visibility.");
+  return { name, private: record.private, account: loginArgument(record.account) };
 }
 
 function structureArgument(value: unknown): VaultStructure {
@@ -289,6 +320,40 @@ function registerIpc(): void {
     assertTrusted(event);
     return skills.install(service.list());
   });
+  ipcMain.handle("github:status", (event) => {
+    assertTrusted(event);
+    return github.getStatus();
+  });
+  ipcMain.handle("github:start-device-flow", (event) => {
+    assertTrusted(event);
+    return github.startDeviceFlow();
+  });
+  ipcMain.handle("github:cancel-device-flow", (event) => {
+    assertTrusted(event);
+    github.cancelDeviceFlow();
+  });
+  ipcMain.handle("github:disconnect", (event, login) => {
+    assertTrusted(event);
+    return github.disconnect(loginArgument(login));
+  });
+  ipcMain.handle("github:list-repos", (event) => {
+    assertTrusted(event);
+    return github.listRepos();
+  });
+  ipcMain.handle("github:clone-by-full-name", async (event, fullName, account) => {
+    assertTrusted(event);
+    const vault = await service.cloneByFullName(repoFullNameArgument(fullName), loginArgument(account));
+    autoInstallSkills();
+    return vault;
+  });
+  ipcMain.handle("github:create-repo-and-clone", async (event, input) => {
+    assertTrusted(event);
+    const { name, private: isPrivate, account } = createRepoArgument(input);
+    const repo = await github.createRepo({ name, private: isPrivate, account });
+    const vault = await service.cloneByFullName(repo.fullName, account);
+    autoInstallSkills();
+    return vault;
+  });
 }
 
 function createWindow(): void {
@@ -331,7 +396,8 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
-  service = new VaultService(app.getPath("userData"));
+  github = new GitHubService(app.getPath("userData"));
+  service = new VaultService(app.getPath("userData"), (account, owner) => github.authHeaderValue(account, owner));
   // E2E runs launch against a throwaway `--user-data-dir`, but skills install to
   // the home directory, which the Chromium switch does not isolate. Redirect the
   // skills home into that same throwaway dir under test so automated runs never

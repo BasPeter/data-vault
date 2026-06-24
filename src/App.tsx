@@ -1,5 +1,16 @@
 import { useEffect, useState } from "react";
-import { Database, FileDown, FolderOpen, GitBranch, GitCommitHorizontal, Network, Plus, RefreshCw } from "lucide-react";
+import {
+  Database,
+  FileDown,
+  FolderOpen,
+  GitBranch,
+  GitCommitHorizontal,
+  Github,
+  Network,
+  Plus,
+  RefreshCw,
+} from "lucide-react";
+import { GithubConnectDialog } from "@/components/github-connect-dialog";
 import { AppSidebar } from "@/components/app-sidebar";
 import { DocumentView } from "@/components/document-view";
 import { GraphView } from "@/components/graph-view";
@@ -267,6 +278,8 @@ function Onboarding({
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [connectOpen, setConnectOpen] = useState(false);
   const run = async (action: () => Promise<{ id: string }>) => {
     setBusy(true);
     setLocalError(null);
@@ -288,49 +301,65 @@ function Onboarding({
         <Database className="text-primary mb-4 size-10" />
         <h1 className="text-2xl font-semibold">Open a data vault</h1>
         <p className="text-muted-foreground mt-2 text-sm">
-          Clone a Git repository, open an existing local clone, or create a new vault.
+          Connect your GitHub account to open an existing vault or create a new one — no Git setup required.
         </p>
-        <div className="mt-6 flex gap-2">
-          <Input
-            value={url}
-            onChange={(event) => setUrl(event.target.value)}
-            placeholder="https://github.com/company/vault.git"
-          />
-          <Button onClick={clone} disabled={!url.trim() || busy}>
-            <GitBranch />
-            {busy ? "Cloning…" : "Clone"}
-          </Button>
-        </div>
-        <div className="my-5 flex items-center gap-3">
-          <Separator className="flex-1" />
-          <span className="text-muted-foreground text-xs">OR</span>
-          <Separator className="flex-1" />
-        </div>
-        <div className="flex gap-2">
-          <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="New vault name" />
-          <Button variant="outline" onClick={create} disabled={!name.trim() || busy}>
-            <Plus />
-            {busy ? "Creating…" : "Create"}
-          </Button>
-        </div>
-        <div className="my-5 flex items-center gap-3">
-          <Separator className="flex-1" />
-          <span className="text-muted-foreground text-xs">OR</span>
-          <Separator className="flex-1" />
-        </div>
-        <Button variant="outline" className="w-full" onClick={onLocal}>
-          <FolderOpen />
-          Open local repository
+        <Button className="mt-6 w-full" size="lg" onClick={() => setConnectOpen(true)}>
+          <Github />
+          Connect to GitHub
         </Button>
-        <div className="mt-3 flex justify-center">
+        <button
+          type="button"
+          className="text-muted-foreground hover:text-foreground mx-auto mt-4 block text-xs underline-offset-4 hover:underline"
+          onClick={() => setShowAdvanced((value) => !value)}
+        >
+          {showAdvanced ? "Hide advanced options" : "Advanced: open by Git URL or local folder"}
+        </button>
+        {showAdvanced && (
+          <div className="mt-4 border-t pt-4">
+            <div className="flex gap-2">
+              <Input
+                value={url}
+                onChange={(event) => setUrl(event.target.value)}
+                placeholder="https://github.com/company/vault.git"
+              />
+              <Button variant="outline" onClick={clone} disabled={!url.trim() || busy}>
+                <GitBranch />
+                {busy ? "Cloning…" : "Clone"}
+              </Button>
+            </div>
+            <div className="my-4 flex items-center gap-3">
+              <Separator className="flex-1" />
+              <span className="text-muted-foreground text-xs">OR</span>
+              <Separator className="flex-1" />
+            </div>
+            <div className="flex gap-2">
+              <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="New vault name" />
+              <Button variant="outline" onClick={create} disabled={!name.trim() || busy}>
+                <Plus />
+                {busy ? "Creating…" : "Create"}
+              </Button>
+            </div>
+            <div className="my-4 flex items-center gap-3">
+              <Separator className="flex-1" />
+              <span className="text-muted-foreground text-xs">OR</span>
+              <Separator className="flex-1" />
+            </div>
+            <Button variant="outline" className="w-full" onClick={onLocal}>
+              <FolderOpen />
+              Open local repository
+            </Button>
+          </div>
+        )}
+        <div className="mt-4 flex justify-center">
           <UpdateButton showLabel />
         </div>
         {(error || localError) && (
-          <p role="alert" className="text-destructive mt-4 text-sm">
+          <p role="alert" className="text-destructive mt-4 whitespace-pre-wrap text-sm">
             {localError || error}
           </p>
         )}
       </div>
+      <GithubConnectDialog open={connectOpen} onOpenChange={setConnectOpen} onDone={onCloned} />
     </div>
   );
 }

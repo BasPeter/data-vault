@@ -1,6 +1,17 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { ArrowLeft, Check, ChevronsUpDown, FolderOpen, FolderTree, GitBranch, Plus, Settings } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  ChevronsUpDown,
+  FolderOpen,
+  FolderTree,
+  GitBranch,
+  Github,
+  Plus,
+  Settings,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { GithubConnectDialog } from "@/components/github-connect-dialog";
 import {
   Dialog,
   DialogContent,
@@ -26,7 +37,7 @@ type VaultSwitcherProps = {
 
 export function VaultSwitcher({ vaults, vaultId, onSwitch, onLocal, onRefresh }: VaultSwitcherProps) {
   const [open, setOpen] = useState(false);
-  const [dialog, setDialog] = useState<"github" | "create" | null>(null);
+  const [dialog, setDialog] = useState<"connect" | "github" | "create" | null>(null);
   const [settingsVault, setSettingsVault] = useState<VaultSummary | null>(null);
   const active = vaults.find((vault) => vault.id === vaultId);
 
@@ -70,8 +81,16 @@ export function VaultSwitcher({ vaults, vaultId, onSwitch, onLocal, onRefresh }:
           </div>
           <Separator className="my-1" />
           <ActionItem
+            icon={<Github />}
+            label="Connect to GitHub…"
+            onClick={() => {
+              setDialog("connect");
+              setOpen(false);
+            }}
+          />
+          <ActionItem
             icon={<GitBranch />}
-            label="Add from GitHub…"
+            label="Add from Git URL…"
             onClick={() => {
               setDialog("github");
               setOpen(false);
@@ -96,6 +115,11 @@ export function VaultSwitcher({ vaults, vaultId, onSwitch, onLocal, onRefresh }:
         </PopoverContent>
       </Popover>
 
+      <GithubConnectDialog
+        open={dialog === "connect"}
+        onOpenChange={(next) => setDialog(next ? "connect" : null)}
+        onDone={onRefresh}
+      />
       <GithubImportDialog
         open={dialog === "github"}
         onOpenChange={(next) => setDialog(next ? "github" : null)}
@@ -168,8 +192,10 @@ function GithubImportDialog({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add vault from GitHub</DialogTitle>
-          <DialogDescription>Clone a Git repository over HTTPS, SSH, or git@.</DialogDescription>
+          <DialogTitle>Add vault from Git URL</DialogTitle>
+          <DialogDescription>
+            Clone a Git repository over HTTPS, SSH, or git@ using your system Git credentials.
+          </DialogDescription>
         </DialogHeader>
         <Input
           autoFocus

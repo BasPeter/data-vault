@@ -58,6 +58,9 @@ export type VaultSummary = {
   name: string;
   repositoryPath: string;
   remoteUrl?: string;
+  // Login of the GitHub account whose token clones/syncs this vault. App-local
+  // (kept in the registry, not vault.json), set when cloned or created.
+  githubAccount?: string;
   defaultLanguage?: string;
   structure?: VaultStructure;
 };
@@ -118,6 +121,47 @@ export type SkillStatus = {
   vaultCount: number;
 };
 
+export type GitHubAccount = {
+  login: string;
+  avatarUrl?: string;
+};
+
+export type GitHubStatus = {
+  configured: boolean;
+  secure: boolean;
+  accounts: GitHubAccount[];
+};
+
+export type GitHubRepo = {
+  fullName: string;
+  name: string;
+  owner: string;
+  private: boolean;
+  cloneUrl: string;
+  description: string | null;
+  updatedAt: string;
+  // Login of the connected account this repository was listed through; identifies
+  // which token to use when cloning it.
+  account: string;
+};
+
+export type GitHubDeviceFlowStart = {
+  userCode: string;
+  verificationUri: string;
+  expiresInSeconds: number;
+};
+
+export type GitHubDeviceFlowEvent = {
+  state: "pending" | "connected" | "expired" | "denied" | "error";
+  message?: string;
+};
+
+export type CreateRepoInput = {
+  name: string;
+  private: boolean;
+  account: string;
+};
+
 export type VaultApi = {
   platform: NodeJS.Platform;
   list: () => Promise<VaultSummary[]>;
@@ -144,6 +188,15 @@ export type VaultApi = {
   onVaultChanged: (listener: (vaultId: string) => void) => () => void;
   skillStatus: () => Promise<SkillStatus>;
   installSkills: () => Promise<SkillStatus>;
+  githubStatus: () => Promise<GitHubStatus>;
+  startDeviceFlow: () => Promise<GitHubDeviceFlowStart>;
+  cancelDeviceFlow: () => Promise<void>;
+  disconnectGithub: (login: string) => Promise<GitHubStatus>;
+  listGithubRepos: () => Promise<GitHubRepo[]>;
+  cloneGithubRepo: (fullName: string, account: string) => Promise<VaultSummary>;
+  createGithubRepoAndClone: (input: CreateRepoInput) => Promise<VaultSummary>;
+  onGithubStatus: (listener: (status: GitHubStatus) => void) => () => void;
+  onGithubDeviceFlow: (listener: (event: GitHubDeviceFlowEvent) => void) => () => void;
 };
 
 declare global {

@@ -54,6 +54,48 @@ The quick-notes button opens a scratchpad for the active vault. Its HTML is
 stored as `quick-notes.html` at the documents root and is intentionally omitted
 from the document tree and graph. The application does not commit this file.
 
+## Connecting to GitHub
+
+**Connect to GitHub** signs you in with GitHub's OAuth device flow — no terminal,
+SSH keys, or Git credential setup required. Enter the displayed code on GitHub,
+approve access, and Data Vault can then:
+
+- list your repositories and clone any of them as a vault, and
+- create a brand-new repository on GitHub (public or private) and open it in one
+  step.
+
+You can connect **more than one account** at the same time — for example a
+personal account and a work account — from the same dialog. Each vault remembers
+the account it was cloned or created with and automatically uses that account's
+token for its pushes and pulls; vaults added by raw URL are matched to a
+connected account by repository owner. The repository picker lists repositories
+across every connected account, and the create form lets you choose which
+account to create under.
+
+Each account's access token is stored locally, encrypted with the operating
+system keychain through Electron `safeStorage` when available. Tokens never reach
+the renderer and are supplied to Git per-operation (via a request header), so
+they are never written into a repository's Git config or remote URL. When the documents directory is
+missing — for example in a freshly created repository — it is created
+automatically when the vault is opened.
+
+The **Advanced** options still allow cloning by raw Git URL (using your system
+Git credentials) or opening a local clone, which is what GitHub-connected sign-in
+replaces for most users.
+
+### Build configuration
+
+GitHub sign-in requires a [GitHub OAuth App](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app)
+with **device flow enabled**. Supply its client ID at build time; the device-flow
+client ID is public, not a secret:
+
+```bash
+DATA_VAULT_GITHUB_CLIENT_ID=Iv1xxxxxxxxxxxxx npm run build
+```
+
+When no client ID is configured, the GitHub sign-in button is disabled and only
+the advanced Git-URL and local-folder options are available.
+
 ## Agent skills
 
 Data Vault generates two agent skills for Claude and Codex from your registered
