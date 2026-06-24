@@ -190,6 +190,10 @@ function registerIpc(): void {
     assertTrusted(event);
     return service.document(stringArgument(vaultId, "vault ID"), stringArgument(documentId, "document ID"));
   });
+  ipcMain.handle("vault:delete-document", (event, vaultId, documentId) => {
+    assertTrusted(event);
+    return service.deleteDocument(stringArgument(vaultId, "vault ID"), stringArgument(documentId, "document ID"));
+  });
   ipcMain.handle("vault:blame", (event, vaultId, documentId) => {
     assertTrusted(event);
     return service.blame(stringArgument(vaultId, "vault ID"), stringArgument(documentId, "document ID"));

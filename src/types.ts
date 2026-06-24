@@ -80,6 +80,12 @@ export type VaultUpdateResult = {
   push?: { ok: boolean; message?: string };
 };
 
+export type DeleteDocumentResult = {
+  documentId: string;
+  committed: boolean;
+  pushed?: { ok: boolean; message?: string };
+};
+
 export type GitHubStatus = {
   authenticated: boolean;
   login?: string;
@@ -158,6 +164,7 @@ export type VaultApi = {
   updateVault: (vaultId: string, update: VaultUpdate) => Promise<VaultUpdateResult>;
   manifest: (vaultId: string) => Promise<Manifest>;
   document: (vaultId: string, documentId: string) => Promise<LoadedDoc>;
+  deleteDocument: (vaultId: string, documentId: string) => Promise<DeleteDocumentResult>;
   blame: (vaultId: string, documentId: string) => Promise<BlameLine[]>;
   quickNotes: (vaultId: string) => Promise<string>;
   saveQuickNotes: (vaultId: string, html: string) => Promise<void>;

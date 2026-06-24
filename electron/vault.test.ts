@@ -190,6 +190,30 @@ describe("VaultService", () => {
     expect(head).toMatch(/^[0-9a-f]{40}$/);
   });
 
+  it("deletes a document and commits the removal", async () => {
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = await service.createEmpty("Vault");
+
+    const result = await service.deleteDocument(vault.id, "welcome.html");
+
+    expect(result).toMatchObject({ documentId: "welcome.html", committed: true });
+    expect(result.pushed).toBeUndefined();
+    expect(fs.existsSync(path.join(vault.repositoryPath, "documents", "welcome.html"))).toBe(false);
+    expect(service.manifest(vault.id).tree).toEqual([]);
+    expect(execFileSync("git", ["-C", vault.repositoryPath, "status", "--porcelain"]).toString()).toBe("");
+    expect(execFileSync("git", ["-C", vault.repositoryPath, "log", "-1", "--pretty=%s"]).toString().trim())
+      .toBe("Delete welcome.html");
+  });
+
+  it("does not delete quick notes through the document delete flow", async () => {
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = await service.createEmpty("Vault");
+    service.saveQuickNotes(vault.id, "<p>Keep me</p>");
+
+    await expect(service.deleteDocument(vault.id, "quick-notes.html")).rejects.toThrow("Quick notes cannot be deleted");
+    expect(service.quickNotes(vault.id)).toBe("<p>Keep me</p>");
+  });
+
   it("rejects an empty vault name", async () => {
     const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
     await expect(service.createEmpty("   ")).rejects.toThrow("Enter a vault name");

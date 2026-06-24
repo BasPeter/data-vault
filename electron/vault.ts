@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import type {
   BlameLine,
   DirectoryMeta,
+  DeleteDocumentResult,
   GraphData,
   GraphNode,
   LoadedDoc,
@@ -502,7 +503,41 @@ export class VaultService {
     }
   }
 
-  private documentFile(vaultId: string, documentId: string): { candidate: string; canonical: string } {
+  async deleteDocument(vaultId: string, documentId: string): Promise<DeleteDocumentResult> {
+    const vault = this.vault(vaultId);
+    const root = this.documentsRoot(vaultId);
+    const { canonical } = this.documentFile(vaultId, documentId, { allowLarge: true });
+    const documentRelative = path.relative(root, canonical).split(path.sep).join("/");
+    if (documentRelative === QUICK_NOTES_FILE) throw new Error("Quick notes cannot be deleted here.");
+
+    const repositoryRelative = path.relative(vault.repositoryPath, canonical).split(path.sep).join("/");
+    fs.rmSync(canonical);
+    await this.git(vault.repositoryPath, ["add", "-A", "--", repositoryRelative]);
+
+    const status = await this.git(vault.repositoryPath, ["status", "--porcelain", "--", repositoryRelative]);
+    if (!status) return { documentId: documentRelative, committed: false };
+
+    await this.git(vault.repositoryPath, [
+      "-c", "user.name=Data Vault",
+      "-c", "user.email=data-vault@localhost",
+      "commit", "-m", `Delete ${documentRelative}`,
+    ]);
+
+    const result: DeleteDocumentResult = { documentId: documentRelative, committed: true };
+    try {
+      await this.git(vault.repositoryPath, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]);
+      await this.git(vault.repositoryPath, ["push"], { GIT_TERMINAL_PROMPT: "0" });
+      result.pushed = { ok: true };
+    } catch (error) {
+      const message = gitErrorOutput(error);
+      if (!/no upstream configured|no tracking information|no upstream branch/i.test(message)) {
+        result.pushed = { ok: false, message };
+      }
+    }
+    return result;
+  }
+
+  private documentFile(vaultId: string, documentId: string, options?: { allowLarge?: boolean }): { candidate: string; canonical: string } {
     const root = this.documentsRoot(vaultId);
     if (!documentId || path.isAbsolute(documentId) || !documentId.toLowerCase().endsWith(".html")) {
       throw new Error("Invalid document ID.");
@@ -511,7 +546,7 @@ export class VaultService {
     if (!isWithin(root, candidate) || !fs.existsSync(candidate)) throw new Error("Document not found.");
     const canonical = fs.realpathSync(candidate);
     if (!isWithin(root, canonical) || !fs.statSync(canonical).isFile()) throw new Error("Document not found.");
-    if (fs.statSync(canonical).size > MAX_DOCUMENT_BYTES) throw new Error("Document is too large.");
+    if (!options?.allowLarge && fs.statSync(canonical).size > MAX_DOCUMENT_BYTES) throw new Error("Document is too large.");
     return { candidate, canonical };
   }
 

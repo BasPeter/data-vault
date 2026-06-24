@@ -13,6 +13,7 @@ const api: VaultApi = {
   updateVault: (vaultId, update) => ipcRenderer.invoke("vault:update", vaultId, update),
   manifest: (vaultId) => ipcRenderer.invoke("vault:manifest", vaultId),
   document: (vaultId, documentId) => ipcRenderer.invoke("vault:document", vaultId, documentId),
+  deleteDocument: (vaultId, documentId) => ipcRenderer.invoke("vault:delete-document", vaultId, documentId),
   blame: (vaultId, documentId) => ipcRenderer.invoke("vault:blame", vaultId, documentId),
   quickNotes: (vaultId) => ipcRenderer.invoke("vault:quick-notes", vaultId),
   saveQuickNotes: (vaultId, html) => ipcRenderer.invoke("vault:save-quick-notes", vaultId, html),

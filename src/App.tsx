@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Database, FolderOpen, GitBranch, GitCommitHorizontal, Github, Network, Plus, RefreshCw } from "lucide-react";
+import { Database, FolderOpen, GitBranch, GitCommitHorizontal, Github, Network, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { DocumentView } from "@/components/document-view";
 import { GraphView } from "@/components/graph-view";
@@ -47,6 +47,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [showBlame, setShowBlame] = useState(false);
 
   const refreshVaults = async (preferred?: string) => {
@@ -120,6 +121,28 @@ export default function App() {
     }
   };
 
+  const deleteActiveDocument = async () => {
+    if (!vaultId || !activeId) return;
+    const label = title || activeId;
+    if (!window.confirm(`Delete "${label}" from this vault? This removes the file and commits the deletion to Git.`)) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      const result = await window.vaultApi.deleteDocument(vaultId, activeId);
+      setShowBlame(false);
+      setActiveId(null);
+      location.hash = "";
+      setVersion((value) => value + 1);
+      if (result.pushed && !result.pushed.ok) {
+        setError(`Deleted and committed, but push failed: ${result.pushed.message || "unknown error"}`);
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading) return <CenteredMessage title="Loading vaults…" />;
   if (!vaultId) return <Onboarding onLocal={addLocal} onCloned={refreshVaults} error={error} />;
 
@@ -154,6 +177,16 @@ export default function App() {
               <RefreshCw className={syncing ? "animate-spin" : ""} />
             </Button>
             <QuickNotesPanel vaultId={vaultId} version={version} />
+            <Button
+              variant="ghost"
+              size="icon"
+              title="Delete document"
+              aria-label="Delete document"
+              disabled={view !== "doc" || !activeId || deleting}
+              onClick={deleteActiveDocument}
+            >
+              <Trash2 />
+            </Button>
             <Button
               variant={showBlame && view === "doc" ? "secondary" : "ghost"}
               size="icon"
