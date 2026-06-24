@@ -1,6 +1,6 @@
 import path from "node:path";
 import fs from "node:fs";
-import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type IpcMainInvokeEvent } from "electron";
 import { VaultService } from "./vault";
 import { SkillService } from "./skills";
 import { GitHubService } from "./github";
@@ -228,6 +228,10 @@ function registerIpc(): void {
     autoInstallSkills();
     return result;
   });
+  ipcMain.handle("vault:remove", (event, vaultId) => {
+    assertTrusted(event);
+    service.remove(stringArgument(vaultId, "vault ID"));
+  });
   ipcMain.handle("vault:manifest", (event, vaultId) => {
     assertTrusted(event);
     return service.manifest(stringArgument(vaultId, "vault ID"));
@@ -356,6 +360,67 @@ function registerIpc(): void {
   });
 }
 
+// Return the app to its first-run state after an explicit native confirmation:
+// forget every opened vault, sign out of all GitHub accounts, and clear renderer
+// preferences (theme, sidebar width). Vault files on disk and GitHub repositories
+// are never deleted. The window then reloads to the welcome screen.
+async function resetApplicationSettings(window: BrowserWindow): Promise<void> {
+  const { response } = await dialog.showMessageBox(window, {
+    type: "warning",
+    buttons: ["Cancel", "Reset"],
+    defaultId: 0,
+    cancelId: 0,
+    title: "Reset application settings",
+    message: "Reset Data Vault to its first-run state?",
+    detail:
+      "This forgets every opened vault, signs you out of all GitHub accounts, and clears app preferences such as the theme. Your vault files on disk and the repositories on GitHub are not deleted. The window will reload to the welcome screen.",
+  });
+  if (response !== 1) return;
+  service.reset();
+  github.reset();
+  await window.webContents.session.clearStorageData({ storages: ["localstorage"] });
+  window.webContents.reload();
+}
+
+// Replace Electron's default menu with our own so the standard editing, view, and
+// window shortcuts are preserved while adding the settings reset. On macOS it
+// lives in the application menu; elsewhere under File.
+function installApplicationMenu(): void {
+  const isMac = process.platform === "darwin";
+  const resetItem: Electron.MenuItemConstructorOptions = {
+    label: "Reset Application Settings…",
+    click: (_item, window) => {
+      const target = window ?? BrowserWindow.getAllWindows()[0];
+      if (target instanceof BrowserWindow) void resetApplicationSettings(target);
+    },
+  };
+  const template: Electron.MenuItemConstructorOptions[] = [];
+  if (isMac) {
+    template.push({
+      label: APPLICATION_NAME,
+      submenu: [
+        { role: "about" },
+        { type: "separator" },
+        resetItem,
+        { type: "separator" },
+        { role: "services" },
+        { type: "separator" },
+        { role: "hide" },
+        { role: "hideOthers" },
+        { role: "unhide" },
+        { type: "separator" },
+        { role: "quit" },
+      ],
+    });
+  }
+  template.push({
+    label: "File",
+    submenu: isMac ? [{ role: "close" }] : [resetItem, { type: "separator" }, { role: "quit" }],
+  });
+  template.push({ role: "editMenu" }, { role: "viewMenu" }, { role: "windowMenu" });
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 function createWindow(): void {
   const window = new BrowserWindow({
     width: 1280,
@@ -415,6 +480,7 @@ app.whenReady().then(() => {
   if (process.platform === "darwin") {
     app.dock?.setIcon(applicationIconPath());
   }
+  installApplicationMenu();
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

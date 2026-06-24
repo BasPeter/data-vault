@@ -8,6 +8,7 @@ const api: VaultApi = {
   clone: (url) => ipcRenderer.invoke("vault:clone", url),
   createEmpty: (name) => ipcRenderer.invoke("vault:create-empty", name),
   updateVault: (vaultId, update) => ipcRenderer.invoke("vault:update", vaultId, update),
+  removeVault: (vaultId) => ipcRenderer.invoke("vault:remove", vaultId),
   manifest: (vaultId) => ipcRenderer.invoke("vault:manifest", vaultId),
   document: (vaultId, documentId) => ipcRenderer.invoke("vault:document", vaultId, documentId),
   saveDocumentPdf: (vaultId, documentId) => ipcRenderer.invoke("vault:save-document-pdf", vaultId, documentId),

@@ -9,6 +9,7 @@ import {
   Github,
   Plus,
   Settings,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GithubConnectDialog } from "@/components/github-connect-dialog";
@@ -323,6 +324,7 @@ function VaultSettingsDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const [key, setKey] = useState<string | null>(null);
 
   // Reset fields whenever a vault is opened, and clear the key on close so
@@ -337,6 +339,7 @@ function VaultSettingsDialog({
     setView("settings");
     setError(null);
     setNotice(null);
+    setConfirmRemove(false);
   } else if (!vault && key !== null) {
     setKey(null);
   }
@@ -381,6 +384,21 @@ function VaultSettingsDialog({
       } else {
         onOpenChange(false);
       }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!vault) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await window.vaultApi.removeVault(vault.id);
+      onOpenChange(false);
+      await onDone();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -467,6 +485,35 @@ function VaultSettingsDialog({
               <p role="alert" className="text-sm text-amber-600 dark:text-amber-500">
                 {notice}
               </p>
+            )}
+            <Separator />
+            {!confirmRemove ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:text-destructive self-start"
+                onClick={() => setConfirmRemove(true)}
+                disabled={busy}
+              >
+                <Trash2 />
+                Remove vault
+              </Button>
+            ) : (
+              <div className="border-destructive/50 bg-destructive/10 flex flex-col gap-2 rounded-md border p-3">
+                <p className="text-sm">
+                  Remove <span className="font-medium">{vault?.name}</span> from Data Vault? This only forgets the vault
+                  here — its files on disk and any GitHub repository are left untouched.
+                </p>
+                <div className="flex gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => setConfirmRemove(false)} disabled={busy}>
+                    Cancel
+                  </Button>
+                  <Button variant="destructive" size="sm" onClick={remove} disabled={busy}>
+                    <Trash2 />
+                    {busy ? "Removing…" : "Remove vault"}
+                  </Button>
+                </div>
+              </div>
             )}
             <DialogFooter>
               <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>

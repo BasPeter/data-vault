@@ -64,7 +64,13 @@ export default function App() {
   const refreshVaults = async (preferred?: string) => {
     const next = await window.vaultApi.list();
     setVaults(next);
-    setVaultId((current) => preferred || current || next[0]?.id || null);
+    // Keep the current vault only if it still exists (it may have been removed),
+    // otherwise fall back to the preferred one, then the first available.
+    setVaultId((current) => {
+      if (preferred) return preferred;
+      if (current && next.some((vault) => vault.id === current)) return current;
+      return next[0]?.id ?? null;
+    });
   };
 
   useEffect(() => {

@@ -169,6 +169,7 @@ export type VaultApi = {
   clone: (url: string) => Promise<VaultSummary>;
   createEmpty: (name: string) => Promise<VaultSummary>;
   updateVault: (vaultId: string, update: VaultUpdate) => Promise<VaultUpdateResult>;
+  removeVault: (vaultId: string) => Promise<void>;
   manifest: (vaultId: string) => Promise<Manifest>;
   document: (vaultId: string, documentId: string) => Promise<LoadedDoc>;
   saveDocumentPdf: (vaultId: string, documentId: string) => Promise<SavePdfResult>;

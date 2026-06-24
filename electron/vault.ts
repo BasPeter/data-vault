@@ -389,6 +389,21 @@ export class VaultService {
     return Object.keys(this.githubAuthEnv(url, account)).length > 0;
   }
 
+  // Forget every opened vault, returning the app to its first-run state. Only the
+  // registry that lists the vaults is cleared; the cloned repositories on disk are
+  // left untouched (their UUID-named directories never collide with future clones,
+  // and they may hold unpushed commits), as are any local folders the user added.
+  reset(): void {
+    fs.rmSync(this.registryFile, { force: true });
+  }
+
+  // Forget a single vault, dropping it from the registry so it no longer appears
+  // in the app. Like reset(), the repository on disk — a clone under userData or a
+  // local folder the user added — is left untouched; only the registry entry goes.
+  remove(vaultId: string): void {
+    this.save({ vaults: this.registry().vaults.filter((vault) => vault.id !== vaultId) });
+  }
+
   list(): VaultSummary[] {
     // Re-describe from each repository's vault.json on every read so hand- or
     // agent-edits to name/defaultLanguage/structure surface without re-adding the
