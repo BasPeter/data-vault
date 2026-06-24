@@ -107,7 +107,7 @@ export function GithubConnectDialog({ open, onOpenChange, onDone }: GithubConnec
 
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : close())}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-h-[85vh] grid-cols-[minmax(0,1fr)] overflow-x-hidden overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Github className="size-5" />
@@ -357,7 +357,7 @@ function ConnectedView({
               className="pl-8"
             />
           </div>
-          <div className="max-h-64 min-h-32 overflow-auto rounded-md border">
+          <div className="max-h-64 min-h-32 overflow-x-hidden overflow-y-auto rounded-md border">
             {repos === null ? (
               <p className="text-muted-foreground p-4 text-sm">Loading repositories…</p>
             ) : filtered.length === 0 ? (
@@ -378,7 +378,7 @@ function ConnectedView({
                   className="hover:bg-accent flex w-full items-center gap-2 border-b px-3 py-2 text-left text-sm last:border-b-0 disabled:opacity-60"
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex min-w-0 items-center gap-1.5">
                       <span className="truncate font-medium">{repo.fullName}</span>
                       {repo.private && <Lock className="text-muted-foreground size-3 shrink-0" />}
                     </div>
