@@ -9,6 +9,9 @@ test("opens a local repository and creates a second vault in one session", async
     await expect(page.getByRole("heading", { name: "Open a data vault" })).toBeVisible();
     await captureScreenshot(page, testInfo, "onboarding-screen");
 
+    // The local-folder and Git-URL paths now live under the Advanced section.
+    await page.getByRole("button", { name: "Advanced: open by Git URL or local folder" }).click();
+
     // Drive the "Open local repository" flow with a stubbed native picker.
     await stubDirectoryDialog(app, vaultDir);
     await page.getByRole("button", { name: "Open local repository" }).click();
