@@ -79,7 +79,7 @@ a red dot appears on the version when a newer release is found. A newer release
 downloads in the background; click the version to open the update prompt and
 choose **Update and restart** once it is ready. You can also trigger a manual
 check from the same prompt. Update checks are unavailable in the unpackaged
-development build. macOS updates require signed release builds.
+development build.
 
 ## Security model
 
