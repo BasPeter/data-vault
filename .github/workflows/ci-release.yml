@@ -95,6 +95,10 @@ jobs:
             os: windows-latest
             artifact: data-vault-windows
     runs-on: ${{ matrix.os }}
+    # The GitHub OAuth device-flow client id is public (baked into the bundle), so
+    # it lives in a repository variable rather than a secret. Empty disables sign-in.
+    env:
+      DATA_VAULT_GITHUB_CLIENT_ID: ${{ vars.DATA_VAULT_GITHUB_CLIENT_ID }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
