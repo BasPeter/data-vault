@@ -255,6 +255,16 @@ export class GitHubService {
     return this.getStatus();
   }
 
+  // Sign out of every connected account and discard the encrypted token file,
+  // used by the application-wide settings reset. Any in-flight device flow is
+  // retired so a pending sign-in cannot resurrect an account afterwards.
+  reset(): void {
+    this.cancelDeviceFlow();
+    this.accounts = [];
+    fs.rmSync(this.authFile, { force: true });
+    this.publishStatus();
+  }
+
   async listRepos(): Promise<GitHubRepo[]> {
     const repos: GitHubRepo[] = [];
     for (const account of [...this.accounts]) {
