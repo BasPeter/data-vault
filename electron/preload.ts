@@ -35,6 +35,23 @@ const api: VaultApi = {
   },
   skillStatus: () => ipcRenderer.invoke("skill:status"),
   installSkills: () => ipcRenderer.invoke("skill:install"),
+  githubStatus: () => ipcRenderer.invoke("github:status"),
+  startDeviceFlow: () => ipcRenderer.invoke("github:start-device-flow"),
+  cancelDeviceFlow: () => ipcRenderer.invoke("github:cancel-device-flow"),
+  disconnectGithub: (login) => ipcRenderer.invoke("github:disconnect", login),
+  listGithubRepos: () => ipcRenderer.invoke("github:list-repos"),
+  cloneGithubRepo: (fullName, account) => ipcRenderer.invoke("github:clone-by-full-name", fullName, account),
+  createGithubRepoAndClone: (input) => ipcRenderer.invoke("github:create-repo-and-clone", input),
+  onGithubStatus: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, status: Parameters<typeof listener>[0]) => listener(status);
+    ipcRenderer.on("github:status", handler);
+    return () => ipcRenderer.removeListener("github:status", handler);
+  },
+  onGithubDeviceFlow: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, event: Parameters<typeof listener>[0]) => listener(event);
+    ipcRenderer.on("github:device-flow", handler);
+    return () => ipcRenderer.removeListener("github:device-flow", handler);
+  },
 };
 
 contextBridge.exposeInMainWorld("vaultApi", api);

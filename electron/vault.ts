@@ -139,6 +139,18 @@ function nameFromUrl(url: string): string {
   return humanize(last.replace(/\.git$/i, "")).trim();
 }
 
+// The owner segment of a github.com HTTPS URL (e.g. "acme" from
+// https://github.com/acme/vault.git), used to match a repository to a connected
+// account when the vault has no explicit account recorded.
+function ownerFromUrl(url: string): string | undefined {
+  try {
+    const segments = new URL(url).pathname.split("/").filter(Boolean);
+    return segments[0];
+  } catch {
+    return undefined;
+  }
+}
+
 function safeRepositoryUrl(url: string): boolean {
   if (!url || url.startsWith("-")) return false;
   if (/^git@[\w.-]+:[\w./-]+(?:\.git)?$/.test(url)) return true;
@@ -167,10 +179,11 @@ function gitCredentialFailureMessage(
   action: string,
   retryAction: string,
   error: unknown,
+  authenticated = false,
 ): string | null {
   const output = gitErrorOutput(error);
   const credentialPromptFailed =
-    /could not read Username|terminal prompts disabled|failed to execute prompt script|\/dev\/tty|git-credential/i.test(
+    /could not read Username|terminal prompts disabled|failed to execute prompt script|\/dev\/tty|git-credential|Authentication failed|invalid username or password|403|401/i.test(
       output,
     );
   const missingCredentialHelper =
@@ -192,6 +205,21 @@ function gitCredentialFailureMessage(
     .filter(Boolean)
     .slice(-4)
     .join(" ");
+
+  // When the app supplied a GitHub token, credential failures mean the token is
+  // expired, revoked, or lacks access — point the user at reconnecting instead
+  // of the gh CLI setup the manual-URL flow needs.
+  if (authenticated) {
+    return [
+      `Data Vault could not ${action} because your GitHub sign-in is no longer valid.`,
+      "Your token may have expired, been revoked, or lack access to this repository.",
+      `Reconnect your GitHub account, then try ${retryAction} again. For organization repositories, also approve repository and SAML SSO access.`,
+      diagnostic ? `Git said: ${diagnostic}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+  }
+
   return [
     `Data Vault could not ${action} because Git needs credentials for ${host}, but no working credential prompt is available.`,
     "To fix this, open a terminal and sign in with GitHub CLI:",
@@ -206,8 +234,14 @@ function gitCredentialFailureMessage(
     .join("\n\n");
 }
 
-export function cloneFailureMessage(url: string, error: unknown): string {
-  const credentialMessage = gitCredentialFailureMessage(url, "clone this repository", "cloning the vault", error);
+export function cloneFailureMessage(url: string, error: unknown, authenticated = false): string {
+  const credentialMessage = gitCredentialFailureMessage(
+    url,
+    "clone this repository",
+    "cloning the vault",
+    error,
+    authenticated,
+  );
   if (credentialMessage) return credentialMessage;
 
   const output = gitErrorOutput(error);
@@ -226,8 +260,40 @@ export function cloneFailureMessage(url: string, error: unknown): string {
     .join("\n\n");
 }
 
-export function syncFailureMessage(url: string | undefined, error: unknown): string {
-  const credentialMessage = gitCredentialFailureMessage(url, "refresh this vault", "refreshing the vault", error);
+export function pushFailureMessage(url: string | undefined, error: unknown, authenticated = false): string {
+  const credentialMessage = gitCredentialFailureMessage(
+    url,
+    "push to this repository",
+    "saving the remote",
+    error,
+    authenticated,
+  );
+  if (credentialMessage) return credentialMessage;
+
+  const output = gitErrorOutput(error);
+  const diagnostic = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(-6)
+    .join("\n");
+  return [
+    "Data Vault saved the remote, but pushing failed.",
+    "Check that the remote repository is reachable and that you have permission to push to it.",
+    diagnostic ? `Git said:\n${diagnostic}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+export function syncFailureMessage(url: string | undefined, error: unknown, authenticated = false): string {
+  const credentialMessage = gitCredentialFailureMessage(
+    url,
+    "refresh this vault",
+    "refreshing the vault",
+    error,
+    authenticated,
+  );
   if (credentialMessage) return credentialMessage;
 
   const output = gitErrorOutput(error);
@@ -292,10 +358,35 @@ export class VaultService {
   private readonly registryFile: string;
   private readonly repositoriesDirectory: string;
 
-  constructor(private readonly userDataDirectory: string) {
+  constructor(
+    private readonly userDataDirectory: string,
+    // Returns the git extraheader value carrying the GitHub OAuth token for the
+    // given account (or matched by repository owner), or null when no connected
+    // account applies. Injected so the git/fs layer never imports the auth module
+    // and the token only ever appears at invocation time.
+    private readonly gitHubAuthHeader?: (account?: string, ownerHint?: string) => string | null,
+  ) {
     this.registryFile = path.join(userDataDirectory, "vaults.json");
     this.repositoriesDirectory = path.join(userDataDirectory, "repositories");
     fs.mkdirSync(this.repositoriesDirectory, { recursive: true });
+  }
+
+  // Feed the GitHub token to git for github.com remotes without persisting it in
+  // repo config or the remote URL. Passing the extraheader via GIT_CONFIG_* env
+  // (rather than `-c` argv) also keeps the token out of the process list.
+  private githubAuthEnv(url: string | undefined, account?: string): NodeJS.ProcessEnv {
+    if (!url || !/^https:\/\/github\.com\//i.test(url)) return {};
+    const header = this.gitHubAuthHeader?.(account, ownerFromUrl(url));
+    if (!header) return {};
+    return {
+      GIT_CONFIG_COUNT: "1",
+      GIT_CONFIG_KEY_0: "http.https://github.com/.extraheader",
+      GIT_CONFIG_VALUE_0: header,
+    };
+  }
+
+  private authenticatedFor(url: string | undefined, account?: string): boolean {
+    return Object.keys(this.githubAuthEnv(url, account)).length > 0;
   }
 
   list(): VaultSummary[] {
@@ -309,7 +400,11 @@ export class VaultService {
       .map((vault) => {
         try {
           const fresh = this.describe(vault.id, vault.repositoryPath);
-          return vault.remoteUrl ? { ...fresh, remoteUrl: vault.remoteUrl } : fresh;
+          // remoteUrl and githubAccount are app-local (registry only), so carry
+          // them forward onto the freshly described summary.
+          if (vault.remoteUrl) fresh.remoteUrl = vault.remoteUrl;
+          if (vault.githubAccount) fresh.githubAccount = vault.githubAccount;
+          return fresh;
         } catch {
           return vault;
         }
@@ -320,6 +415,9 @@ export class VaultService {
     const canonical = fs.realpathSync(repositoryPath);
     const existing = this.list().find((vault) => vault.repositoryPath === canonical);
     if (existing) return existing;
+    // Adding a repository is an explicit write action: create the documents
+    // directory if it is missing so an empty clone can still be opened.
+    this.resolveDocumentsRoot(canonical, this.config(canonical), true);
     const vault = this.describe(randomUUID(), canonical);
     this.save({ vaults: [...this.registry().vaults, vault] });
     return vault;
@@ -327,20 +425,37 @@ export class VaultService {
 
   async clone(url: string): Promise<VaultSummary> {
     if (!safeRepositoryUrl(url)) throw new Error("Use an HTTPS, SSH, or git@ repository URL.");
+    return this.cloneInternal(url, nameFromUrl(url));
+  }
+
+  // Clone a GitHub repository identified by `owner/repo` using the given connected
+  // account. The remote URL stays the clean https://github.com/owner/repo.git
+  // form; the OAuth token is supplied to git separately via githubAuthEnv.
+  async cloneByFullName(fullName: string, account?: string): Promise<VaultSummary> {
+    const url = `https://github.com/${fullName}.git`;
+    if (!safeRepositoryUrl(url)) throw new Error("Invalid repository name.");
+    return this.cloneInternal(url, nameFromUrl(url), account);
+  }
+
+  private async cloneInternal(url: string, displayName: string, account?: string): Promise<VaultSummary> {
     const id = randomUUID();
     const target = path.join(this.repositoriesDirectory, id);
     try {
       await execFileAsync("git", ["clone", "--depth=1", url, target], {
         timeout: 120_000,
         maxBuffer: 10 * 1024 * 1024,
-        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0", ...this.githubAuthEnv(url, account) },
       });
-      const vault = { ...this.describe(id, target, nameFromUrl(url)), remoteUrl: url };
+      // Ensure the cloned repository has its documents directory so a freshly
+      // created or otherwise empty vault opens without erroring.
+      this.resolveDocumentsRoot(target, this.config(target), true);
+      const vault: VaultSummary = { ...this.describe(id, target, displayName), remoteUrl: url };
+      if (account) vault.githubAccount = account;
       this.save({ vaults: [...this.registry().vaults, vault] });
       return vault;
     } catch (error) {
       fs.rmSync(target, { recursive: true, force: true });
-      throw new Error(cloneFailureMessage(url, error), { cause: error });
+      throw new Error(cloneFailureMessage(url, error, this.authenticatedFor(url, account)), { cause: error });
     }
   }
 
@@ -419,10 +534,16 @@ export class VaultService {
     let push: VaultUpdateResult["push"];
     if (update.remoteUrl !== undefined && next.remoteUrl) {
       try {
-        await this.git(vault.repositoryPath, ["push", "-u", "origin", "HEAD"], { GIT_TERMINAL_PROMPT: "0" });
+        await this.git(vault.repositoryPath, ["push", "-u", "origin", "HEAD"], {
+          GIT_TERMINAL_PROMPT: "0",
+          ...this.githubAuthEnv(next.remoteUrl, next.githubAccount),
+        });
         push = { ok: true };
       } catch (error) {
-        push = { ok: false, message: error instanceof Error ? error.message : String(error) };
+        push = {
+          ok: false,
+          message: pushFailureMessage(next.remoteUrl, error, this.authenticatedFor(next.remoteUrl, next.githubAccount)),
+        };
       }
     }
 
@@ -457,7 +578,9 @@ export class VaultService {
   manifest(vaultId: string): Manifest {
     const vault = this.vault(vaultId);
     const config = this.config(vault.repositoryPath);
-    const root = this.resolveDocumentsRoot(vault.repositoryPath, config);
+    // Opening a specific vault creates its documents directory if missing so an
+    // empty or freshly created repository renders instead of erroring.
+    const root = this.resolveDocumentsRoot(vault.repositoryPath, config, true);
     return { tree: this.walk(root, root, sanitizeStructure(config.structure)) };
   }
 
@@ -613,11 +736,12 @@ export class VaultService {
 
   async sync(vaultId: string): Promise<{ ahead: number; behind: number; pulled: boolean }> {
     const vault = this.vault(vaultId);
+    const authEnv = this.githubAuthEnv(vault.remoteUrl, vault.githubAccount);
     const git = async (args: string[]) =>
       (
         await execFileAsync("git", ["-C", vault.repositoryPath, ...args], {
           timeout: 120_000,
-          env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+          env: { ...process.env, GIT_TERMINAL_PROMPT: "0", ...authEnv },
         })
       ).stdout.trim();
     try {
@@ -629,7 +753,10 @@ export class VaultService {
       if (behind > 0) await git(["pull", "--ff-only", "--quiet"]);
       return { ahead, behind, pulled: behind > 0 };
     } catch (error) {
-      throw new Error(syncFailureMessage(vault.remoteUrl, error), { cause: error });
+      throw new Error(
+        syncFailureMessage(vault.remoteUrl, error, this.authenticatedFor(vault.remoteUrl, vault.githubAccount)),
+        { cause: error },
+      );
     }
   }
 
@@ -668,17 +795,31 @@ export class VaultService {
 
   private documentsRoot(vaultId: string): string {
     const vault = this.vault(vaultId);
-    return this.resolveDocumentsRoot(vault.repositoryPath, this.config(vault.repositoryPath));
+    // Active-vault operations create the documents directory on demand; this only
+    // ever touches the one vault in use, never the whole registered list.
+    return this.resolveDocumentsRoot(vault.repositoryPath, this.config(vault.repositoryPath), true);
   }
 
-  private resolveDocumentsRoot(repositoryPath: string, config: VaultConfig): string {
+  // Resolve (and validate) the documents directory. With `create`, a missing
+  // directory is created rather than rejected, so freshly cloned or empty vaults
+  // open cleanly. Only write paths pass `create`; read paths keep the default so
+  // a plain list() never mutates every registered repository.
+  private resolveDocumentsRoot(repositoryPath: string, config: VaultConfig, create = false): string {
     const repositoryRoot = fs.realpathSync(repositoryPath);
     const configured = config.documentsDirectory || "documents";
     if (path.isAbsolute(configured)) throw new Error("documentsDirectory must be relative.");
     const candidate = path.resolve(repositoryRoot, configured);
-    if (!isWithin(repositoryRoot, candidate) || !fs.existsSync(candidate)) {
-      throw new Error("Repository does not contain its configured documents directory.");
+    // Reject traversal before touching the filesystem so we never create a
+    // directory outside the repository.
+    if (!isWithin(repositoryRoot, candidate)) {
+      throw new Error("Documents directory escapes the repository.");
     }
+    if (!fs.existsSync(candidate)) {
+      if (!create) throw new Error("Repository does not contain its configured documents directory.");
+      fs.mkdirSync(candidate, { recursive: true });
+    }
+    // realpath only after the directory exists; a symlinked documents directory
+    // that resolves outside the repository is still rejected here.
     const canonical = fs.realpathSync(candidate);
     if (!isWithin(repositoryRoot, canonical) || !fs.statSync(canonical).isDirectory()) {
       throw new Error("Documents directory escapes the repository.");

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { cloneFailureMessage, syncFailureMessage, VaultService } from "./vault";
+import { cloneFailureMessage, pushFailureMessage, syncFailureMessage, VaultService } from "./vault";
 
 const temporaryDirectories: string[] = [];
 
@@ -65,6 +65,86 @@ describe("VaultService", () => {
     expect(message).toContain("Data Vault could not refresh this vault");
     expect(message).toContain("gh auth login");
     expect(message).toContain("Then try refreshing the vault again");
+  });
+
+  it("points authenticated credential failures at reconnecting instead of the gh CLI", () => {
+    const error = { stderr: "fatal: Authentication failed for 'https://github.com/acme/vault.git/'" };
+
+    const cloneMessage = cloneFailureMessage("https://github.com/acme/vault.git", error, true);
+    expect(cloneMessage).toContain("your GitHub sign-in is no longer valid");
+    expect(cloneMessage).toContain("Reconnect your GitHub account");
+    expect(cloneMessage).not.toContain("gh auth login");
+
+    const pushMessage = pushFailureMessage("https://github.com/acme/vault.git", error, true);
+    expect(pushMessage).toContain("your GitHub sign-in is no longer valid");
+    expect(pushMessage).not.toContain("gh auth login");
+
+    const syncMessage = syncFailureMessage("https://github.com/acme/vault.git", error, true);
+    expect(syncMessage).toContain("your GitHub sign-in is no longer valid");
+  });
+
+  it("falls back to a generic push message when there is no credential signal", () => {
+    const message = pushFailureMessage("https://github.com/acme/vault.git", {
+      stderr: "error: failed to push some refs to 'https://github.com/acme/vault.git'",
+    });
+
+    expect(message).toContain("pushing failed");
+    expect(message).toContain("permission to push");
+  });
+
+  it("creates a missing documents directory when a vault is opened", () => {
+    const root = temporaryDirectory();
+    execFileSync("git", ["-C", root, "init", "-b", "main"]);
+    fs.writeFileSync(path.join(root, "vault.json"), JSON.stringify({ name: "Empty" }));
+    expect(fs.existsSync(path.join(root, "documents"))).toBe(false);
+
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = service.addLocal(root);
+    const manifest = service.manifest(vault.id);
+
+    expect(manifest.tree).toEqual([]);
+    expect(fs.statSync(path.join(root, "documents")).isDirectory()).toBe(true);
+  });
+
+  it("never creates a documents directory outside the repository", () => {
+    const root = temporaryDirectory();
+    execFileSync("git", ["-C", root, "init", "-b", "main"]);
+    fs.writeFileSync(path.join(root, "vault.json"), JSON.stringify({ name: "Bad", documentsDirectory: "../escape" }));
+
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+
+    expect(() => service.addLocal(root)).toThrow("escapes the repository");
+    expect(fs.existsSync(path.join(path.dirname(root), "escape"))).toBe(false);
+  });
+
+  it("preserves the remote URL and GitHub account across a live re-describe", () => {
+    const root = temporaryDirectory();
+    fs.mkdirSync(path.join(root, "documents"));
+    fs.writeFileSync(path.join(root, "vault.json"), JSON.stringify({ name: "Work" }));
+
+    // remoteUrl and githubAccount live only in the registry (like git config),
+    // not in vault.json, so list() must carry them onto the freshly described
+    // summary rather than dropping them.
+    const appData = path.join(temporaryDirectory(), "app-data");
+    fs.mkdirSync(appData, { recursive: true });
+    fs.writeFileSync(
+      path.join(appData, "vaults.json"),
+      JSON.stringify({
+        vaults: [
+          {
+            id: "vault-1",
+            name: "Work",
+            repositoryPath: root,
+            remoteUrl: "https://github.com/workco/vault.git",
+            githubAccount: "workco",
+          },
+        ],
+      }),
+    );
+
+    const [vault] = new VaultService(appData).list();
+    expect(vault.remoteUrl).toBe("https://github.com/workco/vault.git");
+    expect(vault.githubAccount).toBe("workco");
   });
 
   it("returns author and edit time for each document source line", async () => {

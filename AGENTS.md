@@ -13,6 +13,7 @@ contribution workflow. `CLAUDE.md` points here.
 electron/main.ts       privileged application lifecycle and IPC handlers
 electron/preload.ts    narrow typed context bridge
 electron/vault.ts      repository, filesystem, manifest, graph, and Git logic
+electron/github.ts     GitHub OAuth device-flow sign-in, token storage, and REST (clone/create repos)
 electron/skills.ts     renders and installs the versioned vault-guide and document-reviewer agent skills
 src/                   sandboxed React renderer
 skills/                repository-local agent workflows
@@ -52,6 +53,15 @@ Electron modules into `src/`.
 - Reject paths and symlinks that escape the configured documents directory.
 - Permit repository URLs only through an explicit allowlist of Git transports.
 - Validate IPC senders and arguments in the main process.
+- Keep GitHub OAuth tokens in the main process only: never return them across
+  IPC, never write one into a repository's Git config or remote URL, and never
+  place one on a Git command line. Supply the per-account token to Git
+  per-invocation through the `GIT_CONFIG_*` extraheader environment, and encrypt
+  tokens at rest with `safeStorage` when available. Multiple accounts may be
+  connected at once; the renderer only ever sees account logins/avatars, never a
+  token. Restrict GitHub REST traffic to `github.com` and `api.github.com`
+  (including pagination URLs). The OAuth flow is device-flow only — it must not
+  add a localhost callback server.
 - Block renderer navigation and validate external URLs before opening them.
 - Do not add a localhost HTTP server to the desktop runtime.
 - The agent-skill installer writes only to the fixed paths
