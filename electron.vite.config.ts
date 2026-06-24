@@ -3,6 +3,16 @@ import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
+// Load a local, gitignored .env (e.g. DATA_VAULT_GITHUB_CLIENT_ID) for dev and
+// local builds so the value need not be exported in the shell. Existing env vars
+// take precedence, so CI and exported shells are unaffected; a missing file is
+// fine.
+try {
+  process.loadEnvFile();
+} catch {
+  // No .env file present — rely on the ambient environment.
+}
+
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
