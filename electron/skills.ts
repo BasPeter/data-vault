@@ -7,9 +7,17 @@ import type { SkillStatus, VaultStructure, VaultSummary } from "../src/types";
 
 // Bump a skill's version when its SKILL.md template or guidance changes so that
 // installed copies are reported as outdated and re-installed.
-const VAULT_GUIDE_VERSION = "5";
-const DOCUMENT_REVIEWER_VERSION = "3";
+const VAULT_GUIDE_VERSION = "6";
+const DOCUMENT_REVIEWER_VERSION = "4";
 const SKILL_FILE = "SKILL.md";
+
+// Emit a YAML frontmatter description as a double-quoted scalar. Prose
+// descriptions may contain a colon-space (e.g. "rules: format, ..."), which a
+// strict YAML parser reads as a mapping separator and rejects; quoting keeps the
+// value a single scalar across lenient (Claude) and strict (Codex) loaders.
+function yamlQuoted(value: string): string {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
 
 // A generated agent skill. Each skill renders an independent SKILL.md and tracks
 // its own version and marker so the two can be revised separately.
@@ -94,7 +102,7 @@ function renderVaultGuide(vaults: VaultSummary[]): string {
 
   return `---
 name: vault-guide
-description: ${description}
+description: ${yamlQuoted(description)}
 ---
 
 # Vault Guide
@@ -188,7 +196,7 @@ function renderDocumentReviewer(vaults: VaultSummary[]): string {
 
   return `---
 name: document-reviewer
-description: ${description}
+description: ${yamlQuoted(description)}
 ---
 
 # Document Reviewer

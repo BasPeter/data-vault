@@ -109,6 +109,17 @@ describe("SkillService", () => {
     expect(skill).toContain("**Knowledge base** (`10-knowledge`) — Reference material.");
   });
 
+  it("quotes the frontmatter description so a colon in the prose stays valid YAML", () => {
+    const home = temporaryDirectory();
+    new SkillService(home).install([vaultA]);
+    const reviewer = fs.readFileSync(path.join(reviewerDir(home, ".codex"), "SKILL.md"), "utf8");
+    // The reviewer description contains "rules: format, ..." — an unquoted
+    // colon-space here makes strict YAML loaders (Codex) reject the file.
+    expect(reviewer).toMatch(/^description: ".*rules: format.*"$/m);
+    const guide = fs.readFileSync(claudeSkill(home), "utf8");
+    expect(guide).toMatch(/^description: ".*"$/m);
+  });
+
   it("installs the document reviewer skill into both directories", () => {
     const home = temporaryDirectory();
     new SkillService(home).install([vaultA]);
