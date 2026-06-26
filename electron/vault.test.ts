@@ -258,6 +258,49 @@ describe("VaultService", () => {
     });
   });
 
+  it("opens a markdown vault and builds its manifest", () => {
+    const root = temporaryDirectory();
+    const documents = path.join(root, "documents");
+    fs.mkdirSync(path.join(documents, "10-knowledge"), { recursive: true });
+    fs.writeFileSync(path.join(root, "vault.json"), JSON.stringify({ name: "Markdown", format: "markdown" }));
+    fs.writeFileSync(path.join(documents, "10-knowledge", "ignored.html"), "<h1>Ignored</h1>");
+    fs.writeFileSync(
+      path.join(documents, "10-knowledge", "example.md"),
+      "---\ntitle: Markdown document\ndate: 2026-06-26\ntags:\n  - one\n  - two\n---\n\n# Ignored fallback\n\nBody",
+    );
+
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = service.addLocal(root);
+    const manifest = service.manifest(vault.id);
+
+    expect(vault.format).toBe("markdown");
+    expect(manifest.tree[0]).toMatchObject({ type: "folder", id: "10-knowledge" });
+    expect(manifest.tree[0].type === "folder" ? manifest.tree[0].children : []).toHaveLength(1);
+    expect(service.document(vault.id, "10-knowledge/example.md")).toMatchObject({
+      title: "Markdown document",
+      format: "markdown",
+      meta: { date: "2026-06-26", tags: ["one", "two"] },
+      source: "# Ignored fallback\n\nBody",
+    });
+    expect(() => service.document(vault.id, "10-knowledge/ignored.html")).toThrow("Invalid document ID");
+  });
+
+  it("builds graph links from markdown relative links", () => {
+    const root = temporaryDirectory();
+    const documents = path.join(root, "documents");
+    fs.mkdirSync(path.join(documents, "10-knowledge"), { recursive: true });
+    fs.writeFileSync(path.join(root, "vault.json"), JSON.stringify({ name: "Markdown", format: "markdown" }));
+    fs.writeFileSync(path.join(documents, "index.md"), "# Index\n\n[Overview](10-knowledge/overview.md#details)");
+    fs.writeFileSync(path.join(documents, "10-knowledge", "overview.md"), "# Overview\n\n[Back](../index.md)");
+
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = service.addLocal(root);
+    const graph = service.graph(vault.id);
+
+    expect(graph.nodes.map((node) => node.id).sort()).toEqual(["10-knowledge/overview.md", "index.md"]);
+    expect(graph.links).toEqual([{ source: "10-knowledge/overview.md", target: "index.md" }]);
+  });
+
   it("rejects traversal and symlinks outside the documents root", () => {
     const root = temporaryDirectory();
     const documents = path.join(root, "documents");
@@ -359,6 +402,16 @@ describe("VaultService", () => {
     expect(head).toMatch(/^[0-9a-f]{40}$/);
   });
 
+  it("creates an empty markdown vault with a committed starter document", async () => {
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = await service.createEmpty("Markdown Notes", "markdown");
+
+    expect(vault.format).toBe("markdown");
+    expect(JSON.parse(fs.readFileSync(path.join(vault.repositoryPath, "vault.json"), "utf8")).format).toBe("markdown");
+    expect(fs.existsSync(path.join(vault.repositoryPath, "documents", "welcome.md"))).toBe(true);
+    expect(service.manifest(vault.id).tree[0]).toMatchObject({ type: "doc", id: "welcome.md", label: "Welcome" });
+  });
+
   it("rejects an empty vault name", async () => {
     const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
     await expect(service.createEmpty("   ")).rejects.toThrow("Enter a vault name");
@@ -440,14 +493,17 @@ describe("VaultService", () => {
     const vault = await service.createEmpty("Vault");
 
     const result = await service.updateVault(vault.id, {
+      format: "markdown",
       defaultLanguage: "nl",
       structure: { documents: { title: "Docs" } },
     });
 
+    expect(result.vault.format).toBe("markdown");
     expect(result.vault.defaultLanguage).toBe("nl");
     expect(result.vault.structure).toMatchObject({ documents: { title: "Docs" } });
 
     const written = JSON.parse(fs.readFileSync(path.join(vault.repositoryPath, "vault.json"), "utf8"));
+    expect(written.format).toBe("markdown");
     expect(written.defaultLanguage).toBe("nl");
     expect(written.structure.documents.title).toBe("Docs");
 

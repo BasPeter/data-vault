@@ -27,12 +27,16 @@ export function DocumentView({
   theme,
   version,
   showBlame,
+  documentIds,
+  onNavigateDocument,
 }: {
   vaultId: string;
   docId: string | null;
   theme: "light" | "dark";
   version: number;
   showBlame: boolean;
+  documentIds: Set<string>;
+  onNavigateDocument: (id: string) => void;
 }) {
   const [doc, setDoc] = useState<LoadedDoc | null>(null);
   const [status, setStatus] = useState<Status>("empty");
@@ -84,28 +88,36 @@ export function DocumentView({
     };
   }, [vaultId, docId, version, showBlame]);
 
-  // Inject the HTML and (re)render Mermaid diagrams. Re-runs on theme change.
+  // Inject the document and (re)render Mermaid diagrams. Re-runs on theme change.
   useEffect(() => {
     const el = contentRef.current;
     if (!el || status !== "loaded" || !doc) return;
     let cancelled = false;
     let removeGutter = () => {};
-    const html = showBlame ? annotateSourceLines(doc.html, doc.sourceStartLine) : doc.html;
-    el.innerHTML = DOMPurify.sanitize(html, {
-      USE_PROFILES: { html: true },
-      ADD_ATTR: ["data-vault-source-line"],
-      FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "form"],
-    });
-    renderMermaid(el)
+    renderDocumentHtml(doc, showBlame)
+      .then((html) => {
+        if (cancelled) return;
+        el.innerHTML = DOMPurify.sanitize(html, {
+          USE_PROFILES: { html: true },
+          ADD_ATTR: ["data-vault-source-line"],
+          FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "form"],
+        });
+        normalizeMarkdownMermaid(el);
+      })
+      .then(() => {
+        if (!cancelled && doc.format === "markdown")
+          installMarkdownNavigation(el, doc.id, documentIds, onNavigateDocument);
+      })
+      .then(() => renderMermaid(el))
       .catch((err) => console.error("Mermaid render failed", err))
       .then(() => {
-        if (!cancelled && showBlame && blame) removeGutter = installBlameGutter(el, blame);
+        if (!cancelled && doc.format === "html" && showBlame && blame) removeGutter = installBlameGutter(el, blame);
       });
     return () => {
       cancelled = true;
       removeGutter();
     };
-  }, [doc, status, theme, showBlame, blame]);
+  }, [doc, status, theme, showBlame, blame, documentIds, onNavigateDocument]);
 
   if (status === "empty") {
     return (
@@ -155,6 +167,62 @@ export function DocumentView({
       <div ref={contentRef} className={cn("doc-content", showBlame && "blame-mode")} />
     </article>
   );
+}
+
+async function renderDocumentHtml(doc: LoadedDoc, showBlame: boolean): Promise<string> {
+  if (doc.format === "html") return showBlame ? annotateSourceLines(doc.html, doc.sourceStartLine) : doc.html;
+  const { marked } = await import("marked");
+  const html = await marked.parse(doc.source, { async: false, gfm: true });
+  return String(html);
+}
+
+function normalizeMarkdownMermaid(container: HTMLElement): void {
+  container.querySelectorAll<HTMLElement>("pre > code.language-mermaid").forEach((code) => {
+    const pre = code.parentElement;
+    if (!pre) return;
+    pre.className = "mermaid";
+    pre.textContent = code.textContent ?? "";
+  });
+}
+
+function resolveMarkdownHref(sourceId: string, href: string, documentIds: Set<string>): string | null {
+  const trimmed = href.trim();
+  if (!trimmed || /^[a-z][a-z\d+.-]*:/i.test(trimmed) || trimmed.startsWith("//")) return null;
+  const withoutQuery = trimmed.split("?")[0];
+  const target = withoutQuery.startsWith("#") ? withoutQuery.slice(1) : withoutQuery.split("#")[0];
+  if (!target.toLowerCase().endsWith(".md")) return null;
+  const base = sourceId.includes("/") ? sourceId.slice(0, sourceId.lastIndexOf("/")) : "";
+  const parts = `${base ? `${base}/` : ""}${target.startsWith("/") ? target.slice(1) : target}`.split("/");
+  const stack: string[] = [];
+  for (const part of parts) {
+    if (!part || part === ".") continue;
+    if (part === "..") {
+      if (!stack.length) return null;
+      stack.pop();
+    } else {
+      stack.push(part);
+    }
+  }
+  const id = stack.join("/");
+  return documentIds.has(id) ? id : null;
+}
+
+function installMarkdownNavigation(
+  container: HTMLElement,
+  sourceId: string,
+  documentIds: Set<string>,
+  onNavigateDocument: (id: string) => void,
+): void {
+  container.querySelectorAll<HTMLAnchorElement>("a[href]").forEach((anchor) => {
+    const href = anchor.getAttribute("href");
+    if (!href) return;
+    const target = resolveMarkdownHref(sourceId, href, documentIds);
+    if (!target) return;
+    anchor.addEventListener("click", (event) => {
+      event.preventDefault();
+      onNavigateDocument(target);
+    });
+  });
 }
 
 function annotateSourceLines(html: string, sourceStartLine: number): string {

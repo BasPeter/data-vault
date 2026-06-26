@@ -21,6 +21,7 @@ export type DirectoryMeta = {
 };
 
 export type VaultStructure = Record<string, DirectoryMeta>;
+export type VaultFormat = "html" | "markdown";
 
 export type TreeNode = DocNode | FolderNode;
 export type Manifest = { tree: TreeNode[] };
@@ -29,6 +30,8 @@ export type LoadedDoc = {
   id: string;
   title: string;
   meta: { title?: string; date?: string; tags?: string[] };
+  format: VaultFormat;
+  source: string;
   html: string;
   sourceStartLine: number;
 };
@@ -62,6 +65,7 @@ export type VaultSummary = {
   // Login of the GitHub account whose token clones/syncs this vault. App-local
   // (kept in the registry, not vault.json), set when cloned or created.
   githubAccount?: string;
+  format: VaultFormat;
   defaultLanguage?: string;
   structure?: VaultStructure;
 };
@@ -75,6 +79,7 @@ export type SyncResult = {
 export type VaultUpdate = {
   name?: string;
   remoteUrl?: string;
+  format?: VaultFormat;
   defaultLanguage?: string;
   structure?: VaultStructure;
 };
@@ -177,7 +182,7 @@ export type VaultApi = {
   list: () => Promise<VaultSummary[]>;
   chooseLocal: () => Promise<VaultSummary | null>;
   clone: (url: string) => Promise<VaultSummary>;
-  createEmpty: (name: string) => Promise<VaultSummary>;
+  createEmpty: (name: string, format?: VaultFormat) => Promise<VaultSummary>;
   updateVault: (vaultId: string, update: VaultUpdate) => Promise<VaultUpdateResult>;
   removeVault: (vaultId: string) => Promise<void>;
   manifest: (vaultId: string) => Promise<Manifest>;

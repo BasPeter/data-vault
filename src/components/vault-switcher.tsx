@@ -27,7 +27,7 @@ import { Separator } from "@/components/ui/separator";
 import { VaultInitDialog } from "@/components/vault-init-dialog";
 import { VaultStructureEditor } from "@/components/vault-structure-editor";
 import { cn } from "@/lib/utils";
-import type { TreeNode, VaultStructure, VaultSummary, VaultUpdate } from "@/types";
+import type { TreeNode, VaultFormat, VaultStructure, VaultSummary, VaultUpdate } from "@/types";
 
 type VaultSwitcherProps = {
   vaults: VaultSummary[];
@@ -251,6 +251,7 @@ function CreateEmptyDialog({
   onDone: (preferred?: string) => Promise<void>;
 }) {
   const [name, setName] = useState("");
+  const [format, setFormat] = useState<VaultFormat>("html");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -258,7 +259,7 @@ function CreateEmptyDialog({
     setBusy(true);
     setError(null);
     try {
-      const vault = await window.vaultApi.createEmpty(name.trim());
+      const vault = await window.vaultApi.createEmpty(name.trim(), format);
       await onDone(vault.id);
       setName("");
       onOpenChange(false);
@@ -286,15 +287,26 @@ function CreateEmptyDialog({
             Start a new local vault repository. You can add a remote later in vault settings.
           </DialogDescription>
         </DialogHeader>
-        <Input
-          autoFocus
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && name.trim() && !busy) void submit();
-          }}
-          placeholder="My vault"
-        />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Input
+            autoFocus
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && name.trim() && !busy) void submit();
+            }}
+            placeholder="My vault"
+          />
+          <select
+            aria-label="Document format"
+            value={format}
+            onChange={(event) => setFormat(event.target.value as VaultFormat)}
+            className="border-input bg-background h-9 w-full rounded-md border px-3 py-1 text-sm shadow-xs outline-none"
+          >
+            <option value="html">HTML fragments (.html)</option>
+            <option value="markdown">Markdown (.md)</option>
+          </select>
+        </div>
         {error && (
           <p role="alert" className="text-destructive text-sm">
             {error}
@@ -334,6 +346,7 @@ function VaultSettingsDialog({
 }) {
   const [name, setName] = useState("");
   const [remoteUrl, setRemoteUrl] = useState("");
+  const [format, setFormat] = useState<VaultFormat>("html");
   const [defaultLanguage, setDefaultLanguage] = useState("");
   const [structure, setStructure] = useState<VaultStructure>({});
   const [tree, setTree] = useState<TreeNode[]>([]);
@@ -350,6 +363,7 @@ function VaultSettingsDialog({
     setKey(vault.id);
     setName(vault.name);
     setRemoteUrl(vault.remoteUrl ?? "");
+    setFormat(vault.format);
     setDefaultLanguage(vault.defaultLanguage ?? "");
     setStructure(vault.structure ?? {});
     setTree([]);
@@ -388,6 +402,7 @@ function VaultSettingsDialog({
       const update: VaultUpdate = {};
       if (name.trim() !== vault.name) update.name = name.trim();
       if (remoteUrl.trim() && remoteUrl.trim() !== (vault.remoteUrl ?? "")) update.remoteUrl = remoteUrl.trim();
+      if (format !== vault.format) update.format = format;
       if (defaultLanguage.trim() !== (vault.defaultLanguage ?? "")) update.defaultLanguage = defaultLanguage.trim();
       if (JSON.stringify(structure) !== JSON.stringify(vault.structure ?? {})) update.structure = structure;
       if (Object.keys(update).length === 0) {
@@ -462,6 +477,23 @@ function VaultSettingsDialog({
                 onChange={(event) => setRemoteUrl(event.target.value)}
                 placeholder="git@github.com:you/vault.git"
               />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium" htmlFor="vault-format">
+                Document format
+              </label>
+              <select
+                id="vault-format"
+                value={format}
+                onChange={(event) => setFormat(event.target.value as VaultFormat)}
+                className="border-input bg-background h-9 w-full rounded-md border px-3 py-1 text-sm shadow-xs outline-none"
+              >
+                <option value="html">HTML fragments (.html)</option>
+                <option value="markdown">Markdown (.md)</option>
+              </select>
+              <p className="text-muted-foreground text-xs">
+                Only files matching this format appear in the document tree. Existing files are not converted.
+              </p>
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium" htmlFor="vault-language">

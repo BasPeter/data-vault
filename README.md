@@ -1,9 +1,9 @@
 # Data Vault
 
 Data Vault is a desktop viewer for private or public Git-backed knowledge
-repositories. A vault stores content-only HTML fragments under `documents/`;
-the application clones or opens the repository locally and renders its folder
-tree, metadata, Mermaid diagrams, and document graph.
+repositories. A vault stores HTML fragments or Markdown files under
+`documents/`; the application clones or opens the repository locally and renders
+its folder tree, metadata, Mermaid diagrams, and document graph.
 
 ## Development
 
@@ -31,11 +31,15 @@ display name or documents location through `vault.json`:
 {
   "schemaVersion": 1,
   "name": "Team knowledge",
-  "documentsDirectory": "documents"
+  "documentsDirectory": "documents",
+  "format": "html"
 }
 ```
 
-Documents are HTML fragments rather than complete pages. Metadata is optional:
+`format` may be `html` or `markdown`; when omitted, Data Vault treats the vault
+as `html` for backwards compatibility.
+
+HTML documents are fragments rather than complete pages. Metadata is optional:
 
 ```html
 <!--vault
@@ -49,6 +53,24 @@ tags: example, knowledge
 
 Internal links use document IDs: `<a href="#folder/document.html">Label</a>`.
 Mermaid diagrams use `<pre class="mermaid">...</pre>`.
+
+Markdown vaults use `.md` files with optional frontmatter:
+
+```markdown
+---
+title: Example
+date: 2026-06-26
+tags:
+  - example
+  - knowledge
+---
+
+# Example
+
+Document body with an [internal link](folder/document.md).
+```
+
+Mermaid diagrams in Markdown use fenced `mermaid` code blocks.
 
 The quick-notes button opens a scratchpad for the active vault. Its HTML is
 stored as `quick-notes.html` at the documents root and is intentionally omitted

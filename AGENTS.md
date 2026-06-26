@@ -34,12 +34,19 @@ Electron modules into `src/`.
   directory's purpose. Both are editable from the vault
   switcher's settings dialog, surfaced in the sidebar, and injected into the
   generated agent skills; changing them marks the installed skills outdated.
-- Documents are content-only `.html` fragments with an optional `<!--vault`
+- `vault.json` may set `format` to `html` or `markdown`; missing values default
+  to `html` for backwards compatibility. HTML vaults index `.html` documents.
+  Markdown vaults index `.md` documents.
+- HTML documents are content-only `.html` fragments with an optional `<!--vault`
   metadata block containing `title`, `date`, and comma-separated `tags`.
+- Markdown documents are `.md` files with optional leading `---` frontmatter
+  containing `title`, `date`, and `tags`.
 - `quick-notes.html` at the documents root is a reserved local scratchpad. It
   is excluded from the manifest and graph and may remain uncommitted.
-- Internal links are hashes whose value is another document ID.
-- Mermaid source is stored in `<pre class="mermaid">` blocks.
+- HTML internal links are hashes whose value is another document ID. Markdown
+  internal links are relative `.md` links resolved from the source document.
+- HTML Mermaid source is stored in `<pre class="mermaid">` blocks. Markdown
+  Mermaid source is stored in fenced `mermaid` code blocks.
 - Never add real vault data, credentials, repository URLs, or generated clones
   to this application repository.
 
@@ -49,6 +56,8 @@ Electron modules into `src/`.
 - Expose one validated preload method per operation; never expose raw
   `ipcRenderer`, filesystem, shell, or child-process APIs.
 - Sanitize every vault HTML fragment before insertion into the DOM.
+- Treat rendered Markdown as untrusted; sanitize the generated HTML before
+  insertion into the DOM.
 - Keep Mermaid at `securityLevel: "strict"`.
 - Reject paths and symlinks that escape the configured documents directory.
 - Permit repository URLs only through an explicit allowlist of Git transports.

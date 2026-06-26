@@ -19,17 +19,19 @@ afterEach(() => {
   }
 });
 
-const vaultA: VaultSummary = { id: "a", name: "Knowledge", repositoryPath: "/vaults/knowledge" };
+const vaultA: VaultSummary = { id: "a", name: "Knowledge", repositoryPath: "/vaults/knowledge", format: "html" };
 const vaultB: VaultSummary = {
   id: "b",
   name: "Work",
   repositoryPath: "/vaults/work",
+  format: "markdown",
   remoteUrl: "git@example.com:team/work.git",
 };
 const vaultWithMeta: VaultSummary = {
   id: "c",
   name: "Annotated",
   repositoryPath: "/vaults/annotated",
+  format: "html",
   defaultLanguage: "nl",
   structure: {
     "10-knowledge": {
@@ -52,6 +54,7 @@ describe("SkillService", () => {
     expect(skill).toContain("## Vault format");
     expect(skill).toContain("Knowledge");
     expect(skill).toContain("/vaults/knowledge");
+    expect(skill).toContain("Document format: `markdown`");
     expect(skill).toContain("git@example.com:team/work.git");
   });
 
@@ -71,9 +74,10 @@ describe("SkillService", () => {
 
   it("fingerprints change when the default language or structure changes", () => {
     const service = new SkillService(temporaryDirectory());
-    const base: VaultSummary = { id: "a", name: "Knowledge", repositoryPath: "/vaults/knowledge" };
+    const base: VaultSummary = { id: "a", name: "Knowledge", repositoryPath: "/vaults/knowledge", format: "html" };
     expect(service.fingerprint([base])).not.toBe(service.fingerprint([{ ...base, defaultLanguage: "nl" }]));
     expect(service.fingerprint([base])).not.toBe(service.fingerprint([vaultWithMeta]));
+    expect(service.fingerprint([base])).not.toBe(service.fingerprint([{ ...base, format: "markdown" }]));
   });
 
   it("installs the skill into the Claude and Codex skill directories", () => {
@@ -85,15 +89,15 @@ describe("SkillService", () => {
       {
         name: "vault-guide",
         label: "Vault Guide",
-        latestVersion: "6",
-        installedVersion: "6",
+        latestVersion: "7",
+        installedVersion: "7",
         state: "current",
       },
       {
         name: "document-reviewer",
         label: "Document Reviewer",
-        latestVersion: "4",
-        installedVersion: "4",
+        latestVersion: "5",
+        installedVersion: "5",
         state: "current",
       },
     ]);
@@ -119,6 +123,7 @@ describe("SkillService", () => {
     expect(skill).toContain("documents in the user's local Data Vault knowledge repositories");
     expect(skill).toContain("# Document Reviewer");
     expect(skill).toContain("## Structural checks");
+    expect(skill).toContain("Markdown vaults use `.md` files");
     expect(skill).toContain("Link integrity");
     expect(skill).toContain("Cross-vault privacy");
     expect(skill).toContain("**Error**");

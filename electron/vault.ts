@@ -11,6 +11,7 @@ import type {
   LoadedDoc,
   Manifest,
   TreeNode,
+  VaultFormat,
   VaultStructure,
   VaultSummary,
   VaultUpdate,
@@ -21,13 +22,17 @@ const execFileAsync = promisify(execFile);
 const MAX_DOCUMENT_BYTES = 2 * 1024 * 1024;
 const QUICK_NOTES_FILE = "quick-notes.html";
 const QUICK_NOTES_HEADER = "<!--vault\ntitle: Quick notes\n-->\n";
+const DEFAULT_FORMAT: VaultFormat = "html";
 const WELCOME_DOCUMENT =
   "<!--vault\ntitle: Welcome\n-->\n<h1>Welcome</h1>\n<p>This is your new vault. Add HTML documents under the documents directory to get started.</p>\n";
+const WELCOME_MARKDOWN_DOCUMENT =
+  "---\ntitle: Welcome\n---\n\n# Welcome\n\nThis is your new vault. Add Markdown documents under the documents directory to get started.\n";
 
 type VaultConfig = {
   schemaVersion?: number;
   name?: string;
   documentsDirectory?: string;
+  format?: VaultFormat;
   defaultLanguage?: string;
   structure?: VaultStructure;
 };
@@ -62,12 +67,61 @@ function parseMeta(html: string): LoadedDoc["meta"] {
   return meta;
 }
 
+function parseMarkdownMeta(markdown: string): { meta: LoadedDoc["meta"]; body: string; sourceStartLine: number } {
+  const meta: LoadedDoc["meta"] = {};
+  const normalized = markdown.replace(/^\uFEFF/, "");
+  const match = normalized.match(/^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/);
+  if (!match) return { meta, body: markdown, sourceStartLine: 1 };
+
+  const block = match[1];
+  const lines = block.split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const scalar = line.match(/^([A-Za-z][\w-]*)\s*:\s*(.*?)\s*$/);
+    if (!scalar) continue;
+    const key = scalar[1].toLowerCase();
+    const value = scalar[2].replace(/^["']|["']$/g, "").trim();
+    if (key === "title" && value) meta.title = value;
+    else if (key === "date" && value) meta.date = value;
+    else if (key === "tags") {
+      const tags: string[] = [];
+      if (value) {
+        tags.push(
+          ...value
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean),
+        );
+      } else {
+        for (let next = index + 1; next < lines.length; next += 1) {
+          const item = lines[next].match(/^\s*-\s*(.+?)\s*$/);
+          if (!item) break;
+          tags.push(item[1].replace(/^["']|["']$/g, "").trim());
+          index = next;
+        }
+      }
+      if (tags.length) meta.tags = tags;
+    }
+  }
+
+  const body = normalized.slice(match[0].length);
+  return { meta, body, sourceStartLine: match[0].split(/\r?\n/).length };
+}
+
 function humanize(value: string): string {
   return value
-    .replace(/\.html$/i, "")
+    .replace(/\.(?:html|md)$/i, "")
     .split("-")
     .map((part) => (/^\d+$/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1)))
     .join(" ");
+}
+
+function markdownHeading(markdown: string): string | undefined {
+  for (const line of markdown.split(/\r?\n/)) {
+    const match = line.match(/^#\s+(.+?)\s*#*\s*$/);
+    if (match) return match[1].replace(/[*_`[\]]/g, "").trim();
+  }
+  return undefined;
 }
 
 function titleFor(html: string, fileName: string): string {
@@ -77,6 +131,60 @@ function titleFor(html: string, fileName: string): string {
     ?.replace(/<[^>]+>/g, "")
     .trim();
   return meta.title || h1 || humanize(fileName);
+}
+
+function markdownTitleFor(markdown: string, fileName: string): string {
+  const parsed = parseMarkdownMeta(markdown);
+  return parsed.meta.title || markdownHeading(parsed.body) || humanize(fileName);
+}
+
+function formatFromConfig(config: VaultConfig): VaultFormat {
+  return config.format === "markdown" ? "markdown" : DEFAULT_FORMAT;
+}
+
+function extensionFor(format: VaultFormat): ".html" | ".md" {
+  return format === "markdown" ? ".md" : ".html";
+}
+
+function normalizeMarkdownLink(sourceId: string, href: string): string | null {
+  const trimmed = href.trim();
+  if (!trimmed || /^[a-z][a-z\d+.-]*:/i.test(trimmed) || trimmed.startsWith("//")) return null;
+  const withoutQuery = trimmed.split("?")[0];
+  const target = withoutQuery.startsWith("#") ? withoutQuery.slice(1) : withoutQuery.split("#")[0];
+  if (!target || !target.toLowerCase().endsWith(".md")) return null;
+  const base = path.posix.dirname(sourceId);
+  const normalized = path.posix.normalize(target.startsWith("/") ? target.slice(1) : path.posix.join(base, target));
+  if (
+    !normalized ||
+    normalized === "." ||
+    normalized.startsWith("../") ||
+    normalized === ".." ||
+    path.posix.isAbsolute(normalized)
+  ) {
+    return null;
+  }
+  return normalized;
+}
+
+function linksForDocument(doc: LoadedDoc, ids: Set<string>): string[] {
+  const targets: string[] = [];
+  if (doc.format === "markdown") {
+    for (const match of doc.source.matchAll(/!?\[[^\]]*]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)) {
+      if (match[0].startsWith("!")) continue;
+      const target = normalizeMarkdownLink(doc.id, match[1]);
+      if (target && ids.has(target)) targets.push(target);
+    }
+    return targets;
+  }
+
+  for (const match of doc.html.matchAll(/href=["']#([^"']+)["']/g)) {
+    try {
+      targets.push(decodeURIComponent(match[1]));
+    } catch {
+      // Ignore malformed percent-encoding.
+    }
+  }
+  return targets;
 }
 
 function parseBlame(output: string): BlameLine[] {
@@ -421,7 +529,7 @@ export class VaultService {
           if (vault.githubAccount) fresh.githubAccount = vault.githubAccount;
           return fresh;
         } catch {
-          return vault;
+          return { ...vault, format: vault.format ?? DEFAULT_FORMAT };
         }
       });
   }
@@ -474,18 +582,22 @@ export class VaultService {
     }
   }
 
-  async createEmpty(name: string): Promise<VaultSummary> {
+  async createEmpty(name: string, format: VaultFormat = DEFAULT_FORMAT): Promise<VaultSummary> {
     const trimmed = name.trim();
     if (!trimmed || trimmed.length > 200) throw new Error("Enter a vault name.");
+    if (format !== "html" && format !== "markdown") throw new Error("Invalid document format.");
     const id = randomUUID();
     const target = path.join(this.repositoriesDirectory, id);
     try {
       fs.mkdirSync(path.join(target, "documents"), { recursive: true });
       fs.writeFileSync(
         path.join(target, "vault.json"),
-        `${JSON.stringify({ schemaVersion: 1, name: trimmed, documentsDirectory: "documents" }, null, 2)}\n`,
+        `${JSON.stringify({ schemaVersion: 1, name: trimmed, documentsDirectory: "documents", format }, null, 2)}\n`,
       );
-      fs.writeFileSync(path.join(target, "documents", "welcome.html"), WELCOME_DOCUMENT);
+      fs.writeFileSync(
+        path.join(target, "documents", format === "markdown" ? "welcome.md" : "welcome.html"),
+        format === "markdown" ? WELCOME_MARKDOWN_DOCUMENT : WELCOME_DOCUMENT,
+      );
       await this.git(target, ["init", "-b", "main"]);
       await this.git(target, ["add", "-A"]);
       await this.git(target, [
@@ -523,6 +635,12 @@ export class VaultService {
       if (language.length > STRUCTURE_MAX_TEXT) throw new Error("Default language is too long.");
       patch.defaultLanguage = language || undefined;
       next = { ...next, defaultLanguage: language || undefined };
+    }
+
+    if (update.format !== undefined) {
+      if (update.format !== "html" && update.format !== "markdown") throw new Error("Invalid document format.");
+      patch.format = update.format;
+      next = { ...next, format: update.format };
     }
 
     if (update.structure !== undefined) {
@@ -598,23 +716,39 @@ export class VaultService {
   manifest(vaultId: string): Manifest {
     const vault = this.vault(vaultId);
     const config = this.config(vault.repositoryPath);
+    const format = formatFromConfig(config);
     // Opening a specific vault creates its documents directory if missing so an
     // empty or freshly created repository renders instead of erroring.
     const root = this.resolveDocumentsRoot(vault.repositoryPath, config, true);
-    return { tree: this.walk(root, root, sanitizeStructure(config.structure)) };
+    return { tree: this.walk(root, root, sanitizeStructure(config.structure), format) };
   }
 
   document(vaultId: string, documentId: string): LoadedDoc {
-    const { candidate, canonical } = this.documentFile(vaultId, documentId);
-    const html = fs.readFileSync(canonical, "utf8");
-    const metadata = html.match(/^\s*<!--vault[\s\S]*?-->/i)?.[0] ?? "";
-    const content = html.slice(metadata.length);
+    const { candidate, canonical, format } = this.documentFile(vaultId, documentId);
+    const source = fs.readFileSync(canonical, "utf8");
+    if (format === "markdown") {
+      const parsed = parseMarkdownMeta(source);
+      const body = parsed.body.trim();
+      return {
+        id: documentId.split(path.sep).join("/"),
+        title: markdownTitleFor(source, path.basename(candidate)),
+        meta: parsed.meta,
+        format,
+        source: body,
+        html: body,
+        sourceStartLine: parsed.sourceStartLine,
+      };
+    }
+    const metadata = source.match(/^\s*<!--vault[\s\S]*?-->/i)?.[0] ?? "";
+    const content = source.slice(metadata.length);
     const leadingWhitespace = content.match(/^\s*/)?.[0] ?? "";
-    const sourceStartLine = html.slice(0, metadata.length + leadingWhitespace.length).split(/\r?\n/).length;
+    const sourceStartLine = source.slice(0, metadata.length + leadingWhitespace.length).split(/\r?\n/).length;
     return {
       id: documentId.split(path.sep).join("/"),
-      title: titleFor(html, path.basename(candidate)),
-      meta: parseMeta(html),
+      title: titleFor(source, path.basename(candidate)),
+      meta: parseMeta(source),
+      format,
+      source: content.trim(),
       html: content.trim(),
       sourceStartLine,
     };
@@ -646,9 +780,15 @@ export class VaultService {
     }
   }
 
-  private documentFile(vaultId: string, documentId: string): { candidate: string; canonical: string } {
+  private documentFile(
+    vaultId: string,
+    documentId: string,
+  ): { candidate: string; canonical: string; format: VaultFormat } {
+    const vault = this.vault(vaultId);
+    const format = vault.format;
+    const extension = extensionFor(format);
     const root = this.documentsRoot(vaultId);
-    if (!documentId || path.isAbsolute(documentId) || !documentId.toLowerCase().endsWith(".html")) {
+    if (!documentId || path.isAbsolute(documentId) || !documentId.toLowerCase().endsWith(extension)) {
       throw new Error("Invalid document ID.");
     }
     const candidate = path.resolve(root, documentId);
@@ -656,7 +796,7 @@ export class VaultService {
     const canonical = fs.realpathSync(candidate);
     if (!isWithin(root, canonical) || !fs.statSync(canonical).isFile()) throw new Error("Document not found.");
     if (fs.statSync(canonical).size > MAX_DOCUMENT_BYTES) throw new Error("Document is too large.");
-    return { candidate, canonical };
+    return { candidate, canonical, format };
   }
 
   quickNotes(vaultId: string): string {
@@ -679,6 +819,7 @@ export class VaultService {
   contentSignature(vaultId: string): string {
     const vault = this.vault(vaultId);
     const root = this.documentsRoot(vaultId);
+    const extension = extensionFor(vault.format);
     const entries: string[] = [];
     const configFile = path.join(vault.repositoryPath, "vault.json");
     if (fs.existsSync(configFile)) {
@@ -695,7 +836,7 @@ export class VaultService {
         const absolute = path.join(directory, entry.name);
         if (entry.isDirectory()) {
           visit(absolute);
-        } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".html")) {
+        } else if (entry.isFile() && entry.name.toLowerCase().endsWith(extension)) {
           const stats = fs.statSync(absolute);
           entries.push(`${path.relative(root, absolute).split(path.sep).join("/")}:${stats.mtimeMs}:${stats.size}`);
         }
@@ -731,14 +872,8 @@ export class VaultService {
     const links: GraphData["links"] = [];
     const seen = new Set<string>();
     for (const node of nodes) {
-      const html = this.document(vaultId, node.id).html;
-      for (const match of html.matchAll(/href=["']#([^"']+)["']/g)) {
-        let target: string;
-        try {
-          target = decodeURIComponent(match[1]);
-        } catch {
-          continue;
-        }
+      const doc = this.document(vaultId, node.id);
+      for (const target of linksForDocument(doc, ids)) {
         if (!ids.has(target) || target === node.id) continue;
         const key = [node.id, target].sort().join("\0");
         if (seen.has(key)) continue;
@@ -806,7 +941,8 @@ export class VaultService {
     const config = this.config(repositoryPath);
     this.resolveDocumentsRoot(repositoryPath, config);
     const name = config.name?.trim() || fallbackName?.trim() || path.basename(repositoryPath);
-    const summary: VaultSummary = { id, name, repositoryPath, hasConfig };
+    const format = formatFromConfig(config);
+    const summary: VaultSummary = { id, name, repositoryPath, hasConfig, format };
     const defaultLanguage = cleanText(config.defaultLanguage);
     if (defaultLanguage) summary.defaultLanguage = defaultLanguage;
     const structure = sanitizeStructure(config.structure);
@@ -848,7 +984,7 @@ export class VaultService {
     return canonical;
   }
 
-  private walk(root: string, directory: string, meta?: VaultStructure): TreeNode[] {
+  private walk(root: string, directory: string, meta: VaultStructure | undefined, format: VaultFormat): TreeNode[] {
     const nodes: TreeNode[] = [];
     for (const entry of fs
       .readdirSync(directory, { withFileTypes: true })
@@ -859,7 +995,7 @@ export class VaultService {
       const id = path.relative(root, absolute).split(path.sep).join("/");
       if (entry.isDirectory()) {
         const directoryMeta = meta?.[entry.name];
-        const children = this.walk(root, absolute, directoryMeta?.children);
+        const children = this.walk(root, absolute, directoryMeta?.children, format);
         if (children.length) {
           const folder: TreeNode = {
             type: "folder",
@@ -870,13 +1006,13 @@ export class VaultService {
           if (directoryMeta?.description) folder.description = directoryMeta.description;
           nodes.push(folder);
         }
-      } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".html")) {
-        const html = fs.statSync(absolute).size <= MAX_DOCUMENT_BYTES ? fs.readFileSync(absolute, "utf8") : "";
-        const meta = parseMeta(html);
+      } else if (entry.isFile() && entry.name.toLowerCase().endsWith(extensionFor(format))) {
+        const source = fs.statSync(absolute).size <= MAX_DOCUMENT_BYTES ? fs.readFileSync(absolute, "utf8") : "";
+        const meta = format === "markdown" ? parseMarkdownMeta(source).meta : parseMeta(source);
         nodes.push({
           type: "doc",
           id,
-          label: titleFor(html, entry.name),
+          label: format === "markdown" ? markdownTitleFor(source, entry.name) : titleFor(source, entry.name),
           date: meta.date ?? null,
           tags: meta.tags ?? [],
         });

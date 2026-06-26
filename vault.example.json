@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "name": "Example vault",
   "documentsDirectory": "documents",
+  "format": "html",
   "defaultLanguage": "en",
   "structure": {
     "10-knowledge": {

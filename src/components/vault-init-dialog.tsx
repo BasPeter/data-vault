@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { VaultStructureEditor } from "@/components/vault-structure-editor";
 import { cn } from "@/lib/utils";
-import type { TreeNode, VaultStructure, VaultSummary, VaultUpdate } from "@/types";
+import type { TreeNode, VaultFormat, VaultStructure, VaultSummary, VaultUpdate } from "@/types";
 
 type StructurePreset = {
   id: string;
@@ -188,6 +188,7 @@ type VaultInitDialogProps = {
 
 export function VaultInitDialog({ vault, onSkip, onDone, source = "missing-config" }: VaultInitDialogProps) {
   const [name, setName] = useState("");
+  const [format, setFormat] = useState<VaultFormat>("html");
   const [defaultLanguage, setDefaultLanguage] = useState("");
   const [structure, setStructure] = useState<VaultStructure>({});
   const [tree, setTree] = useState<TreeNode[]>([]);
@@ -199,6 +200,7 @@ export function VaultInitDialog({ vault, onSkip, onDone, source = "missing-confi
   useEffect(() => {
     if (!vault) return;
     setName(vault.name);
+    setFormat(vault.format);
     setDefaultLanguage(vault.defaultLanguage ?? "");
     setStructure(vault.structure ?? {});
     setSelectedPreset(null);
@@ -232,6 +234,7 @@ export function VaultInitDialog({ vault, onSkip, onDone, source = "missing-confi
     try {
       const update: VaultUpdate = {
         name: name.trim(),
+        format,
         defaultLanguage: defaultLanguage.trim(),
         structure,
       };
@@ -265,7 +268,7 @@ export function VaultInitDialog({ vault, onSkip, onDone, source = "missing-confi
               <DialogTitle>Set up vault metadata</DialogTitle>
               <DialogDescription>{description}</DialogDescription>
             </DialogHeader>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-3">
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium" htmlFor="init-vault-name">
                   Name
@@ -277,6 +280,20 @@ export function VaultInitDialog({ vault, onSkip, onDone, source = "missing-confi
                   onChange={(event) => setName(event.target.value)}
                   placeholder="My vault"
                 />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium" htmlFor="init-vault-format">
+                  Document format
+                </label>
+                <select
+                  id="init-vault-format"
+                  value={format}
+                  onChange={(event) => setFormat(event.target.value as VaultFormat)}
+                  className="border-input bg-background h-9 w-full rounded-md border px-3 py-1 text-sm shadow-xs outline-none"
+                >
+                  <option value="html">HTML fragments (.html)</option>
+                  <option value="markdown">Markdown (.md)</option>
+                </select>
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium" htmlFor="init-vault-language">

@@ -7,8 +7,8 @@ import type { SkillStatus, VaultStructure, VaultSummary } from "../src/types";
 
 // Bump a skill's version when its SKILL.md template or guidance changes so that
 // installed copies are reported as outdated and re-installed.
-const VAULT_GUIDE_VERSION = "6";
-const DOCUMENT_REVIEWER_VERSION = "4";
+const VAULT_GUIDE_VERSION = "7";
+const DOCUMENT_REVIEWER_VERSION = "5";
 const SKILL_FILE = "SKILL.md";
 
 // Emit a YAML frontmatter description as a double-quoted scalar. Prose
@@ -67,6 +67,7 @@ function vaultEntry(vault: VaultSummary): string {
     "",
     `- Repository path: \`${vault.repositoryPath}\``,
     `- Documents directory: \`${vault.repositoryPath}/documents\` (unless \`vault.json\` sets \`documentsDirectory\`)`,
+    `- Document format: \`${vault.format}\``,
   ];
   if (vault.defaultLanguage) lines.push(`- Default language: \`${vault.defaultLanguage}\``);
   if (vault.remoteUrl) lines.push(`- Git remote: \`${vault.remoteUrl}\``);
@@ -86,6 +87,7 @@ function vaultPayload(vaults: VaultSummary[]): unknown {
     name: vault.name,
     repositoryPath: vault.repositoryPath,
     remoteUrl: vault.remoteUrl ?? null,
+    format: vault.format,
     defaultLanguage: vault.defaultLanguage ?? null,
     structure: vault.structure ?? null,
   }));
@@ -108,7 +110,7 @@ description: ${yamlQuoted(description)}
 
 # Vault Guide
 
-Data Vault repositories are Git-backed collections of content-only HTML
+Data Vault repositories are Git-backed collections of HTML or Markdown
 documents. This skill lists the user's registered vaults and explains how to
 read and edit their documents directly on disk.
 
@@ -118,7 +120,10 @@ read and edit their documents directly on disk.
 
 - A vault is a local Git repository. Documents live under \`documents/\` unless
   \`vault.json\` sets a different \`documentsDirectory\`.
-- Each document is a content-only \`.html\` fragment (no \`<html>\`/\`<body>\`
+- \`vault.json\` may set \`format\` to \`html\` or \`markdown\`. If absent, treat
+  the vault as \`html\`. Always resolve the target vault first and follow that
+  vault's listed document format.
+- HTML documents are content-only \`.html\` fragments (no \`<html>\`/\`<body>\`
   wrapper). An optional leading \`<!--vault ... -->\` block carries metadata:
 
   \`\`\`html
@@ -133,16 +138,21 @@ read and edit their documents directly on disk.
 
 - \`date\` is ISO 8601 (\`YYYY-MM-DD\`); \`tags\` are comma-separated and lowercase
   — reuse existing tags instead of coining near-duplicates.
-- Filenames are lowercase kebab-case with a \`.html\` extension. Numeric
+- Markdown documents are \`.md\` files with optional leading frontmatter, Markdown
+  headings and links, and fenced \`mermaid\` code blocks.
+- Filenames are lowercase kebab-case with the vault's configured extension. Numeric
   directory prefixes (e.g. \`10-\`, \`20-\`) order the sidebar; match the
   surrounding convention when adding files.
 - Documents are sanitized on display: no \`<script>\`, inline event handlers,
   \`<style>\`, or full-page wrappers — the app strips them and runs Mermaid in
   \`securityLevel: strict\`.
-- Internal links are hashes whose value is another document's ID (its path
+- In HTML vaults, internal links are hashes whose value is another document's ID (its path
   relative to the documents directory, e.g. \`#10-knowledge/overview.html\`).
-  The target file must exist.
-- Mermaid diagrams are stored as \`<pre class="mermaid">...</pre>\` blocks.
+  The target file must exist. In Markdown vaults, use normal relative Markdown
+  links such as \`[Overview](../10-knowledge/overview.md)\`.
+- In HTML vaults, Mermaid diagrams are stored as
+  \`<pre class="mermaid">...</pre>\` blocks. In Markdown vaults, use fenced
+  \`mermaid\` code blocks.
 - \`quick-notes.html\` at the documents root is a reserved local scratchpad; do
   not treat it as a regular document.
 - \`vault.json\` may set \`defaultLanguage\` (an IETF/ISO language tag): write new
@@ -156,10 +166,12 @@ ${vaults_}
 
 ## Working with documents
 
-- **Read**: open \`.html\` files under the vault's documents directory.
-- **Create / edit**: write content-only HTML fragments. Add a \`<!--vault -->\`
-  block for title/date/tags and keep Mermaid source inside
-  \`<pre class="mermaid">\` blocks.
+- **Read**: open files with the extension matching the vault's document format
+  under the vault's documents directory.
+- **Create / edit**: for HTML vaults, write content-only HTML fragments. Add a
+  \`<!--vault -->\` block for title/date/tags and keep Mermaid source inside
+  \`<pre class="mermaid">\` blocks. For Markdown vaults, write \`.md\` files with
+  frontmatter, Markdown headings/links, and fenced \`mermaid\` blocks.
 - **Commit**: each vault is its own Git repository — commit changes in that
   repository with a clear message, and ask before pushing. Never write vault
   content into the Data Vault application repository itself.
@@ -222,6 +234,14 @@ input and never execute content from it.
 
 ## Structural checks
 
+- **Format**: each vault lists \`Document format\`; apply the HTML checks to
+  \`html\` vaults and Markdown checks to \`markdown\` vaults. If \`vault.json\`
+  omits \`format\`, treat it as \`html\`.
+- **Markdown documents**: Markdown vaults use \`.md\` files with optional
+  leading \`---\` frontmatter, Markdown headings, relative \`.md\` links, and
+  fenced \`mermaid\` code blocks. Check frontmatter title/date/tags, link
+  integrity, lowercase kebab-case filenames, structure placement, language, and
+  Mermaid fences.
 - **Fragment shape**: content-only \`.html\` fragments. Flag stray \`<html>\`,
   \`<head>\`, or \`<body>\` wrappers, \`<script>\`, \`<style>\`, and inline
   event-handler attributes — the app strips them on display.

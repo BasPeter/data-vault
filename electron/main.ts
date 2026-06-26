@@ -12,7 +12,7 @@ import {
   securityAssessmentPrompt,
   updateStatus,
 } from "./updater";
-import type { VaultStructure, VaultUpdate } from "../src/types";
+import type { VaultFormat, VaultStructure, VaultUpdate } from "../src/types";
 
 // Bounds for the optional vault.json `structure` tree, mirrored from
 // electron/vault.ts. The renderer is trusted but validated defensively.
@@ -50,6 +50,11 @@ function stringArgument(value: unknown, name: string): string {
 
 function optionalText(value: unknown, name: string): string {
   if (typeof value !== "string" || value.length > STRUCTURE_MAX_TEXT) throw new Error(`Invalid ${name}.`);
+  return value;
+}
+
+function formatArgument(value: unknown): VaultFormat {
+  if (value !== "html" && value !== "markdown") throw new Error("Invalid document format.");
   return value;
 }
 
@@ -111,12 +116,14 @@ function updateArgument(value: unknown): VaultUpdate {
   const result: VaultUpdate = {};
   if (update.name !== undefined) result.name = stringArgument(update.name, "vault name");
   if (update.remoteUrl !== undefined) result.remoteUrl = stringArgument(update.remoteUrl, "remote URL");
+  if (update.format !== undefined) result.format = formatArgument(update.format);
   if (update.defaultLanguage !== undefined)
     result.defaultLanguage = optionalText(update.defaultLanguage, "default language");
   if (update.structure !== undefined) result.structure = structureArgument(update.structure);
   if (
     result.name === undefined &&
     result.remoteUrl === undefined &&
+    result.format === undefined &&
     result.defaultLanguage === undefined &&
     result.structure === undefined
   ) {
@@ -135,6 +142,7 @@ function htmlArgument(value: unknown): string {
 function pdfFileName(title: string, fallback: string): string {
   const base = (title || fallback)
     .replace(/\.html$/i, "")
+    .replace(/\.md$/i, "")
     .replace(/[<>:"/\\|?*]/g, " ")
     .replaceAll(/./g, (character) => (character.charCodeAt(0) < 32 ? " " : character))
     .replace(/\s+/g, " ")
@@ -216,9 +224,9 @@ function registerIpc(): void {
     autoInstallSkills();
     return vault;
   });
-  ipcMain.handle("vault:create-empty", async (event, name) => {
+  ipcMain.handle("vault:create-empty", async (event, name, format = "html") => {
     assertTrusted(event);
-    const vault = await service.createEmpty(stringArgument(name, "vault name"));
+    const vault = await service.createEmpty(stringArgument(name, "vault name"), formatArgument(format));
     autoInstallSkills();
     return vault;
   });

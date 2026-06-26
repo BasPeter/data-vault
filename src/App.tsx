@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Database,
   FileDown,
@@ -26,7 +26,7 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { useTheme } from "@/hooks/use-theme";
 import { cn } from "@/lib/utils";
-import type { Manifest, TreeNode, VaultSummary } from "@/types";
+import type { Manifest, TreeNode, VaultFormat, VaultSummary } from "@/types";
 
 function firstDocument(nodes: TreeNode[]): string | null {
   for (const node of nodes) {
@@ -46,6 +46,14 @@ function documentLabel(nodes: TreeNode[], id: string): string | null {
     }
   }
   return null;
+}
+
+function documentIds(nodes: TreeNode[], output = new Set<string>()): Set<string> {
+  for (const node of nodes) {
+    if (node.type === "doc") output.add(node.id);
+    else documentIds(node.children, output);
+  }
+  return output;
 }
 
 export default function App() {
@@ -152,6 +160,8 @@ export default function App() {
     }
   };
 
+  const ids = useMemo(() => documentIds(manifest.tree), [manifest.tree]);
+
   if (loading) return <CenteredMessage title="Loading vaults…" />;
   if (!vaultId) return <Onboarding onLocal={addLocal} onCloned={refreshVaults} error={error} />;
 
@@ -238,7 +248,15 @@ export default function App() {
             <GraphView vaultId={vaultId} activeId={activeId} onSelect={openDocument} version={version} />
           ) : (
             <div className="h-full overflow-auto">
-              <DocumentView vaultId={vaultId} docId={activeId} theme={theme} version={version} showBlame={showBlame} />
+              <DocumentView
+                vaultId={vaultId}
+                docId={activeId}
+                theme={theme}
+                version={version}
+                showBlame={showBlame}
+                documentIds={ids}
+                onNavigateDocument={openDocument}
+              />
             </div>
           )}
         </main>
@@ -293,6 +311,7 @@ function Onboarding({
 }) {
   const [url, setUrl] = useState("");
   const [name, setName] = useState("");
+  const [format, setFormat] = useState<VaultFormat>("html");
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -310,7 +329,7 @@ function Onboarding({
     }
   };
   const clone = () => run(() => window.vaultApi.clone(url.trim()));
-  const create = () => run(() => window.vaultApi.createEmpty(name.trim()));
+  const create = () => run(() => window.vaultApi.createEmpty(name.trim(), format));
   return (
     <div className="bg-muted/30 flex min-h-screen items-center justify-center p-6">
       <WindowDragStrip />
@@ -349,8 +368,17 @@ function Onboarding({
               <span className="text-muted-foreground text-xs">OR</span>
               <Separator className="flex-1" />
             </div>
-            <div className="flex gap-2">
+            <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
               <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="New vault name" />
+              <select
+                aria-label="Document format"
+                value={format}
+                onChange={(event) => setFormat(event.target.value as VaultFormat)}
+                className="border-input bg-background h-9 rounded-md border px-3 py-1 text-sm shadow-xs outline-none"
+              >
+                <option value="html">HTML</option>
+                <option value="markdown">Markdown</option>
+              </select>
               <Button variant="outline" onClick={create} disabled={!name.trim() || busy}>
                 <Plus />
                 {busy ? "Creating…" : "Create"}
