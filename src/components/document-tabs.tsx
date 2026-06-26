@@ -62,7 +62,7 @@ export function DocumentTabs({ tabs, activeId, onSelect, onClose }: Props) {
   };
 
   return (
-    <div className="app-no-drag bg-background/95 relative flex h-10 shrink-0 items-end">
+    <div className="app-no-drag bg-background/95 sticky top-14 z-10 isolate flex h-10 shrink-0 items-end">
       <span aria-hidden="true" className="bg-border absolute inset-x-0 bottom-0 z-10 h-px" />
       {canScrollLeft && (
         <Button

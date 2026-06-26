@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { GithubConnectDialog } from "@/components/github-connect-dialog";
 import { AppSidebar } from "@/components/app-sidebar";
+import { DocumentPicker } from "@/components/document-picker";
 import { DocumentTabs } from "@/components/document-tabs";
 import { DocumentView } from "@/components/document-view";
 import { GraphView } from "@/components/graph-view";
@@ -338,15 +339,19 @@ export default function App() {
             <div className="flex h-full min-h-0 flex-col">
               <DocumentTabs tabs={displayTabs} activeId={activeId} onSelect={openDocument} onClose={closeDocument} />
               <div className="min-h-0 flex-1 overflow-auto">
-                <DocumentView
-                  vaultId={vaultId}
-                  docId={activeId}
-                  theme={theme}
-                  version={version}
-                  showBlame={showBlame}
-                  documentIds={ids}
-                  onNavigateDocument={openDocument}
-                />
+                {activeId ? (
+                  <DocumentView
+                    vaultId={vaultId}
+                    docId={activeId}
+                    theme={theme}
+                    version={version}
+                    showBlame={showBlame}
+                    documentIds={ids}
+                    onNavigateDocument={openDocument}
+                  />
+                ) : (
+                  <DocumentPicker tree={manifest.tree} onSelect={openDocument} />
+                )}
               </div>
             </div>
           )}

@@ -57,8 +57,13 @@ test("uses the workspace features in one session", async ({ appLaunch }, testInf
     await page.locator(".doc-content").getByRole("link", { name: "architecture" }).click();
     await expect(page.getByRole("tab", { name: "Architecture" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Architecture", level: 1 })).toBeVisible();
-    await page.getByRole("button", { name: "Close Architecture" }).click();
-    await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
+    const closeButtons = page.getByRole("tablist", { name: "Open documents" }).getByRole("button", { name: /^Close / });
+    while ((await closeButtons.count()) > 0) {
+      await closeButtons.first().click();
+    }
+    await expect(page.getByRole("heading", { name: "Open a document" })).toBeVisible();
+    await page.locator("main").getByRole("button", { name: "Architecture" }).click();
+    await expect(page.getByRole("heading", { name: "Architecture", level: 1 })).toBeVisible();
   });
 
   await test.step("opens, closes, and navigates through the graph", async () => {

@@ -19,7 +19,7 @@ test("opens a local repository and creates a second vault in one session", async
     // The workspace shell replaces onboarding once the vault is registered.
     await expect(page.getByTestId("vault-switcher")).toContainText(/.+/);
     await expect(page.getByText("Documents")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Welcome" })).toBeVisible();
+    await expect(page.locator('[data-sidebar="sidebar"]').getByRole("button", { name: "Welcome" })).toBeVisible();
     await captureScreenshot(page, testInfo, "vault-opened");
 
     // Continue the same user journey through the workspace vault switcher.
@@ -30,7 +30,7 @@ test("opens a local repository and creates a second vault in one session", async
     await createDialog.getByRole("button", { name: "Create" }).click();
 
     await expect(page.getByTestId("vault-switcher")).toContainText("My New Vault");
-    await expect(page.getByRole("button", { name: "Welcome" })).toBeVisible();
+    await expect(page.locator('[data-sidebar="sidebar"]').getByRole("button", { name: "Welcome" })).toBeVisible();
     await captureScreenshot(page, testInfo, "empty-vault-created");
   } finally {
     await app.close();
