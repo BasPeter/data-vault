@@ -2,13 +2,150 @@
 import type { AppChangelog } from "../src/types";
 
 export const APP_CHANGELOG = {
-  "generatedAt": "2026-06-23T10:27:25+02:00",
+  "generatedAt": "2026-06-25T10:23:10+02:00",
   "repositoryUrl": "https://github.com/BasPeter/data-vault.git",
   "releases": [
     {
+      "version": "0.11.1",
+      "date": "2026-06-25T10:23:10+02:00",
+      "commits": [
+        {
+          "hash": "98ae62a7eb490b122f55f88088ca58e7f854e9b5",
+          "shortHash": "98ae62a",
+          "subject": "Prepare release 0.11.1"
+        },
+        {
+          "hash": "0057b76d00fdf2b43d281022872d32ff1509ccbb",
+          "shortHash": "0057b76",
+          "subject": "Quote skill description to emit valid YAML frontmatter"
+        }
+      ]
+    },
+    {
+      "version": "0.11.0",
+      "date": "2026-06-24T20:44:35+02:00",
+      "commits": [
+        {
+          "hash": "29c3dfbb3c4d2272e22ebe738f74c69551bb3d4d",
+          "shortHash": "29c3dfb",
+          "subject": "Prepare release 0.11.0"
+        },
+        {
+          "hash": "9a65038831647ace1d9be754bb6c806e5fabef1e",
+          "shortHash": "9a65038",
+          "subject": "Allow GitHub avatars in renderer CSP"
+        },
+        {
+          "hash": "a82fc7a376b29bbbe699ea20812001344b42c075",
+          "shortHash": "a82fc7a",
+          "subject": "Fix GitHub connect dialog overflow"
+        },
+        {
+          "hash": "9c9b64c12fe8c4a1dc483671985ab5c0b78c6c64",
+          "shortHash": "9c9b64c",
+          "subject": "Add settings reset and remove-vault actions"
+        },
+        {
+          "hash": "8955aa53e34c469012a06f4a71e64eb73053e268",
+          "shortHash": "8955aa5",
+          "subject": "Configure GitHub OAuth client id for builds"
+        },
+        {
+          "hash": "fe263be17548619dee58436f79db8c9d60197668",
+          "shortHash": "fe263be",
+          "subject": "Fix onboarding E2E test for Advanced section"
+        },
+        {
+          "hash": "54dcd4473d990539c3b1e0e0f309bb1c18821a39",
+          "shortHash": "54dcd44",
+          "subject": "Add one-click GitHub sign-in with multiple accounts"
+        }
+      ]
+    },
+    {
+      "version": "0.10.9",
+      "date": "2026-06-23T16:27:06+02:00",
+      "commits": [
+        {
+          "hash": "2f56426bc161ebb6358b618344aa37bd53a61fcd",
+          "shortHash": "2f56426",
+          "subject": "Prepare release 0.10.9"
+        },
+        {
+          "hash": "a22d34a5e37e748513db535ec94e841c20da9933",
+          "shortHash": "a22d34a",
+          "subject": "Center the Windows app icon"
+        },
+        {
+          "hash": "98dfaf98efaee3e874f4390e432d1cc1c0e6d86e",
+          "shortHash": "98dfaf9",
+          "subject": "Add document PDF export"
+        }
+      ]
+    },
+    {
+      "version": "0.10.8",
+      "date": "2026-06-23T15:20:21+02:00",
+      "commits": [
+        {
+          "hash": "2360b00f6447d6e1a1696a6ca74739269861caf8",
+          "shortHash": "2360b00",
+          "subject": "Prepare release 0.10.8"
+        },
+        {
+          "hash": "80e277ba732af78bf015b4a2bf896063987efa28",
+          "shortHash": "80e277b",
+          "subject": "Enforce commit quality checks"
+        },
+        {
+          "hash": "7c832298bff21a2628ca9b5f8f0a4d9bd2ec24ea",
+          "shortHash": "7c83229",
+          "subject": "Add larger Windows app icon"
+        },
+        {
+          "hash": "d9ea57a247bb66895f018d3e2d9a475e505c32ec",
+          "shortHash": "d9ea57a",
+          "subject": "Auto-refresh vault document changes"
+        }
+      ]
+    },
+    {
+      "version": "0.10.7",
+      "date": "2026-06-23T11:14:50+02:00",
+      "commits": [
+        {
+          "hash": "e5eeae07bd2a50251d6a86c703619c8aa5bd80ce",
+          "shortHash": "e5eeae0",
+          "subject": "Fix transparent app icon background"
+        }
+      ]
+    },
+    {
+      "version": "0.10.6",
+      "date": "2026-06-23T11:01:10+02:00",
+      "commits": [
+        {
+          "hash": "cc7b942d2ae34c4407969276e7a3bbf7cf3d3d02",
+          "shortHash": "cc7b942",
+          "subject": "Prepare release 0.10.6"
+        },
+        {
+          "hash": "90494a20974b74028c2ad337db534c41033742da",
+          "shortHash": "90494a2",
+          "subject": "Add lint and format checks to CI"
+        }
+      ]
+    },
+    {
       "version": "0.10.5",
-      "date": "2026-06-23T10:27:25+02:00",
-      "commits": []
+      "date": "2026-06-23T10:47:09+02:00",
+      "commits": [
+        {
+          "hash": "a5b8deef7e8e58924c55420fa89f24145742a95c",
+          "shortHash": "a5b8dee",
+          "subject": "Fix changelog release notes rendering"
+        }
+      ]
     },
     {
       "version": "0.10.4",
