@@ -95,7 +95,7 @@ export type SavePdfResult = {
 };
 
 export type UpdateStatus = {
-  state: "idle" | "checking" | "available" | "downloading" | "downloaded" | "not-available" | "error";
+  state: "idle" | "checking" | "available" | "downloading" | "downloaded" | "installing" | "not-available" | "error";
   currentVersion: string;
   version?: string;
   percent?: number;

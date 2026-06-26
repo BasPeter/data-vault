@@ -10,8 +10,8 @@ import type { AppChangelog, AppChangelogRelease, UpdateStatus } from "@/types";
 const initialStatus: UpdateStatus = { state: "idle", currentVersion: "" };
 
 // States that mean a newer release than the installed one has been found.
-const NEWER_STATES = ["available", "downloading", "downloaded"];
-const BUSY_STATES = ["checking", "available", "downloading"];
+const NEWER_STATES = ["available", "downloading", "downloaded", "installing"];
+const BUSY_STATES = ["checking", "available", "downloading", "installing"];
 
 function headline(status: UpdateStatus): string {
   switch (status.state) {
@@ -23,6 +23,8 @@ function headline(status: UpdateStatus): string {
       return `Downloading version ${status.version ?? "…"}…`;
     case "downloaded":
       return `Version ${status.version ?? ""} is ready to install`.trim();
+    case "installing":
+      return "Installing update";
     case "not-available":
       return "You're up to date";
     case "error":
@@ -38,6 +40,8 @@ function detail(status: UpdateStatus): string {
       return `${Math.round(status.percent ?? 0)}% downloaded`;
     case "downloaded":
       return "Data Vault will restart to finish installing.";
+    case "installing":
+      return "Data Vault is closing to complete the update.";
     case "error":
       return status.message ?? "Unknown error.";
     case "available":
@@ -135,7 +139,7 @@ export function UpdateButton({ showLabel = false }: { showLabel?: boolean }) {
 
   const newer = NEWER_STATES.includes(status.state);
   const busy = BUSY_STATES.includes(status.state);
-  const ready = status.state === "downloaded";
+  const ready = status.state === "downloaded" || status.state === "installing";
   const versionText = status.currentVersion ? `v${status.currentVersion}` : "Data Vault";
   const dotLabel = newer ? ` — update to version ${status.version ?? "available"}` : "";
   const promptVersion = status.version ?? changelog?.releases[0]?.version ?? status.currentVersion;
@@ -220,9 +224,9 @@ export function UpdateButton({ showLabel = false }: { showLabel?: boolean }) {
               Show changelog
             </Button>
             {ready ? (
-              <Button size="sm" onClick={installAndRestart}>
-                <RotateCcw />
-                Update and restart
+              <Button size="sm" onClick={installAndRestart} disabled={status.state === "installing"}>
+                {status.state === "installing" ? <RefreshCw className="animate-spin" /> : <RotateCcw />}
+                {status.state === "installing" ? "Installing…" : "Update and restart"}
               </Button>
             ) : (
               <Button size="sm" variant="outline" onClick={recheck} disabled={busy}>

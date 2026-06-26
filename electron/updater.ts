@@ -10,6 +10,7 @@ const { autoUpdater } = updater;
 const AUTOMATIC_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 let status: UpdateStatus = { state: "idle", currentVersion: app.getVersion() };
+let installStarted = false;
 
 function publish(next: UpdateStatus): void {
   status = next;
@@ -143,5 +144,13 @@ export async function checkForUpdates(): Promise<UpdateStatus> {
 
 export function installUpdate(): void {
   if (status.state !== "downloaded") throw new Error("No downloaded update is ready to install.");
-  autoUpdater.quitAndInstall(false, true);
+  if (installStarted) return;
+  installStarted = true;
+  publish({
+    state: "installing",
+    currentVersion: app.getVersion(),
+    version: status.version,
+    latestReleaseNotes: status.latestReleaseNotes,
+  });
+  autoUpdater.quitAndInstall(true, true);
 }
