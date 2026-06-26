@@ -2,13 +2,44 @@
 import type { AppChangelog } from "../src/types";
 
 export const APP_CHANGELOG = {
-  "generatedAt": "2026-06-26T15:17:07+02:00",
+  "generatedAt": "2026-06-26T17:04:49+02:00",
   "repositoryUrl": "https://github.com/BasPeter/data-vault.git",
   "releases": [
     {
-      "version": "0.12.2",
-      "date": "2026-06-26T15:17:07+02:00",
+      "version": "0.12.3",
+      "date": "2026-06-26T17:04:49+02:00",
       "commits": [
+        {
+          "hash": "5adce73158535b5f564b3958b14601896baad825",
+          "shortHash": "5adce73",
+          "subject": "Make tab row opaque"
+        },
+        {
+          "hash": "37911a0df7d87f020fcd283ba6bf8aeb49363998",
+          "shortHash": "37911a0",
+          "subject": "Add empty document picker"
+        },
+        {
+          "hash": "85341370f038f6d1a764607cb5647884b8a55e5c",
+          "shortHash": "8534137",
+          "subject": "Add document tabs"
+        },
+        {
+          "hash": "927c7c0d1cf7bbf2f7b0663d4c9a0b0dc4328e42",
+          "shortHash": "927c7c0",
+          "subject": "Fix Windows update restart"
+        }
+      ]
+    },
+    {
+      "version": "0.12.2",
+      "date": "2026-06-26T15:23:09+02:00",
+      "commits": [
+        {
+          "hash": "69787b427ef9e1ee771ff1167f5cd8b3430de921",
+          "shortHash": "69787b4",
+          "subject": "Prepare release 0.12.2"
+        },
         {
           "hash": "ba8e6bd466ac660a28cea4ad3ff15915689a77b7",
           "shortHash": "ba8e6bd",
