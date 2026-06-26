@@ -115,10 +115,19 @@ export type AppChangelog = {
   releases: AppChangelogRelease[];
 };
 
+export type AgentSkillVersionStatus = {
+  name: string;
+  label: string;
+  latestVersion: string;
+  installedVersion: string | null;
+  state: "not-installed" | "outdated" | "current";
+};
+
 export type SkillStatus = {
   state: "not-installed" | "outdated" | "current";
   version: string;
   vaultCount: number;
+  skills: AgentSkillVersionStatus[];
 };
 
 export type GitHubAccount = {

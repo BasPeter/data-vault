@@ -23,6 +23,7 @@ function yamlQuoted(value: string): string {
 // its own version and marker so the two can be revised separately.
 interface SkillDefinition {
   name: string;
+  label: string;
   version: string;
   markerFile: string;
   render(vaults: VaultSummary[]): string;
@@ -269,12 +270,14 @@ ${vaults_}
 const SKILLS: SkillDefinition[] = [
   {
     name: "vault-guide",
+    label: "Vault Guide",
     version: VAULT_GUIDE_VERSION,
     markerFile: ".vault-guide.json",
     render: renderVaultGuide,
   },
   {
     name: "document-reviewer",
+    label: "Document Reviewer",
     version: DOCUMENT_REVIEWER_VERSION,
     markerFile: ".document-reviewer.json",
     render: renderDocumentReviewer,
@@ -323,22 +326,39 @@ export class SkillService {
   status(vaults: VaultSummary[]): SkillStatus {
     let installed = true;
     let matches = true;
+    const skillStatuses: SkillStatus["skills"] = [];
     for (const skill of SKILLS) {
       const current = this.skillFingerprint(skill, vaults);
       const expectedContent = skill.render(vaults);
+      let skillInstalled = true;
+      let skillMatches = true;
+      const installedVersions = new Set<string>();
       for (const base of this.bases) {
         const directory = path.join(base, skill.name);
         const skillFile = path.join(directory, SKILL_FILE);
         if (!fs.existsSync(skillFile)) {
           installed = false;
+          skillInstalled = false;
           continue;
         }
         const marker = readJson<Marker>(path.join(directory, skill.markerFile));
-        if (!marker || marker.fingerprint !== current || fs.readFileSync(skillFile, "utf8") !== expectedContent)
+        if (marker?.version) installedVersions.add(marker.version);
+        if (!marker || marker.fingerprint !== current || fs.readFileSync(skillFile, "utf8") !== expectedContent) {
           matches = false;
+          skillMatches = false;
+        }
       }
+      const installedVersion =
+        installedVersions.size === 0 ? null : installedVersions.size === 1 ? Array.from(installedVersions)[0] : "mixed";
+      skillStatuses.push({
+        name: skill.name,
+        label: skill.label,
+        latestVersion: skill.version,
+        installedVersion,
+        state: !skillInstalled ? "not-installed" : skillMatches ? "current" : "outdated",
+      });
     }
     const state: SkillStatus["state"] = !installed ? "not-installed" : matches ? "current" : "outdated";
-    return { state, version: VAULT_GUIDE_VERSION, vaultCount: vaults.length };
+    return { state, version: VAULT_GUIDE_VERSION, vaultCount: vaults.length, skills: skillStatuses };
   }
 }

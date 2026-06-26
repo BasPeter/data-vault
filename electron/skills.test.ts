@@ -81,6 +81,22 @@ describe("SkillService", () => {
     const status = new SkillService(home).install([vaultA]);
 
     expect(status.state).toBe("current");
+    expect(status.skills).toEqual([
+      {
+        name: "vault-guide",
+        label: "Vault Guide",
+        latestVersion: "6",
+        installedVersion: "6",
+        state: "current",
+      },
+      {
+        name: "document-reviewer",
+        label: "Document Reviewer",
+        latestVersion: "4",
+        installedVersion: "4",
+        state: "current",
+      },
+    ]);
     for (const dir of [path.dirname(claudeSkill(home)), path.dirname(codexSkill(home))]) {
       expect(fs.existsSync(path.join(dir, "SKILL.md"))).toBe(true);
       expect(fs.existsSync(path.join(dir, ".vault-guide.json"))).toBe(true);
@@ -137,7 +153,9 @@ describe("SkillService", () => {
     expect(service.status([vaultA]).state).toBe("not-installed");
     service.install([vaultA]);
     expect(service.status([vaultA]).state).toBe("current");
-    expect(service.status([vaultA, vaultB]).state).toBe("outdated");
+    const outdated = service.status([vaultA, vaultB]);
+    expect(outdated.state).toBe("outdated");
+    expect(outdated.skills.map((skill) => skill.state)).toEqual(["outdated", "outdated"]);
   });
 
   it("reports outdated when only the document reviewer skill is missing", () => {
