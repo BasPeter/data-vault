@@ -2,13 +2,29 @@
 import type { AppChangelog } from "../src/types";
 
 export const APP_CHANGELOG = {
-  "generatedAt": "2026-06-26T12:17:00+02:00",
+  "generatedAt": "2026-06-26T12:35:24+02:00",
   "repositoryUrl": "https://github.com/BasPeter/data-vault.git",
   "releases": [
     {
-      "version": "0.12.0",
-      "date": "2026-06-26T12:17:00+02:00",
+      "version": "0.12.1",
+      "date": "2026-06-26T12:35:24+02:00",
       "commits": [
+        {
+          "hash": "335fda4e657e072e5cb83e7b28ce150f117887cb",
+          "shortHash": "335fda4",
+          "subject": "Update expected skill versions in workspace e2e test"
+        }
+      ]
+    },
+    {
+      "version": "0.12.0",
+      "date": "2026-06-26T12:19:14+02:00",
+      "commits": [
+        {
+          "hash": "58299b806e07cd874eef5e93d992e9337280215a",
+          "shortHash": "58299b8",
+          "subject": "Prepare release 0.12.0"
+        },
         {
           "hash": "f69091fd24be22669afe803a162130785897ae63",
           "shortHash": "f69091f",
