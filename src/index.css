@@ -141,9 +141,40 @@
   }
   .app-titlebar-safe-right {
     padding-right: max(
-      1rem,
+      9.25rem,
       calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 1rem)
     ) !important;
+  }
+}
+
+.app-header {
+  container: app-header / inline-size;
+}
+
+@container app-header (max-width: 760px) {
+  .app-header-secondary-action {
+    display: none !important;
+  }
+}
+
+@container app-header (max-width: 560px) {
+  .app-header-primary-action {
+    display: none !important;
+  }
+
+  .app-header-actions {
+    gap: 0.125rem;
+  }
+}
+
+.app-vault-switcher {
+  min-width: 0;
+  width: min(13rem, 34cqw);
+}
+
+@container app-header (max-width: 560px) {
+  .app-vault-switcher {
+    width: min(8.5rem, 30cqw);
   }
 }
 

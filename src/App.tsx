@@ -182,7 +182,7 @@ export default function App() {
         <AppHeader>
           <SidebarTrigger className="app-no-drag -ml-1" />
           <Separator orientation="vertical" className="mr-2 !h-4" />
-          <div className="app-no-drag flex min-w-0 items-center">
+          <div className="app-no-drag flex min-w-0 shrink items-center">
             <VaultSwitcher
               vaults={vaults}
               vaultId={vaultId}
@@ -199,13 +199,16 @@ export default function App() {
               }}
             />
           </div>
-          <span className="text-muted-foreground truncate text-sm">{view === "graph" ? "Graph" : title}</span>
-          <div className="app-no-drag ml-auto flex items-center gap-1">
+          <span className="text-muted-foreground min-w-0 flex-1 truncate text-sm">
+            {view === "graph" ? "Graph" : title}
+          </span>
+          <div className="app-no-drag app-header-actions flex shrink-0 items-center gap-1">
             <Button variant="ghost" size="icon" title="Sync vault" onClick={sync} disabled={syncing}>
               <RefreshCw className={syncing ? "animate-spin" : ""} />
             </Button>
             <QuickNotesPanel vaultId={vaultId} version={version} />
             <Button
+              className="app-header-secondary-action"
               variant="ghost"
               size="icon"
               title="Save document as PDF"
@@ -216,6 +219,7 @@ export default function App() {
               <FileDown className={savingPdf ? "animate-pulse" : ""} />
             </Button>
             <Button
+              className="app-header-secondary-action"
               variant={showBlame && view === "doc" ? "secondary" : "ghost"}
               size="icon"
               title={showBlame ? "Hide line history" : "Show line history"}
@@ -227,6 +231,7 @@ export default function App() {
               <GitCommitHorizontal />
             </Button>
             <Button
+              className="app-header-primary-action"
               variant={view === "graph" ? "secondary" : "ghost"}
               size="icon"
               title="Graph"
@@ -234,7 +239,9 @@ export default function App() {
             >
               <Network />
             </Button>
-            <GuidedTour />
+            <div className="app-header-secondary-action">
+              <GuidedTour />
+            </div>
             <ThemeToggle theme={theme} onToggle={toggle} />
           </div>
         </AppHeader>
@@ -282,7 +289,7 @@ function AppHeader({ children }: { children: React.ReactNode }) {
   return (
     <header
       className={cn(
-        "app-drag bg-background sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b pr-4 transition-[padding] duration-200 ease-linear",
+        "app-drag app-header bg-background sticky top-0 z-10 flex h-14 min-w-0 shrink-0 items-center gap-2 overflow-hidden border-b pr-4 transition-[padding] duration-200 ease-linear",
         macOS && state === "collapsed" ? "pl-20" : "pl-4",
         windows && "app-titlebar-safe-right",
       )}

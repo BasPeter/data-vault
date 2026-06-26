@@ -48,7 +48,12 @@ export function VaultSwitcher({ vaults, vaultId, onSwitch, onLocal, onRefresh }:
     <>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <Button variant="outline" size="sm" data-testid="vault-switcher" className="max-w-52 justify-between gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="vault-switcher"
+            className="app-vault-switcher shrink justify-between gap-2"
+          >
             <span className="truncate">{active?.name ?? "Select vault"}</span>
             <ChevronsUpDown className="text-muted-foreground size-4 shrink-0" />
           </Button>

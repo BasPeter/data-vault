@@ -3,6 +3,7 @@ import DOMPurify from "dompurify";
 import { Pencil, StickyNote, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { cn } from "@/lib/utils";
 
 const sanitize = (html: string) =>
   DOMPurify.sanitize(html, {
@@ -78,7 +79,12 @@ export function QuickNotesPanel({ vaultId, version }: { vaultId: string; version
         <SheetDescription className="sr-only">
           A scratchpad stored in the current vault outside its document structure.
         </SheetDescription>
-        <SheetHeader className="flex-row items-center justify-between border-b pb-3">
+        <SheetHeader
+          className={cn(
+            "flex-row items-center justify-between border-b pb-3",
+            window.vaultApi.platform === "win32" && "app-titlebar-safe-right",
+          )}
+        >
           <SheetTitle>Quick notes</SheetTitle>
           <div className="flex items-center gap-1">
             {editing ? (
