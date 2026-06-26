@@ -42,14 +42,23 @@ test("uses the workspace features in one session", async ({ appLaunch }, testInf
 
   await test.step("navigates documents, metadata, links, and Mermaid", async () => {
     await page.getByRole("button", { name: "Overview", exact: true }).click();
+    await expect(page.getByRole("tab", { name: "Overview" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
+    await page.getByRole("button", { name: "Meeting Notes", exact: true }).click();
+    await expect(page.getByRole("tab", { name: "Overview" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Meeting Notes" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Meeting Notes", level: 1 })).toBeVisible();
+    await page.getByRole("tab", { name: "Overview" }).click();
     await expect(page.getByText("knowledge", { exact: true })).toBeVisible();
     await expect(page.locator(".doc-content svg")).toBeVisible();
     await captureScreenshot(page, testInfo, "document-with-metadata");
     await captureScreenshot(page, testInfo, "mermaid-diagram");
 
     await page.locator(".doc-content").getByRole("link", { name: "architecture" }).click();
+    await expect(page.getByRole("tab", { name: "Architecture" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Architecture", level: 1 })).toBeVisible();
+    await page.getByRole("button", { name: "Close Architecture" }).click();
+    await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
   });
 
   await test.step("opens, closes, and navigates through the graph", async () => {

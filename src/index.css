@@ -172,6 +172,14 @@
   width: min(13rem, 34cqw);
 }
 
+.document-tabs-scrollbar {
+  scrollbar-width: none;
+}
+
+.document-tabs-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 @container app-header (max-width: 560px) {
   .app-vault-switcher {
     width: min(8.5rem, 30cqw);

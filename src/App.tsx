@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Database,
   FileDown,
@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { GithubConnectDialog } from "@/components/github-connect-dialog";
 import { AppSidebar } from "@/components/app-sidebar";
+import { DocumentTabs } from "@/components/document-tabs";
 import { DocumentView } from "@/components/document-view";
 import { GraphView } from "@/components/graph-view";
 import { GuidedTour } from "@/components/guided-tour";
@@ -56,12 +57,20 @@ function documentIds(nodes: TreeNode[], output = new Set<string>()): Set<string>
   return output;
 }
 
+type DocumentTab = {
+  id: string;
+};
+
 export default function App() {
   const { theme, toggle } = useTheme();
   const [vaults, setVaults] = useState<VaultSummary[]>([]);
   const [vaultId, setVaultId] = useState<string | null>(null);
   const [manifest, setManifest] = useState<Manifest>({ tree: [] });
+  const [tabs, setTabs] = useState<DocumentTab[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const activeIdRef = useRef<string | null>(null);
+  const tabsRef = useRef<DocumentTab[]>([]);
+  const tabsInitializedRef = useRef(false);
   const [view, setView] = useState<"doc" | "graph">("doc");
   const [version, setVersion] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -70,6 +79,14 @@ export default function App() {
   const [savingPdf, setSavingPdf] = useState(false);
   const [showBlame, setShowBlame] = useState(false);
   const [skippedSetupVaults, setSkippedSetupVaults] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    activeIdRef.current = activeId;
+  }, [activeId]);
+
+  useEffect(() => {
+    tabsRef.current = tabs;
+  }, [tabs]);
 
   const refreshVaults = async (preferred?: string) => {
     const next = await window.vaultApi.list();
@@ -92,15 +109,40 @@ export default function App() {
   useEffect(() => {
     if (!vaultId) {
       setManifest({ tree: [] });
+      setTabs([]);
+      tabsRef.current = [];
       setActiveId(null);
+      activeIdRef.current = null;
+      tabsInitializedRef.current = false;
       return;
     }
     window.vaultApi.watch(vaultId).catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
     window.vaultApi
       .manifest(vaultId)
       .then((next) => {
+        const validIds = documentIds(next.tree);
+        const hashId = decodeURIComponent(location.hash.slice(1));
+        const prunedTabs = tabsRef.current.filter((tab) => validIds.has(tab.id));
+        const currentActiveId = activeIdRef.current;
+        const oldActiveIndex = tabsRef.current.findIndex((tab) => tab.id === currentActiveId);
+        const initialId =
+          !tabsInitializedRef.current && hashId && validIds.has(hashId) ? hashId : firstDocument(next.tree);
+        let nextTabs = prunedTabs;
+        let nextActiveId =
+          currentActiveId && prunedTabs.some((tab) => tab.id === currentActiveId)
+            ? currentActiveId
+            : (prunedTabs[Math.max(0, Math.min(oldActiveIndex, prunedTabs.length - 1))]?.id ?? null);
+        if (!nextActiveId && !tabsInitializedRef.current && initialId) {
+          tabsInitializedRef.current = true;
+          nextTabs = [{ id: initialId }];
+          nextActiveId = initialId;
+        }
         setManifest(next);
-        setActiveId((current) => (current && documentLabel(next.tree, current) ? current : firstDocument(next.tree)));
+        setTabs(nextTabs);
+        tabsRef.current = nextTabs;
+        setActiveId(nextActiveId);
+        activeIdRef.current = nextActiveId;
+        if (nextActiveId) location.hash = encodeURIComponent(nextActiveId);
       })
       .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
   }, [vaultId, version]);
@@ -111,17 +153,39 @@ export default function App() {
     });
   }, [vaultId]);
 
-  useEffect(() => {
-    const onHash = () => setActiveId(decodeURIComponent(location.hash.slice(1)) || null);
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
-  }, []);
-
-  const openDocument = (id: string) => {
+  const openDocument = useCallback((id: string) => {
+    tabsInitializedRef.current = true;
+    setTabs((current) => {
+      if (current.some((tab) => tab.id === id)) return current;
+      const activeIndex = current.findIndex((tab) => tab.id === activeIdRef.current);
+      const insertAt = activeIndex >= 0 ? activeIndex + 1 : current.length;
+      const next = [...current.slice(0, insertAt), { id }, ...current.slice(insertAt)];
+      tabsRef.current = next;
+      return next;
+    });
     setActiveId(id);
+    activeIdRef.current = id;
     location.hash = encodeURIComponent(id);
     setView("doc");
-  };
+  }, []);
+
+  const closeDocument = useCallback((id: string) => {
+    tabsInitializedRef.current = true;
+    setTabs((current) => {
+      const index = current.findIndex((tab) => tab.id === id);
+      if (index === -1) return current;
+      const next = current.filter((tab) => tab.id !== id);
+      tabsRef.current = next;
+      if (activeIdRef.current === id) {
+        const nextActiveId = next[index]?.id ?? next[index - 1]?.id ?? null;
+        setActiveId(nextActiveId);
+        activeIdRef.current = nextActiveId;
+        if (nextActiveId) location.hash = encodeURIComponent(nextActiveId);
+        else history.replaceState(null, "", `${location.pathname}${location.search}`);
+      }
+      return next;
+    });
+  }, []);
 
   const addLocal = async () => {
     setError(null);
@@ -161,6 +225,19 @@ export default function App() {
   };
 
   const ids = useMemo(() => documentIds(manifest.tree), [manifest.tree]);
+  const displayTabs = useMemo(
+    () => tabs.map((tab) => ({ id: tab.id, title: documentLabel(manifest.tree, tab.id) ?? tab.id })),
+    [manifest.tree, tabs],
+  );
+
+  useEffect(() => {
+    const onHash = () => {
+      const id = decodeURIComponent(location.hash.slice(1));
+      if (id && ids.has(id)) openDocument(id);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, [ids, openDocument]);
 
   if (loading) return <CenteredMessage title="Loading vaults…" />;
   if (!vaultId) return <Onboarding onLocal={addLocal} onCloned={refreshVaults} error={error} />;
@@ -188,7 +265,11 @@ export default function App() {
               vaultId={vaultId}
               onSwitch={(id) => {
                 setVaultId(id);
+                setTabs([]);
+                tabsRef.current = [];
                 setActiveId(null);
+                activeIdRef.current = null;
+                tabsInitializedRef.current = false;
               }}
               onLocal={addLocal}
               onRefresh={async (preferred) => {
@@ -254,16 +335,19 @@ export default function App() {
           {view === "graph" ? (
             <GraphView vaultId={vaultId} activeId={activeId} onSelect={openDocument} version={version} />
           ) : (
-            <div className="h-full overflow-auto">
-              <DocumentView
-                vaultId={vaultId}
-                docId={activeId}
-                theme={theme}
-                version={version}
-                showBlame={showBlame}
-                documentIds={ids}
-                onNavigateDocument={openDocument}
-              />
+            <div className="flex h-full min-h-0 flex-col">
+              <DocumentTabs tabs={displayTabs} activeId={activeId} onSelect={openDocument} onClose={closeDocument} />
+              <div className="min-h-0 flex-1 overflow-auto">
+                <DocumentView
+                  vaultId={vaultId}
+                  docId={activeId}
+                  theme={theme}
+                  version={version}
+                  showBlame={showBlame}
+                  documentIds={ids}
+                  onNavigateDocument={openDocument}
+                />
+              </div>
             </div>
           )}
         </main>
