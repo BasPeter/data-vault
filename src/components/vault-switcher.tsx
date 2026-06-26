@@ -24,6 +24,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
+import { VaultInitDialog } from "@/components/vault-init-dialog";
 import { VaultStructureEditor } from "@/components/vault-structure-editor";
 import { cn } from "@/lib/utils";
 import type { TreeNode, VaultStructure, VaultSummary, VaultUpdate } from "@/types";
@@ -40,6 +41,7 @@ export function VaultSwitcher({ vaults, vaultId, onSwitch, onLocal, onRefresh }:
   const [open, setOpen] = useState(false);
   const [dialog, setDialog] = useState<"connect" | "github" | "create" | null>(null);
   const [settingsVault, setSettingsVault] = useState<VaultSummary | null>(null);
+  const [setupVault, setSetupVault] = useState<VaultSummary | null>(null);
   const active = vaults.find((vault) => vault.id === vaultId);
 
   return (
@@ -135,6 +137,19 @@ export function VaultSwitcher({ vaults, vaultId, onSwitch, onLocal, onRefresh }:
         vault={settingsVault}
         onOpenChange={(next) => !next && setSettingsVault(null)}
         onDone={onRefresh}
+        onSetup={(vault) => {
+          setSettingsVault(null);
+          setSetupVault(vault);
+        }}
+      />
+      <VaultInitDialog
+        vault={setupVault}
+        source="settings"
+        onSkip={() => setSetupVault(null)}
+        onDone={async (preferred) => {
+          await onRefresh(preferred);
+          setSetupVault(null);
+        }}
       />
     </>
   );
@@ -310,10 +325,12 @@ function VaultSettingsDialog({
   vault,
   onOpenChange,
   onDone,
+  onSetup,
 }: {
   vault: VaultSummary | null;
   onOpenChange: (open: boolean) => void;
   onDone: (preferred?: string) => Promise<void>;
+  onSetup: (vault: VaultSummary) => void;
 }) {
   const [name, setName] = useState("");
   const [remoteUrl, setRemoteUrl] = useState("");
@@ -474,6 +491,10 @@ function VaultSettingsDialog({
                     ? `${directoryCount} ${directoryCount === 1 ? "directory" : "directories"}`
                     : "none yet"}
                 </span>
+              </Button>
+              <Button variant="ghost" className="justify-start" onClick={() => vault && onSetup(vault)} disabled={busy}>
+                <FolderTree />
+                Open setup flow
               </Button>
             </div>
             {error && (

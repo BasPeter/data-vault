@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, FolderTree, LibraryBig, Network, PanelsTopLeft, Rows3, SkipForward } from "lucide-react";
+import { ArrowLeft, Code2, FolderTree, LibraryBig, Network, PanelsTopLeft, Rows3, SkipForward } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -137,6 +137,39 @@ const PRESETS: StructurePreset[] = [
       },
     },
   },
+  {
+    id: "codebase-docs",
+    name: "Codebase docs",
+    summary: "A documentation map for architecture, setup, features, operations, and implementation decisions.",
+    bestFor: "Software repositories where notes should help developers understand, run, change, and operate the code.",
+    icon: Code2,
+    structure: {
+      architecture: {
+        title: "Architecture",
+        description: "System overview, module boundaries, data flow, and important technical constraints.",
+      },
+      setup: {
+        title: "Setup",
+        description: "Local development, environment variables, dependencies, and troubleshooting notes.",
+      },
+      features: {
+        title: "Features",
+        description: "User-facing workflows, domain behavior, and feature-specific implementation notes.",
+      },
+      operations: {
+        title: "Operations",
+        description: "Build, release, deployment, monitoring, incident, and maintenance procedures.",
+      },
+      decisions: {
+        title: "Decisions",
+        description: "Architecture decision records, tradeoffs, migrations, and historical context.",
+      },
+      references: {
+        title: "References",
+        description: "APIs, schemas, conventions, glossary entries, and reusable technical background.",
+      },
+    },
+  },
 ];
 
 function countDirectories(structure: VaultStructure): number {
@@ -150,9 +183,10 @@ type VaultInitDialogProps = {
   vault: VaultSummary | null;
   onSkip: (vaultId: string) => void;
   onDone: (preferred?: string) => Promise<void>;
+  source?: "missing-config" | "settings";
 };
 
-export function VaultInitDialog({ vault, onSkip, onDone }: VaultInitDialogProps) {
+export function VaultInitDialog({ vault, onSkip, onDone, source = "missing-config" }: VaultInitDialogProps) {
   const [name, setName] = useState("");
   const [defaultLanguage, setDefaultLanguage] = useState("");
   const [structure, setStructure] = useState<VaultStructure>({});
@@ -215,6 +249,12 @@ export function VaultInitDialog({ vault, onSkip, onDone }: VaultInitDialogProps)
   };
 
   const directoryCount = countDirectories(structure);
+  const fromSettings = source === "settings";
+  const description = fromSettings
+    ? "Choose a structure preset or adjust the basics for this vault. Saving updates vault.json."
+    : "This repository does not have a vault.json file yet. Add the basics now, or skip and keep using the default layout.";
+  const closeLabel = fromSettings ? "Cancel" : "Skip";
+  const submitLabel = fromSettings ? "Save setup" : "Create vault.json";
 
   return (
     <Dialog open={vault !== null} onOpenChange={(next) => !next && skip()}>
@@ -223,10 +263,7 @@ export function VaultInitDialog({ vault, onSkip, onDone }: VaultInitDialogProps)
           <>
             <DialogHeader>
               <DialogTitle>Set up vault metadata</DialogTitle>
-              <DialogDescription>
-                This repository does not have a vault.json file yet. Add the basics now, or skip and keep using the
-                default layout.
-              </DialogDescription>
+              <DialogDescription>{description}</DialogDescription>
             </DialogHeader>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
@@ -291,11 +328,11 @@ export function VaultInitDialog({ vault, onSkip, onDone }: VaultInitDialogProps)
             )}
             <DialogFooter>
               <Button variant="ghost" onClick={skip} disabled={busy}>
-                <SkipForward />
-                Skip
+                {!fromSettings && <SkipForward />}
+                {closeLabel}
               </Button>
               <Button onClick={submit} disabled={busy || !name.trim()}>
-                {busy ? "Saving..." : "Create vault.json"}
+                {busy ? "Saving..." : submitLabel}
               </Button>
             </DialogFooter>
           </>
@@ -324,7 +361,7 @@ export function VaultInitDialog({ vault, onSkip, onDone }: VaultInitDialogProps)
                 Back
               </Button>
               <Button onClick={submit} disabled={busy || !name.trim()}>
-                {busy ? "Saving..." : "Create vault.json"}
+                {busy ? "Saving..." : submitLabel}
               </Button>
             </DialogFooter>
           </>
