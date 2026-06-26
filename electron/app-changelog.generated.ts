@@ -2,9 +2,45 @@
 import type { AppChangelog } from "../src/types";
 
 export const APP_CHANGELOG = {
-  "generatedAt": "2026-06-25T10:23:10+02:00",
+  "generatedAt": "2026-06-26T12:17:00+02:00",
   "repositoryUrl": "https://github.com/BasPeter/data-vault.git",
   "releases": [
+    {
+      "version": "0.12.0",
+      "date": "2026-06-26T12:17:00+02:00",
+      "commits": [
+        {
+          "hash": "f69091fd24be22669afe803a162130785897ae63",
+          "shortHash": "f69091f",
+          "subject": "Support Markdown vaults"
+        },
+        {
+          "hash": "fb41e92fd594321a13bc40caf2012eccebda4f81",
+          "shortHash": "fb41e92",
+          "subject": "Expose vault setup from settings"
+        },
+        {
+          "hash": "9674487da8964849a076f08106e995a9068c0d87",
+          "shortHash": "9674487",
+          "subject": "Fetch full history for CI builds"
+        },
+        {
+          "hash": "fdcb5dffccaa7e8a55d2bdc0b7a6d96abcfdf6c1",
+          "shortHash": "fdcb5df",
+          "subject": "Refresh generated changelog"
+        },
+        {
+          "hash": "0e0be8c1cd64a7632f417b3c75e4066649cb88ce",
+          "shortHash": "0e0be8c",
+          "subject": "Add vault metadata init flow"
+        },
+        {
+          "hash": "ccccbdaccbddd3892df7a7290ec3d6468a487cab",
+          "shortHash": "ccccbda",
+          "subject": "Show agent skill update details"
+        }
+      ]
+    },
     {
       "version": "0.11.1",
       "date": "2026-06-25T10:23:10+02:00",
