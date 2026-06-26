@@ -57,6 +57,7 @@ export type VaultSummary = {
   id: string;
   name: string;
   repositoryPath: string;
+  hasConfig?: boolean;
   remoteUrl?: string;
   // Login of the GitHub account whose token clones/syncs this vault. App-local
   // (kept in the registry, not vault.json), set when cloned or created.

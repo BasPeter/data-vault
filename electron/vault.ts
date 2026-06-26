@@ -531,7 +531,10 @@ export class VaultService {
       next = { ...next, structure };
     }
 
-    if (Object.keys(patch).length) this.writeConfig(vault.repositoryPath, patch);
+    if (Object.keys(patch).length) {
+      this.writeConfig(vault.repositoryPath, patch);
+      next = { ...next, hasConfig: true };
+    }
 
     if (update.remoteUrl !== undefined) {
       const url = update.remoteUrl.trim();
@@ -567,7 +570,9 @@ export class VaultService {
 
   private writeConfig(repositoryPath: string, patch: Partial<VaultConfig>): void {
     const file = path.join(repositoryPath, "vault.json");
-    const config: Record<string, unknown> = { ...this.config(repositoryPath) };
+    const config: Record<string, unknown> = fs.existsSync(file)
+      ? { ...this.config(repositoryPath) }
+      : { schemaVersion: 1, documentsDirectory: "documents" };
     for (const [key, value] of Object.entries(patch)) {
       if (value === undefined) delete config[key];
       else config[key] = value;
@@ -797,10 +802,11 @@ export class VaultService {
   }
 
   private describe(id: string, repositoryPath: string, fallbackName?: string): VaultSummary {
+    const hasConfig = fs.existsSync(path.join(repositoryPath, "vault.json"));
     const config = this.config(repositoryPath);
     this.resolveDocumentsRoot(repositoryPath, config);
     const name = config.name?.trim() || fallbackName?.trim() || path.basename(repositoryPath);
-    const summary: VaultSummary = { id, name, repositoryPath };
+    const summary: VaultSummary = { id, name, repositoryPath, hasConfig };
     const defaultLanguage = cleanText(config.defaultLanguage);
     if (defaultLanguage) summary.defaultLanguage = defaultLanguage;
     const structure = sanitizeStructure(config.structure);

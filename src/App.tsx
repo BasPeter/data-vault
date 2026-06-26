@@ -17,6 +17,7 @@ import { GraphView } from "@/components/graph-view";
 import { GuidedTour } from "@/components/guided-tour";
 import { QuickNotesPanel } from "@/components/quick-notes-panel";
 import { VaultSwitcher } from "@/components/vault-switcher";
+import { VaultInitDialog } from "@/components/vault-init-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { UpdateButton } from "@/components/update-button";
 import { Button } from "@/components/ui/button";
@@ -60,6 +61,7 @@ export default function App() {
   const [syncing, setSyncing] = useState(false);
   const [savingPdf, setSavingPdf] = useState(false);
   const [showBlame, setShowBlame] = useState(false);
+  const [skippedSetupVaults, setSkippedSetupVaults] = useState<Set<string>>(() => new Set());
 
   const refreshVaults = async (preferred?: string) => {
     const next = await window.vaultApi.list();
@@ -154,6 +156,7 @@ export default function App() {
   if (!vaultId) return <Onboarding onLocal={addLocal} onCloned={refreshVaults} error={error} />;
 
   const vault = vaults.find((candidate) => candidate.id === vaultId)!;
+  const setupVault = vault.hasConfig === false && !skippedSetupVaults.has(vault.id) ? vault : null;
   const title = activeId ? documentLabel(manifest.tree, activeId) : null;
 
   return (
@@ -239,6 +242,14 @@ export default function App() {
             </div>
           )}
         </main>
+        <VaultInitDialog
+          vault={setupVault}
+          onSkip={(id) => setSkippedSetupVaults((current) => new Set(current).add(id))}
+          onDone={async (preferred) => {
+            await refreshVaults(preferred);
+            setVersion((value) => value + 1);
+          }}
+        />
       </SidebarInset>
     </SidebarProvider>
   );

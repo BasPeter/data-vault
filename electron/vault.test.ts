@@ -106,6 +106,35 @@ describe("VaultService", () => {
     expect(fs.statSync(path.join(root, "documents")).isDirectory()).toBe(true);
   });
 
+  it("marks repositories without vault.json and creates config on metadata update", async () => {
+    const root = temporaryDirectory();
+    fs.mkdirSync(path.join(root, "documents"));
+    execFileSync("git", ["-C", root, "init", "-b", "main"]);
+
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = service.addLocal(root);
+
+    expect(vault.hasConfig).toBe(false);
+    expect(vault.name).toBe(path.basename(root));
+    expect(fs.existsSync(path.join(root, "vault.json"))).toBe(false);
+
+    const result = await service.updateVault(vault.id, {
+      name: "Research Vault",
+      defaultLanguage: "en",
+      structure: { inbox: { title: "Inbox" } },
+    });
+
+    expect(result.vault.hasConfig).toBe(true);
+    const written = JSON.parse(fs.readFileSync(path.join(root, "vault.json"), "utf8"));
+    expect(written).toMatchObject({
+      schemaVersion: 1,
+      name: "Research Vault",
+      documentsDirectory: "documents",
+      defaultLanguage: "en",
+      structure: { inbox: { title: "Inbox" } },
+    });
+  });
+
   it("never creates a documents directory outside the repository", () => {
     const root = temporaryDirectory();
     execFileSync("git", ["-C", root, "init", "-b", "main"]);
