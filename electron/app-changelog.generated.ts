@@ -2,13 +2,29 @@
 import type { AppChangelog } from "../src/types";
 
 export const APP_CHANGELOG = {
-  "generatedAt": "2026-06-26T12:35:24+02:00",
+  "generatedAt": "2026-06-26T15:17:07+02:00",
   "repositoryUrl": "https://github.com/BasPeter/data-vault.git",
   "releases": [
     {
-      "version": "0.12.1",
-      "date": "2026-06-26T12:35:24+02:00",
+      "version": "0.12.2",
+      "date": "2026-06-26T15:17:07+02:00",
       "commits": [
+        {
+          "hash": "ba8e6bd466ac660a28cea4ad3ff15915689a77b7",
+          "shortHash": "ba8e6bd",
+          "subject": "Fix Windows titlebar header layout"
+        }
+      ]
+    },
+    {
+      "version": "0.12.1",
+      "date": "2026-06-26T12:37:09+02:00",
+      "commits": [
+        {
+          "hash": "691c1ea04c0fb8e678c5392a195e97baf5880c91",
+          "shortHash": "691c1ea",
+          "subject": "Prepare release 0.12.1"
+        },
         {
           "hash": "335fda4e657e072e5cb83e7b28ce150f117887cb",
           "shortHash": "335fda4",
