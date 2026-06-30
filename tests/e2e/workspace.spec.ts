@@ -19,7 +19,7 @@ test("uses the workspace features in one session", async ({ appLaunch }, testInf
     await footer.getByRole("button", { name: "Agent skills are up to date" }).click();
     await expect(page.getByText("Vault Guide")).toBeVisible();
     await expect(page.getByText("Document Reviewer")).toBeVisible();
-    await expect(page.getByText("Installed: v7")).toBeVisible();
+    await expect(page.getByText("Installed: v9")).toBeVisible();
     await expect(page.getByText("Latest: v5")).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(footer.getByRole("button", { name: /^Data Vault/ })).toBeVisible();
