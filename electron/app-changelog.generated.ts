@@ -2,13 +2,34 @@
 import type { AppChangelog } from "../src/types";
 
 export const APP_CHANGELOG = {
-  "generatedAt": "2026-06-26T17:04:49+02:00",
+  "generatedAt": "2026-06-30T13:56:10+02:00",
   "repositoryUrl": "https://github.com/BasPeter/data-vault.git",
   "releases": [
     {
-      "version": "0.12.3",
-      "date": "2026-06-26T17:04:49+02:00",
+      "version": "0.12.4",
+      "date": "2026-06-30T13:56:10+02:00",
       "commits": [
+        {
+          "hash": "af48a3c6a2134e92eb4d9a016ac25a045266b37b",
+          "shortHash": "af48a3c",
+          "subject": "Add document context menus"
+        },
+        {
+          "hash": "251ffd524eb57fe92e5122a6c967a64e38a07b01",
+          "shortHash": "251ffd5",
+          "subject": "Open vault documents from agent links"
+        }
+      ]
+    },
+    {
+      "version": "0.12.3",
+      "date": "2026-06-26T17:11:24+02:00",
+      "commits": [
+        {
+          "hash": "81732499890862d7920428c9d0fe4d01abeed621",
+          "shortHash": "8173249",
+          "subject": "Prepare release 0.12.3"
+        },
         {
           "hash": "5adce73158535b5f564b3958b14601896baad825",
           "shortHash": "5adce73",
