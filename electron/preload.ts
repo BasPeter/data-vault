@@ -18,6 +18,7 @@ const api: VaultApi = {
   quickNotes: (vaultId) => ipcRenderer.invoke("vault:quick-notes", vaultId),
   saveQuickNotes: (vaultId, html) => ipcRenderer.invoke("vault:save-quick-notes", vaultId, html),
   graph: (vaultId) => ipcRenderer.invoke("vault:graph", vaultId),
+  changes: (vaultId) => ipcRenderer.invoke("vault:changes", vaultId),
   sync: (vaultId) => ipcRenderer.invoke("vault:sync", vaultId),
   updateStatus: () => ipcRenderer.invoke("app:update-status"),
   checkForUpdates: () => ipcRenderer.invoke("app:check-for-updates"),

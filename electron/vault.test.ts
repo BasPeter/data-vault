@@ -453,6 +453,47 @@ describe("VaultService", () => {
     expect(head).toMatch(/^[0-9a-f]{40}$/);
   });
 
+  it("reports uncommitted vault changes while ignoring quick notes", async () => {
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = await service.createEmpty("My Notes");
+
+    fs.writeFileSync(path.join(vault.repositoryPath, "documents", "draft.html"), "<h1>Draft</h1>");
+    fs.writeFileSync(path.join(vault.repositoryPath, "outside-docs.txt"), "Ignore me");
+    service.saveQuickNotes(vault.id, "<p>Scratch</p>");
+
+    await expect(service.changes(vault.id)).resolves.toEqual({
+      changed: true,
+      changes: [{ kind: "untracked", path: "documents/draft.html" }],
+    });
+  });
+
+  it("does not report changes outside the configured documents directory", async () => {
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = await service.createEmpty("My Notes");
+
+    fs.writeFileSync(path.join(vault.repositoryPath, "vault.json"), `${JSON.stringify({ name: "Changed" })}\n`);
+    fs.writeFileSync(path.join(vault.repositoryPath, "outside-docs.txt"), "Ignore me");
+
+    await expect(service.changes(vault.id)).resolves.toEqual({ changed: false, changes: [] });
+  });
+
+  it("uses the documents directory configured in vault.json for change reporting", async () => {
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = await service.createEmpty("My Notes");
+    fs.mkdirSync(path.join(vault.repositoryPath, "notes"));
+    fs.writeFileSync(
+      path.join(vault.repositoryPath, "vault.json"),
+      `${JSON.stringify({ name: "My Notes", documentsDirectory: "notes" })}\n`,
+    );
+    fs.writeFileSync(path.join(vault.repositoryPath, "documents", "ignored.html"), "<h1>Ignore</h1>");
+    fs.writeFileSync(path.join(vault.repositoryPath, "notes", "draft.html"), "<h1>Draft</h1>");
+
+    await expect(service.changes(vault.id)).resolves.toEqual({
+      changed: true,
+      changes: [{ kind: "untracked", path: "notes/draft.html" }],
+    });
+  });
+
   it("creates an empty markdown vault with a committed starter document", async () => {
     const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
     const vault = await service.createEmpty("Markdown Notes", "markdown");

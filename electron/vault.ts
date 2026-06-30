@@ -11,6 +11,9 @@ import type {
   LoadedDoc,
   Manifest,
   TreeNode,
+  VaultChange,
+  VaultChangeKind,
+  VaultChangeStatus,
   VaultFormat,
   VaultStructure,
   VaultSummary,
@@ -185,6 +188,31 @@ function linksForDocument(doc: LoadedDoc, ids: Set<string>): string[] {
     }
   }
   return targets;
+}
+
+function kindForStatus(indexStatus: string, workingTreeStatus: string): VaultChangeKind {
+  if (indexStatus === "?" && workingTreeStatus === "?") return "untracked";
+  if (indexStatus === "U" || workingTreeStatus === "U" || (indexStatus === "A" && workingTreeStatus === "A")) {
+    return "conflicted";
+  }
+  if (indexStatus === "R" || workingTreeStatus === "R") return "renamed";
+  if (indexStatus === "C" || workingTreeStatus === "C") return "copied";
+  if (indexStatus === "D" || workingTreeStatus === "D") return "deleted";
+  if (indexStatus === "A" || workingTreeStatus === "A") return "added";
+  return "modified";
+}
+
+function parseStatusLine(line: string): VaultChange | null {
+  if (line.length < 4) return null;
+  const indexStatus = line[0];
+  const workingTreeStatus = line[1];
+  const rawPath = line.slice(3);
+  const kind = kindForStatus(indexStatus, workingTreeStatus);
+  if (kind === "renamed" || kind === "copied") {
+    const [previousPath, nextPath] = rawPath.split(" -> ");
+    return { kind, path: nextPath ?? rawPath, previousPath: nextPath ? previousPath : undefined };
+  }
+  return { kind, path: rawPath };
 }
 
 function parseBlame(output: string): BlameLine[] {
@@ -920,6 +948,29 @@ export class VaultService {
       degree[link.target] += 1;
     }
     return { nodes: nodes.map((node) => ({ ...node, degree: degree[node.id] })), links };
+  }
+
+  async changes(vaultId: string): Promise<VaultChangeStatus> {
+    const vault = this.vault(vaultId);
+    const config = this.config(vault.repositoryPath);
+    const documentsRoot = this.resolveDocumentsRoot(vault.repositoryPath, config, true);
+    const documentsPrefix = path.relative(vault.repositoryPath, documentsRoot).split(path.sep).join("/");
+    const quickNotesId = documentsPrefix ? `${documentsPrefix}/${QUICK_NOTES_FILE}` : QUICK_NOTES_FILE;
+    const inDocumentsDirectory = (filePath: string) =>
+      documentsPrefix ? filePath === documentsPrefix || filePath.startsWith(`${documentsPrefix}/`) : true;
+    const output = await this.git(vault.repositoryPath, ["status", "--porcelain=v1", "--untracked-files=all"]);
+    const changes = output
+      .split(/\r?\n/)
+      .map(parseStatusLine)
+      .filter((change): change is VaultChange => change !== null)
+      .map((change) => ({
+        ...change,
+        path: change.path.split(path.sep).join("/"),
+        previousPath: change.previousPath?.split(path.sep).join("/"),
+      }))
+      .filter((change) => inDocumentsDirectory(change.path))
+      .filter((change) => change.path !== quickNotesId);
+    return { changed: changes.length > 0, changes };
   }
 
   async sync(vaultId: string): Promise<{ ahead: number; behind: number; pulled: boolean }> {

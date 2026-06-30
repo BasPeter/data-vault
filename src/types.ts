@@ -76,6 +76,19 @@ export type SyncResult = {
   pulled: boolean;
 };
 
+export type VaultChangeKind = "added" | "modified" | "deleted" | "renamed" | "copied" | "untracked" | "conflicted";
+
+export type VaultChange = {
+  path: string;
+  previousPath?: string;
+  kind: VaultChangeKind;
+};
+
+export type VaultChangeStatus = {
+  changed: boolean;
+  changes: VaultChange[];
+};
+
 export type VaultUpdate = {
   name?: string;
   remoteUrl?: string;
@@ -199,6 +212,7 @@ export type VaultApi = {
   quickNotes: (vaultId: string) => Promise<string>;
   saveQuickNotes: (vaultId: string, html: string) => Promise<void>;
   graph: (vaultId: string) => Promise<GraphData>;
+  changes: (vaultId: string) => Promise<VaultChangeStatus>;
   sync: (vaultId: string) => Promise<SyncResult>;
   updateStatus: () => Promise<UpdateStatus>;
   checkForUpdates: () => Promise<UpdateStatus>;

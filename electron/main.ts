@@ -366,6 +366,10 @@ function registerIpc(): void {
     assertTrusted(event);
     return service.graph(stringArgument(vaultId, "vault ID"));
   });
+  ipcMain.handle("vault:changes", (event, vaultId) => {
+    assertTrusted(event);
+    return service.changes(stringArgument(vaultId, "vault ID"));
+  });
   ipcMain.handle("vault:sync", (event, vaultId) => {
     assertTrusted(event);
     return service.sync(stringArgument(vaultId, "vault ID"));

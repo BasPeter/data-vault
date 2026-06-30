@@ -19,6 +19,7 @@ import { GraphView } from "@/components/graph-view";
 import { GuidedTour } from "@/components/guided-tour";
 import { QuickNotesPanel } from "@/components/quick-notes-panel";
 import { VaultSwitcher } from "@/components/vault-switcher";
+import { VaultChangesIndicator } from "@/components/vault-changes-indicator";
 import { VaultInitDialog } from "@/components/vault-init-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { UpdateButton } from "@/components/update-button";
@@ -392,6 +393,7 @@ export default function App() {
             {view === "graph" ? "Graph" : title}
           </span>
           <div className="app-no-drag app-header-actions flex shrink-0 items-center gap-1">
+            <VaultChangesIndicator vaultId={vaultId} version={version} />
             <Button variant="ghost" size="icon" title="Sync vault" onClick={sync} disabled={syncing}>
               <RefreshCw className={syncing ? "animate-spin" : ""} />
             </Button>
