@@ -2,13 +2,29 @@
 import type { AppChangelog } from "../src/types";
 
 export const APP_CHANGELOG = {
-  "generatedAt": "2026-06-30T14:35:09+02:00",
+  "generatedAt": "2026-06-30T14:58:56+02:00",
   "repositoryUrl": "https://github.com/BasPeter/data-vault.git",
   "releases": [
     {
-      "version": "0.12.5",
-      "date": "2026-06-30T14:35:09+02:00",
+      "version": "0.12.6",
+      "date": "2026-06-30T14:58:56+02:00",
       "commits": [
+        {
+          "hash": "5585ea8490f99a6ce83733ff74876c3d32acc051",
+          "shortHash": "5585ea8",
+          "subject": "Clarify vault commit prompt repository"
+        }
+      ]
+    },
+    {
+      "version": "0.12.5",
+      "date": "2026-06-30T14:38:09+02:00",
+      "commits": [
+        {
+          "hash": "b43eac513726778fca17b385a27b43a37999a15f",
+          "shortHash": "b43eac5",
+          "subject": "Prepare release 0.12.5"
+        },
         {
           "hash": "86d73443d75a8dc3f5724abb3f90aacf6a3d8f99",
           "shortHash": "86d7344",
