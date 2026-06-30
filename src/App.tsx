@@ -393,7 +393,7 @@ export default function App() {
             {view === "graph" ? "Graph" : title}
           </span>
           <div className="app-no-drag app-header-actions flex shrink-0 items-center gap-1">
-            <VaultChangesIndicator vaultId={vaultId} version={version} />
+            <VaultChangesIndicator vaultId={vaultId} repositoryPath={vault.repositoryPath} version={version} />
             <Button variant="ghost" size="icon" title="Sync vault" onClick={sync} disabled={syncing}>
               <RefreshCw className={syncing ? "animate-spin" : ""} />
             </Button>

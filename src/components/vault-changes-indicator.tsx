@@ -25,7 +25,7 @@ function kindLabel(change: VaultChange): string {
   }
 }
 
-function commitInstruction(changes: VaultChange[]): string {
+function commitInstruction(repositoryPath: string, changes: VaultChange[]): string {
   const changeList = changes
     .map((change) => {
       const rename = change.previousPath ? ` from ${change.previousPath}` : "";
@@ -33,11 +33,16 @@ function commitInstruction(changes: VaultChange[]): string {
     })
     .join("\n");
 
-  return `You are working in my current Data Vault repository.
+  return `You need to commit and push changes in this Data Vault content repository:
+${repositoryPath}
+
+The current shell may be in another repository. Before inspecting, committing, or pushing, set your command working directory to the Data Vault content repository path above, or run Git commands with git -C "${repositoryPath}". Do not commit from the Data Vault application repository or from any unrelated code repository. Do not search for a different repository unless the path above does not exist.
 
 Please review the uncommitted changes, run the appropriate checks, create a focused commit, and push it to the configured remote.
 
 Before committing:
+- Confirm the repository path with pwd and git status.
+- Confirm the listed document files exist in this repository.
 - Inspect the working tree with git status and git diff.
 - Keep the commit limited to the intended vault changes.
 - Do not include local scratchpad files such as documents/quick-notes.html.
@@ -48,7 +53,15 @@ Currently visible uncommitted changes:
 ${changeList}`;
 }
 
-export function VaultChangesIndicator({ vaultId, version }: { vaultId: string; version: number }) {
+export function VaultChangesIndicator({
+  vaultId,
+  repositoryPath,
+  version,
+}: {
+  vaultId: string;
+  repositoryPath: string;
+  version: number;
+}) {
   const [status, setStatus] = useState<VaultChangeStatus>(EMPTY_STATUS);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(true);
@@ -105,7 +118,7 @@ export function VaultChangesIndicator({ vaultId, version }: { vaultId: string; v
       : "No uncommitted changes";
 
   const copyInstruction = async () => {
-    await navigator.clipboard.writeText(commitInstruction(status.changes));
+    await navigator.clipboard.writeText(commitInstruction(repositoryPath, status.changes));
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2000);
   };
