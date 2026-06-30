@@ -28,7 +28,7 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { useTheme } from "@/hooks/use-theme";
 import { cn } from "@/lib/utils";
-import type { Manifest, TreeNode, VaultFormat, VaultSummary } from "@/types";
+import type { DocumentOpenRequest, Manifest, TreeNode, VaultFormat, VaultSummary } from "@/types";
 
 function firstDocument(nodes: TreeNode[]): string | null {
   for (const node of nodes) {
@@ -70,6 +70,8 @@ export default function App() {
   const [tabs, setTabs] = useState<DocumentTab[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const activeIdRef = useRef<string | null>(null);
+  const vaultIdRef = useRef<string | null>(null);
+  const pendingOpenRequestRef = useRef<DocumentOpenRequest | null>(null);
   const tabsRef = useRef<DocumentTab[]>([]);
   const tabsInitializedRef = useRef(false);
   const [view, setView] = useState<"doc" | "graph">("doc");
@@ -84,6 +86,10 @@ export default function App() {
   useEffect(() => {
     activeIdRef.current = activeId;
   }, [activeId]);
+
+  useEffect(() => {
+    vaultIdRef.current = vaultId;
+  }, [vaultId]);
 
   useEffect(() => {
     tabsRef.current = tabs;
@@ -123,11 +129,17 @@ export default function App() {
       .then((next) => {
         const validIds = documentIds(next.tree);
         const hashId = decodeURIComponent(location.hash.slice(1));
+        const pendingRequest =
+          pendingOpenRequestRef.current?.vaultId === vaultId ? pendingOpenRequestRef.current : null;
         const prunedTabs = tabsRef.current.filter((tab) => validIds.has(tab.id));
         const currentActiveId = activeIdRef.current;
         const oldActiveIndex = tabsRef.current.findIndex((tab) => tab.id === currentActiveId);
         const initialId =
-          !tabsInitializedRef.current && hashId && validIds.has(hashId) ? hashId : firstDocument(next.tree);
+          !tabsInitializedRef.current && pendingRequest && validIds.has(pendingRequest.documentId)
+            ? pendingRequest.documentId
+            : !tabsInitializedRef.current && hashId && validIds.has(hashId)
+              ? hashId
+              : firstDocument(next.tree);
         let nextTabs = prunedTabs;
         let nextActiveId =
           currentActiveId && prunedTabs.some((tab) => tab.id === currentActiveId)
@@ -143,6 +155,7 @@ export default function App() {
         tabsRef.current = nextTabs;
         setActiveId(nextActiveId);
         activeIdRef.current = nextActiveId;
+        if (pendingRequest && nextActiveId === pendingRequest.documentId) pendingOpenRequestRef.current = null;
         if (nextActiveId) location.hash = encodeURIComponent(nextActiveId);
       })
       .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
@@ -169,6 +182,31 @@ export default function App() {
     location.hash = encodeURIComponent(id);
     setView("doc");
   }, []);
+
+  const requestOpenDocument = useCallback(
+    (request: DocumentOpenRequest) => {
+      pendingOpenRequestRef.current = request;
+      if (vaultIdRef.current !== request.vaultId) {
+        setVaultId(request.vaultId);
+        setTabs([]);
+        tabsRef.current = [];
+        setActiveId(null);
+        activeIdRef.current = null;
+        tabsInitializedRef.current = false;
+        return;
+      }
+      openDocument(request.documentId);
+      pendingOpenRequestRef.current = null;
+    },
+    [openDocument],
+  );
+
+  useEffect(() => {
+    void window.vaultApi.pendingOpenDocument().then((request) => {
+      if (request) requestOpenDocument(request);
+    });
+    return window.vaultApi.onOpenDocument(requestOpenDocument);
+  }, [requestOpenDocument]);
 
   const closeDocument = useCallback((id: string) => {
     tabsInitializedRef.current = true;

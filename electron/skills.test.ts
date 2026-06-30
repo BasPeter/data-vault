@@ -89,8 +89,8 @@ describe("SkillService", () => {
       {
         name: "vault-guide",
         label: "Vault Guide",
-        latestVersion: "7",
-        installedVersion: "7",
+        latestVersion: "9",
+        installedVersion: "9",
         state: "current",
       },
       {
@@ -111,6 +111,11 @@ describe("SkillService", () => {
     const skill = new SkillService(temporaryDirectory()).render([vaultA]);
     expect(skill).toContain("## Linking documents");
     expect(skill).toContain("## After making changes");
+    expect(skill).toContain("data-vault://open?path=");
+    expect(skill).toContain("Windows PowerShell:");
+    expect(skill).toContain("macOS:");
+    expect(skill).toContain("Linux:");
+    expect(skill).toContain("xdg-open");
     expect(skill).toContain("document-reviewer");
     expect(skill).toContain("less public");
   });

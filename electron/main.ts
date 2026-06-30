@@ -12,7 +12,7 @@ import {
   securityAssessmentPrompt,
   updateStatus,
 } from "./updater";
-import type { VaultFormat, VaultStructure, VaultUpdate } from "../src/types";
+import type { DocumentOpenRequest, VaultFormat, VaultStructure, VaultUpdate } from "../src/types";
 
 // Bounds for the optional vault.json `structure` tree, mirrored from
 // electron/vault.ts. The renderer is trusted but validated defensively.
@@ -21,17 +21,89 @@ const STRUCTURE_MAX_DEPTH = 16;
 const STRUCTURE_MAX_TEXT = 1000;
 
 const APPLICATION_NAME = "Data Vault";
+const PROTOCOL = "data-vault";
 app.setName(APPLICATION_NAME);
 
 let service: VaultService;
 let skills: SkillService;
 let github: GitHubService;
 let vaultChangePoll: NodeJS.Timeout | null = null;
+let mainWindow: BrowserWindow | null = null;
+let pendingOpenRequest: DocumentOpenRequest | null = null;
+const deferredOpenArgs: string[][] = [];
 const watchedVaults = new Map<string, string>();
+const singleInstanceLock = app.requestSingleInstanceLock();
 
 function applicationIconPath(): string {
   const iconName = process.platform === "win32" ? "icon.win.png" : "icon.png";
   return app.isPackaged ? path.join(process.resourcesPath, iconName) : path.resolve("build", iconName);
+}
+
+function protocolOpenPath(value: string): string | null {
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== `${PROTOCOL}:`) return null;
+    const command = parsed.hostname || parsed.pathname.replace(/^\/+/, "");
+    if (command !== "open") return null;
+    return parsed.searchParams.get("path");
+  } catch {
+    return null;
+  }
+}
+
+function openPathFromArgs(argv: string[]): string | null {
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    const protocolPath = protocolOpenPath(arg);
+    if (protocolPath) return protocolPath;
+    if (arg === "--open") return argv[index + 1] ?? null;
+    if (arg.startsWith("--open=")) return arg.slice("--open=".length);
+  }
+  return null;
+}
+
+function resolveOpenRequest(argv: string[]): DocumentOpenRequest | null {
+  const filePath = openPathFromArgs(argv);
+  if (!filePath) return null;
+  return service.resolveDocumentPath(filePath);
+}
+
+function registerProtocolClient(): void {
+  if (process.defaultApp && process.argv[1]) {
+    app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
+    return;
+  }
+  app.setAsDefaultProtocolClient(PROTOCOL);
+}
+
+function deliverOpenRequest(request: DocumentOpenRequest): void {
+  const window = mainWindow ?? BrowserWindow.getAllWindows()[0] ?? null;
+  if (!window) {
+    pendingOpenRequest = request;
+    createWindow();
+    return;
+  }
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
+  if (window.webContents.isLoadingMainFrame()) {
+    pendingOpenRequest = request;
+    return;
+  }
+  window.webContents.send("app:open-document", request);
+}
+
+function openDocumentFromArgs(argv: string[]): void {
+  if (!service) {
+    deferredOpenArgs.push(argv);
+    return;
+  }
+  try {
+    const request = resolveOpenRequest(argv);
+    if (request) deliverOpenRequest(request);
+  } catch (error) {
+    console.error("Could not open Data Vault document:", error);
+  }
 }
 
 function assertTrusted(event: IpcMainInvokeEvent): void {
@@ -324,6 +396,12 @@ function registerIpc(): void {
       height: 56,
     });
   });
+  ipcMain.handle("app:pending-open-document", (event) => {
+    assertTrusted(event);
+    const request = pendingOpenRequest;
+    pendingOpenRequest = null;
+    return request;
+  });
   ipcMain.handle("skill:status", (event) => {
     assertTrusted(event);
     return skills.status(service.list());
@@ -454,8 +532,12 @@ function createWindow(): void {
       sandbox: true,
     },
   });
+  mainWindow = window;
 
   window.once("ready-to-show", () => window.show());
+  window.on("closed", () => {
+    if (mainWindow === window) mainWindow = null;
+  });
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("https://")) void shell.openExternal(url);
     return { action: "deny" };
@@ -468,33 +550,49 @@ function createWindow(): void {
   else void window.loadFile(path.join(__dirname, "../renderer/index.html"));
 }
 
-app.whenReady().then(() => {
-  github = new GitHubService(app.getPath("userData"));
-  service = new VaultService(app.getPath("userData"), (account, owner) => github.authHeaderValue(account, owner));
-  // E2E runs launch against a throwaway `--user-data-dir`, but skills install to
-  // the home directory, which the Chromium switch does not isolate. Redirect the
-  // skills home into that same throwaway dir under test so automated runs never
-  // overwrite the developer's real ~/.claude and ~/.codex skills. Production
-  // keeps the default (the real home directory).
-  skills = new SkillService(process.env.NODE_ENV === "test" ? app.getPath("userData") : undefined);
-  autoInstallSkills();
-  configureUpdater();
-  registerIpc();
-  app.setAboutPanelOptions({
-    applicationName: APPLICATION_NAME,
-    applicationVersion: app.getVersion(),
-    iconPath: applicationIconPath(),
+if (!singleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", (_event, commandLine) => {
+    openDocumentFromArgs(commandLine);
   });
-  if (process.platform === "darwin") {
-    app.dock?.setIcon(applicationIconPath());
-  }
-  installApplicationMenu();
-  createWindow();
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
-});
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
-});
+  app.on("open-url", (event, url) => {
+    event.preventDefault();
+    openDocumentFromArgs([url]);
+  });
+
+  app.whenReady().then(() => {
+    registerProtocolClient();
+    github = new GitHubService(app.getPath("userData"));
+    service = new VaultService(app.getPath("userData"), (account, owner) => github.authHeaderValue(account, owner));
+    // E2E runs launch against a throwaway `--user-data-dir`, but skills install to
+    // the home directory, which the Chromium switch does not isolate. Redirect the
+    // skills home into that same throwaway dir under test so automated runs never
+    // overwrite the developer's real ~/.claude and ~/.codex skills. Production
+    // keeps the default (the real home directory).
+    skills = new SkillService(process.env.NODE_ENV === "test" ? app.getPath("userData") : undefined);
+    autoInstallSkills();
+    configureUpdater();
+    registerIpc();
+    app.setAboutPanelOptions({
+      applicationName: APPLICATION_NAME,
+      applicationVersion: app.getVersion(),
+      iconPath: applicationIconPath(),
+    });
+    if (process.platform === "darwin") {
+      app.dock?.setIcon(applicationIconPath());
+    }
+    installApplicationMenu();
+    createWindow();
+    openDocumentFromArgs(process.argv);
+    for (const argv of deferredOpenArgs.splice(0)) openDocumentFromArgs(argv);
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+
+  app.on("window-all-closed", () => {
+    if (process.platform !== "darwin") app.quit();
+  });
+}

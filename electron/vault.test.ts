@@ -258,6 +258,43 @@ describe("VaultService", () => {
     });
   });
 
+  it("resolves an absolute document path to a registered vault document", () => {
+    const root = temporaryDirectory();
+    const documents = path.join(root, "documents");
+    fs.mkdirSync(path.join(documents, "10-knowledge"), { recursive: true });
+    fs.writeFileSync(path.join(root, "vault.json"), JSON.stringify({ name: "Example" }));
+    const file = path.join(documents, "10-knowledge", "example.html");
+    fs.writeFileSync(file, "<h1>Example</h1>");
+
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = service.addLocal(root);
+
+    expect(service.resolveDocumentPath(file)).toEqual({
+      vaultId: vault.id,
+      documentId: "10-knowledge/example.html",
+    });
+  });
+
+  it("rejects unresolved document paths outside registered vault documents", () => {
+    const root = temporaryDirectory();
+    const documents = path.join(root, "documents");
+    fs.mkdirSync(documents);
+    fs.writeFileSync(path.join(root, "vault.json"), JSON.stringify({ name: "Example" }));
+    const document = path.join(documents, "document.html");
+    const quickNotes = path.join(documents, "quick-notes.html");
+    const outside = path.join(root, "outside.html");
+    fs.writeFileSync(document, "<h1>Document</h1>");
+    fs.writeFileSync(quickNotes, "<p>Scratch</p>");
+    fs.writeFileSync(outside, "<h1>Outside</h1>");
+
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    service.addLocal(root);
+
+    expect(() => service.resolveDocumentPath(quickNotes)).toThrow("Invalid document path");
+    expect(() => service.resolveDocumentPath(outside)).toThrow("not in a registered vault");
+    expect(() => service.resolveDocumentPath(path.join(documents, "missing.html"))).toThrow();
+  });
+
   it("opens a markdown vault and builds its manifest", () => {
     const root = temporaryDirectory();
     const documents = path.join(root, "documents");

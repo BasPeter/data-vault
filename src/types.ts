@@ -94,6 +94,11 @@ export type SavePdfResult = {
   filePath?: string;
 };
 
+export type DocumentOpenRequest = {
+  vaultId: string;
+  documentId: string;
+};
+
 export type UpdateStatus = {
   state: "idle" | "checking" | "available" | "downloading" | "downloaded" | "installing" | "not-available" | "error";
   currentVersion: string;
@@ -200,8 +205,10 @@ export type VaultApi = {
   changelog: () => Promise<AppChangelog>;
   securityAssessmentPrompt: (version?: string) => Promise<string>;
   setTitleBarTheme: (theme: "light" | "dark") => Promise<void>;
+  pendingOpenDocument: () => Promise<DocumentOpenRequest | null>;
   onUpdateStatus: (listener: (status: UpdateStatus) => void) => () => void;
   onVaultChanged: (listener: (vaultId: string) => void) => () => void;
+  onOpenDocument: (listener: (request: DocumentOpenRequest) => void) => () => void;
   skillStatus: () => Promise<SkillStatus>;
   installSkills: () => Promise<SkillStatus>;
   githubStatus: () => Promise<GitHubStatus>;

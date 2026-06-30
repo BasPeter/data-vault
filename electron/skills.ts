@@ -7,7 +7,7 @@ import type { SkillStatus, VaultStructure, VaultSummary } from "../src/types";
 
 // Bump a skill's version when its SKILL.md template or guidance changes so that
 // installed copies are reported as outdated and re-installed.
-const VAULT_GUIDE_VERSION = "7";
+const VAULT_GUIDE_VERSION = "9";
 const DOCUMENT_REVIEWER_VERSION = "5";
 const SKILL_FILE = "SKILL.md";
 
@@ -191,6 +191,33 @@ ${vaults_}
 
 ## After making changes
 
+- To show a document in the Data Vault app after creating or editing it, open
+  the app protocol with the document's absolute file path:
+
+  Windows PowerShell:
+
+  \`\`\`powershell
+  $path = "C:\\path\\to\\vault\\documents\\10-notes\\note.html"
+  Start-Process ("data-vault://open?path=" + [uri]::EscapeDataString($path))
+  \`\`\`
+
+  macOS:
+
+  \`\`\`bash
+  path="/Users/name/vault/documents/10-notes/note.html"
+  open "data-vault://open?path=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$path")"
+  \`\`\`
+
+  Linux:
+
+  \`\`\`bash
+  path="/home/name/vault/documents/10-notes/note.html"
+  xdg-open "data-vault://open?path=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$path")"
+  \`\`\`
+
+  If Data Vault is already running, it opens or focuses a tab for that document.
+  If it is not running, the app starts and opens the document once the vault is
+  loaded. Only use paths inside a registered vault's documents directory.
 - Always invoke the \`document-reviewer\` skill after creating or editing
   documents, and resolve its structural findings before committing.
 `;

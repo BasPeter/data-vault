@@ -754,6 +754,35 @@ export class VaultService {
     };
   }
 
+  resolveDocumentPath(filePath: string): { vaultId: string; documentId: string } {
+    if (!filePath || filePath.length > 4096) throw new Error("Invalid document path.");
+    const canonical = fs.realpathSync(filePath);
+    if (!fs.statSync(canonical).isFile()) throw new Error("Document not found.");
+
+    for (const vault of this.list()) {
+      const config = this.config(vault.repositoryPath);
+      const format = formatFromConfig(config);
+      const extension = extensionFor(format);
+      const root = this.resolveDocumentsRoot(vault.repositoryPath, config);
+      if (!isWithin(root, canonical)) continue;
+      const documentId = path.relative(root, canonical).split(path.sep).join("/");
+      if (
+        !documentId ||
+        documentId === "." ||
+        documentId.startsWith("../") ||
+        path.posix.isAbsolute(documentId) ||
+        documentId.toLowerCase() === QUICK_NOTES_FILE ||
+        !documentId.toLowerCase().endsWith(extension)
+      ) {
+        throw new Error("Invalid document path.");
+      }
+      this.document(vault.id, documentId);
+      return { vaultId: vault.id, documentId };
+    }
+
+    throw new Error("Document path is not in a registered vault.");
+  }
+
   async blame(vaultId: string, documentId: string): Promise<BlameLine[]> {
     const vault = this.vault(vaultId);
     const { canonical } = this.documentFile(vaultId, documentId);

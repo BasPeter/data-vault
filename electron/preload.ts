@@ -24,6 +24,7 @@ const api: VaultApi = {
   changelog: () => ipcRenderer.invoke("app:changelog"),
   securityAssessmentPrompt: (version) => ipcRenderer.invoke("app:security-assessment-prompt", version),
   setTitleBarTheme: (theme) => ipcRenderer.invoke("app:set-title-bar-theme", theme),
+  pendingOpenDocument: () => ipcRenderer.invoke("app:pending-open-document"),
   onUpdateStatus: (listener) => {
     const handler = (_event: Electron.IpcRendererEvent, status: Parameters<typeof listener>[0]) => listener(status);
     ipcRenderer.on("app:update-status", handler);
@@ -33,6 +34,11 @@ const api: VaultApi = {
     const handler = (_event: Electron.IpcRendererEvent, vaultId: string) => listener(vaultId);
     ipcRenderer.on("vault:changed", handler);
     return () => ipcRenderer.removeListener("vault:changed", handler);
+  },
+  onOpenDocument: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, request: Parameters<typeof listener>[0]) => listener(request);
+    ipcRenderer.on("app:open-document", handler);
+    return () => ipcRenderer.removeListener("app:open-document", handler);
   },
   skillStatus: () => ipcRenderer.invoke("skill:status"),
   installSkills: () => ipcRenderer.invoke("skill:install"),
