@@ -2,13 +2,34 @@
 import type { AppChangelog } from "../src/types";
 
 export const APP_CHANGELOG = {
-  "generatedAt": "2026-06-30T13:56:10+02:00",
+  "generatedAt": "2026-06-30T14:35:09+02:00",
   "repositoryUrl": "https://github.com/BasPeter/data-vault.git",
   "releases": [
     {
-      "version": "0.12.4",
-      "date": "2026-06-30T13:56:10+02:00",
+      "version": "0.12.5",
+      "date": "2026-06-30T14:35:09+02:00",
       "commits": [
+        {
+          "hash": "86d73443d75a8dc3f5724abb3f90aacf6a3d8f99",
+          "shortHash": "86d7344",
+          "subject": "Add vault document change indicator"
+        }
+      ]
+    },
+    {
+      "version": "0.12.4",
+      "date": "2026-06-30T14:12:01+02:00",
+      "commits": [
+        {
+          "hash": "b8204d13cc910a52fc625594e9dd2d04f275b060",
+          "shortHash": "b8204d1",
+          "subject": "Fix workspace e2e skill version"
+        },
+        {
+          "hash": "8d509f1fb75a8e404a19299f969dd694b13c080a",
+          "shortHash": "8d509f1",
+          "subject": "Prepare release 0.12.4"
+        },
         {
           "hash": "af48a3c6a2134e92eb4d9a016ac25a045266b37b",
           "shortHash": "af48a3c",
