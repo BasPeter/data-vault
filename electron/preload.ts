@@ -11,6 +11,7 @@ const api: VaultApi = {
   removeVault: (vaultId) => ipcRenderer.invoke("vault:remove", vaultId),
   manifest: (vaultId) => ipcRenderer.invoke("vault:manifest", vaultId),
   document: (vaultId, documentId) => ipcRenderer.invoke("vault:document", vaultId, documentId),
+  documentPath: (vaultId, documentId) => ipcRenderer.invoke("vault:document-path", vaultId, documentId),
   saveDocumentPdf: (vaultId, documentId) => ipcRenderer.invoke("vault:save-document-pdf", vaultId, documentId),
   watch: (vaultId) => ipcRenderer.invoke("vault:watch", vaultId),
   blame: (vaultId, documentId) => ipcRenderer.invoke("vault:blame", vaultId, documentId),

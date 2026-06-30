@@ -754,6 +754,10 @@ export class VaultService {
     };
   }
 
+  documentPath(vaultId: string, documentId: string): string {
+    return this.documentFile(vaultId, documentId).canonical;
+  }
+
   resolveDocumentPath(filePath: string): { vaultId: string; documentId: string } {
     if (!filePath || filePath.length > 4096) throw new Error("Invalid document path.");
     const canonical = fs.realpathSync(filePath);

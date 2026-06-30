@@ -1,7 +1,14 @@
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 
 type DocumentTab = {
@@ -14,9 +21,24 @@ type Props = {
   activeId: string | null;
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
+  onCloseAll: () => void;
+  onCloseOthers: (id: string) => void;
+  onCloseToLeft: (id: string) => void;
+  onCloseToRight: (id: string) => void;
+  onCopyPath: (id: string) => void;
 };
 
-export function DocumentTabs({ tabs, activeId, onSelect, onClose }: Props) {
+export function DocumentTabs({
+  tabs,
+  activeId,
+  onSelect,
+  onClose,
+  onCloseAll,
+  onCloseOthers,
+  onCloseToLeft,
+  onCloseToRight,
+  onCopyPath,
+}: Props) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -87,43 +109,76 @@ export function DocumentTabs({ tabs, activeId, onSelect, onClose }: Props) {
         {tabs.map((tab) => {
           const active = tab.id === activeId;
           return (
-            <div
-              key={tab.id}
-              className={cn(
-                "group relative flex h-9 max-w-56 min-w-32 shrink-0 items-center rounded-t-md border px-2",
-                active
-                  ? "bg-background text-foreground border-border z-20 -mb-px border-b-background"
-                  : "bg-muted/35 text-muted-foreground hover:bg-muted/70 border-transparent border-b-0",
-              )}
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={active}
-                title={`${tab.title}\n${tab.id}`}
-                className={cn(
-                  "min-w-0 flex-1 truncate text-left text-sm outline-none focus-visible:underline",
-                  active && "font-semibold",
-                )}
-                onClick={() => onSelect(tab.id)}
-              >
-                {tab.title}
-              </button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label={`Close ${tab.title}`}
-                title={`Close ${tab.title}`}
-                className="ml-1 size-6 shrink-0 opacity-70 hover:opacity-100"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onClose(tab.id);
-                }}
-              >
-                <X className="size-3.5" />
-              </Button>
-            </div>
+            <ContextMenu key={tab.id}>
+              <ContextMenuTrigger asChild>
+                <div
+                  className={cn(
+                    "group relative flex h-9 max-w-56 min-w-32 shrink-0 items-center rounded-t-md border px-2",
+                    active
+                      ? "bg-background text-foreground border-border z-20 -mb-px border-b-background"
+                      : "bg-muted/35 text-muted-foreground hover:bg-muted/70 border-transparent border-b-0",
+                  )}
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    title={`${tab.title}\n${tab.id}`}
+                    className={cn(
+                      "min-w-0 flex-1 truncate text-left text-sm outline-none focus-visible:underline",
+                      active && "font-semibold",
+                    )}
+                    onClick={() => onSelect(tab.id)}
+                  >
+                    {tab.title}
+                  </button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Close ${tab.title}`}
+                    title={`Close ${tab.title}`}
+                    className="ml-1 size-6 shrink-0 opacity-70 hover:opacity-100"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onClose(tab.id);
+                    }}
+                  >
+                    <X className="size-3.5" />
+                  </Button>
+                </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent>
+                <ContextMenuItem onSelect={() => onCopyPath(tab.id)}>
+                  <Copy />
+                  Copy path
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem onSelect={() => onClose(tab.id)}>
+                  <X />
+                  Close tab
+                </ContextMenuItem>
+                <ContextMenuItem disabled={tabs.length <= 1} onSelect={() => onCloseOthers(tab.id)}>
+                  Close others
+                </ContextMenuItem>
+                <ContextMenuItem
+                  disabled={tabs.findIndex((candidate) => candidate.id === tab.id) <= 0}
+                  onSelect={() => onCloseToLeft(tab.id)}
+                >
+                  Close tabs to the left
+                </ContextMenuItem>
+                <ContextMenuItem
+                  disabled={tabs.findIndex((candidate) => candidate.id === tab.id) >= tabs.length - 1}
+                  onSelect={() => onCloseToRight(tab.id)}
+                >
+                  Close tabs to the right
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem disabled={tabs.length === 0} onSelect={onCloseAll}>
+                  Close all
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           );
         })}
       </div>

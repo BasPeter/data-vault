@@ -275,6 +275,20 @@ describe("VaultService", () => {
     });
   });
 
+  it("returns the canonical filesystem path for a registered document", () => {
+    const root = temporaryDirectory();
+    const documents = path.join(root, "documents");
+    fs.mkdirSync(path.join(documents, "10-knowledge"), { recursive: true });
+    fs.writeFileSync(path.join(root, "vault.json"), JSON.stringify({ name: "Example" }));
+    const file = path.join(documents, "10-knowledge", "example.html");
+    fs.writeFileSync(file, "<h1>Example</h1>");
+
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = service.addLocal(root);
+
+    expect(service.documentPath(vault.id, "10-knowledge/example.html")).toBe(fs.realpathSync(file));
+  });
+
   it("rejects unresolved document paths outside registered vault documents", () => {
     const root = temporaryDirectory();
     const documents = path.join(root, "documents");

@@ -1,7 +1,8 @@
-import { FileText, Folder, FolderOpen } from "lucide-react";
+import { Copy, FileText, Folder, FolderOpen } from "lucide-react";
 import { AgentSkillsPanel } from "@/components/agent-skills-panel";
 import { UpdateButton } from "@/components/update-button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import {
   Sidebar,
   SidebarContent,
@@ -22,6 +23,7 @@ type Props = {
   tree: TreeNode[];
   activeId: string | null;
   onSelect: (id: string) => void;
+  onCopyPath: (id: string) => void;
   vaultName: string;
   vaults: VaultSummary[];
 };
@@ -30,10 +32,12 @@ function TreeItems({
   nodes,
   activeId,
   onSelect,
+  onCopyPath,
 }: {
   nodes: TreeNode[];
   activeId: string | null;
   onSelect: (id: string) => void;
+  onCopyPath: (id: string) => void;
 }) {
   return (
     <SidebarMenu>
@@ -50,17 +54,27 @@ function TreeItems({
               </CollapsibleTrigger>
               <CollapsibleContent>
                 <SidebarMenuSub>
-                  <TreeItems nodes={node.children} activeId={activeId} onSelect={onSelect} />
+                  <TreeItems nodes={node.children} activeId={activeId} onSelect={onSelect} onCopyPath={onCopyPath} />
                 </SidebarMenuSub>
               </CollapsibleContent>
             </SidebarMenuItem>
           </Collapsible>
         ) : (
           <SidebarMenuItem key={node.id}>
-            <SidebarMenuButton isActive={activeId === node.id} onClick={() => onSelect(node.id)}>
-              <FileText />
-              <span>{node.label}</span>
-            </SidebarMenuButton>
+            <ContextMenu>
+              <ContextMenuTrigger asChild>
+                <SidebarMenuButton isActive={activeId === node.id} onClick={() => onSelect(node.id)}>
+                  <FileText />
+                  <span>{node.label}</span>
+                </SidebarMenuButton>
+              </ContextMenuTrigger>
+              <ContextMenuContent>
+                <ContextMenuItem onSelect={() => onCopyPath(node.id)}>
+                  <Copy />
+                  Copy path
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           </SidebarMenuItem>
         ),
       )}
@@ -68,7 +82,7 @@ function TreeItems({
   );
 }
 
-export function AppSidebar({ tree, activeId, onSelect, vaultName, vaults }: Props) {
+export function AppSidebar({ tree, activeId, onSelect, onCopyPath, vaultName, vaults }: Props) {
   return (
     <Sidebar>
       <SidebarHeader
@@ -86,7 +100,7 @@ export function AppSidebar({ tree, activeId, onSelect, vaultName, vaults }: Prop
         <SidebarGroup>
           <SidebarGroupLabel>Documents</SidebarGroupLabel>
           {tree.length ? (
-            <TreeItems nodes={tree} activeId={activeId} onSelect={onSelect} />
+            <TreeItems nodes={tree} activeId={activeId} onSelect={onSelect} onCopyPath={onCopyPath} />
           ) : (
             <p className="text-muted-foreground px-2 py-1 text-xs">No documents found.</p>
           )}

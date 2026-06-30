@@ -192,6 +192,7 @@ export type VaultApi = {
   removeVault: (vaultId: string) => Promise<void>;
   manifest: (vaultId: string) => Promise<Manifest>;
   document: (vaultId: string, documentId: string) => Promise<LoadedDoc>;
+  documentPath: (vaultId: string, documentId: string) => Promise<string>;
   saveDocumentPdf: (vaultId: string, documentId: string) => Promise<SavePdfResult>;
   watch: (vaultId: string) => Promise<void>;
   blame: (vaultId: string, documentId: string) => Promise<BlameLine[]>;

@@ -320,6 +320,10 @@ function registerIpc(): void {
     assertTrusted(event);
     return service.document(stringArgument(vaultId, "vault ID"), stringArgument(documentId, "document ID"));
   });
+  ipcMain.handle("vault:document-path", (event, vaultId, documentId) => {
+    assertTrusted(event);
+    return service.documentPath(stringArgument(vaultId, "vault ID"), stringArgument(documentId, "document ID"));
+  });
   ipcMain.handle("vault:save-document-pdf", async (event, vaultId, documentId) => {
     assertTrusted(event);
     const id = stringArgument(documentId, "document ID");

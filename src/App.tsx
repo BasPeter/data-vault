@@ -226,6 +226,60 @@ export default function App() {
     });
   }, []);
 
+  const closeAllDocuments = useCallback(() => {
+    tabsInitializedRef.current = true;
+    setTabs([]);
+    tabsRef.current = [];
+    setActiveId(null);
+    activeIdRef.current = null;
+    history.replaceState(null, "", `${location.pathname}${location.search}`);
+  }, []);
+
+  const closeOtherDocuments = useCallback((id: string) => {
+    tabsInitializedRef.current = true;
+    setTabs((current) => {
+      if (!current.some((tab) => tab.id === id)) return current;
+      const next = [{ id }];
+      tabsRef.current = next;
+      setActiveId(id);
+      activeIdRef.current = id;
+      location.hash = encodeURIComponent(id);
+      return next;
+    });
+  }, []);
+
+  const closeDocumentsToLeft = useCallback((id: string) => {
+    tabsInitializedRef.current = true;
+    setTabs((current) => {
+      const index = current.findIndex((tab) => tab.id === id);
+      if (index <= 0) return current;
+      const next = current.slice(index);
+      tabsRef.current = next;
+      if (!next.some((tab) => tab.id === activeIdRef.current)) {
+        setActiveId(id);
+        activeIdRef.current = id;
+        location.hash = encodeURIComponent(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const closeDocumentsToRight = useCallback((id: string) => {
+    tabsInitializedRef.current = true;
+    setTabs((current) => {
+      const index = current.findIndex((tab) => tab.id === id);
+      if (index === -1 || index >= current.length - 1) return current;
+      const next = current.slice(0, index + 1);
+      tabsRef.current = next;
+      if (!next.some((tab) => tab.id === activeIdRef.current)) {
+        setActiveId(id);
+        activeIdRef.current = id;
+        location.hash = encodeURIComponent(id);
+      }
+      return next;
+    });
+  }, []);
+
   const addLocal = async () => {
     setError(null);
     try {
@@ -263,6 +317,20 @@ export default function App() {
     }
   };
 
+  const copyDocumentPath = useCallback(
+    async (documentId: string) => {
+      if (!vaultId) return;
+      setError(null);
+      try {
+        const filePath = await window.vaultApi.documentPath(vaultId, documentId);
+        await navigator.clipboard.writeText(filePath);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      }
+    },
+    [vaultId],
+  );
+
   const ids = useMemo(() => documentIds(manifest.tree), [manifest.tree]);
   const displayTabs = useMemo(
     () => tabs.map((tab) => ({ id: tab.id, title: documentLabel(manifest.tree, tab.id) ?? tab.id })),
@@ -291,6 +359,7 @@ export default function App() {
         tree={manifest.tree}
         activeId={activeId}
         onSelect={openDocument}
+        onCopyPath={copyDocumentPath}
         vaultName={vault.name}
         vaults={vaults}
       />
@@ -375,7 +444,17 @@ export default function App() {
             <GraphView vaultId={vaultId} activeId={activeId} onSelect={openDocument} version={version} />
           ) : (
             <div className="flex h-full min-h-0 flex-col">
-              <DocumentTabs tabs={displayTabs} activeId={activeId} onSelect={openDocument} onClose={closeDocument} />
+              <DocumentTabs
+                tabs={displayTabs}
+                activeId={activeId}
+                onSelect={openDocument}
+                onClose={closeDocument}
+                onCloseAll={closeAllDocuments}
+                onCloseOthers={closeOtherDocuments}
+                onCloseToLeft={closeDocumentsToLeft}
+                onCloseToRight={closeDocumentsToRight}
+                onCopyPath={copyDocumentPath}
+              />
               <div className="min-h-0 flex-1 overflow-auto">
                 {activeId ? (
                   <DocumentView
