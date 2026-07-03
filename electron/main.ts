@@ -125,7 +125,11 @@ function stringArgument(value: unknown, name: string): string {
   if (typeof value !== "string" || value.length === 0 || value.length > 4096) {
     throw new Error(`Invalid ${name}.`);
   }
-  return value;
+  // Strip/collapse ASCII control characters (including newlines), mirroring
+  // optionalText, so e.g. a vault rename can never write control-character-
+  // laden text to vault.json in the first place.
+  // eslint-disable-next-line no-control-regex -- control chars are the target of this sanitizer
+  return value.replace(/[\x00-\x1F\x7F]+/g, " ");
 }
 
 function optionalText(value: unknown, name: string): string {
@@ -181,7 +185,10 @@ function structureArgument(value: unknown): VaultStructure {
     if (depth > STRUCTURE_MAX_DEPTH) throw new Error("Vault structure is too deep.");
     const output: VaultStructure = {};
     for (const [key, raw] of Object.entries(input as Record<string, unknown>)) {
-      if (!key || key === "." || key === ".." || /[/\\]/.test(key)) throw new Error("Invalid directory name.");
+      // eslint-disable-next-line no-control-regex -- control chars are the target of this sanitizer
+      if (!key || key === "." || key === ".." || /[/\\]/.test(key) || /[\x00-\x1F\x7F]/.test(key)) {
+        throw new Error("Invalid directory name.");
+      }
       if (typeof raw !== "object" || raw === null || Array.isArray(raw)) throw new Error("Invalid vault structure.");
       if (--remaining < 0) throw new Error("Vault structure is too large.");
       const node = raw as Record<string, unknown>;

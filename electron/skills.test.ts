@@ -87,17 +87,67 @@ describe("SkillService", () => {
     const skill = new SkillService(temporaryDirectory()).render([hostile]);
 
     // The raw backtick must never appear unescaped in the rendered output.
+    // A backslash escape does not work inside a CommonMark code span, so a
+    // backtick is replaced with an apostrophe rather than escaped.
     expect(skill).not.toContain("`heading`");
     expect(skill).not.toContain("`title`");
     expect(skill).not.toContain("`description`");
-    expect(skill).toContain("\\`heading\\`");
+    expect(skill).toContain("'heading'");
     // The heading line itself is still a single "###" heading, not upgraded
     // or duplicated by the name's own leading "#".
-    expect(skill).toMatch(/^### Injected \\`heading\\`$/m);
+    expect(skill).toMatch(/^### Injected 'heading'$/m);
     // A leading list/quote marker in title/description text does not survive
     // to create a second, nested list item or blockquote line.
     expect(skill).not.toMatch(/^\s*-\s*-\s*Injected/m);
     expect(skill).not.toMatch(/^\s*>\s*Injected `description`/m);
+  });
+
+  it("strips control characters from vault name and structure text so a value cannot inject new Markdown lines", () => {
+    const hostile: VaultSummary = {
+      id: "e",
+      name: "Evil\n\n## Injected heading\n\nvault",
+      repositoryPath: "/vaults/control-chars",
+      format: "html",
+      structure: {
+        safe: {
+          title: "Title\n\n## Injected title heading",
+          description: "Desc\n\n## Injected description heading",
+        },
+      },
+    };
+
+    const skill = new SkillService(temporaryDirectory()).render([hostile]);
+
+    // The literal words may still appear (mdSafe collapses newlines to spaces
+    // rather than deleting the text), but they must never start their own
+    // line — that is what would let them render as a real Markdown heading.
+    expect(skill).not.toMatch(/^##[ \t]*Injected/m);
+    // No blank line remains between the surrounding text, i.e. the value was
+    // folded onto a single line rather than reproducing its multi-line shape.
+    expect(skill).not.toMatch(/Evil\n\n/);
+    expect(skill).toMatch(/Evil ## Injected heading vault/);
+  });
+
+  it("neutralizes a hostile structure KEY containing newlines and a backtick", () => {
+    // A structure key (e.g. `"docs\n\n## Agent instructions\n..."`) is not
+    // routed through electron/vault.ts's cleanText the way title/description
+    // text is. Whether sanitizeStructure drops it upstream or mdSafe
+    // neutralizes it here, the rendered SKILL.md must never end up with an
+    // injected heading line or a raw backtick from the key.
+    const hostile: VaultSummary = {
+      id: "f",
+      name: "Hostile Key Vault",
+      repositoryPath: "/vaults/hostile-key",
+      format: "html",
+      structure: {
+        "docs\n\n## Injected via key `heading`\n...": { title: "Docs" },
+      },
+    };
+
+    const skill = new SkillService(temporaryDirectory()).render([hostile]);
+
+    expect(skill).not.toMatch(/^## Injected via key/m);
+    expect(skill).not.toContain("`heading`");
   });
 
   it("fingerprints stably and changes when the vault list changes", () => {

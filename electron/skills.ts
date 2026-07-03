@@ -51,13 +51,20 @@ function readJson<T>(file: string): T | null {
 }
 
 // Neutralize Markdown structure in vault.json-derived text before interpolating
-// it into generated SKILL.md files: escaping a backtick stops a value from
-// closing the code span it is wrapped in early, and stripping a leading
-// heading/list/quote marker stops a value from creating new Markdown structure
-// of its own. Defense in depth alongside electron/vault.ts's cleanText — even a
-// field added later without cleaning is neutralized at this interpolation site.
+// it into generated SKILL.md files: stripping control characters (including
+// newlines) stops a value from creating new Markdown lines of its own,
+// replacing a backtick with an apostrophe stops a value from closing the code
+// span it is wrapped in early (a backslash escape does not work inside a
+// CommonMark code span, so an escaped backtick would still terminate it), and
+// stripping a leading heading/list/quote marker stops a value from creating
+// new Markdown structure at the start of its own line. Defense in depth
+// alongside electron/vault.ts's cleanText — even a field added later without
+// cleaning, or a structure key (which cleanText never touches), is neutralized
+// at this interpolation site.
 function mdSafe(value: string): string {
-  return value.replace(/`/g, "\\`").replace(/^[ \t]*(?:#{1,6}|[-*+]|>)(?:[ \t]+|$)/, "");
+  // eslint-disable-next-line no-control-regex -- control chars are the target of this sanitizer
+  const collapsed = value.replace(/[\x00-\x1F\x7F]+/g, " ");
+  return collapsed.replace(/`/g, "'").replace(/^[ \t]*(?:#{1,6}|[-*+]|>)(?:[ \t]+|$)/, "");
 }
 
 function structureOutline(structure: VaultStructure, indent: string): string[] {
