@@ -472,6 +472,7 @@ function cleanText(value: unknown): string | undefined {
   // Strip/collapse ASCII control characters (including newlines and tabs) so
   // vault.json-derived text can never smuggle multi-line Markdown structure
   // into generated skill files; keep it single-line plain text.
+  // eslint-disable-next-line no-control-regex -- control chars are the target of this sanitizer
   const trimmed = value.replace(/[\x00-\x1F\x7F]+/g, " ").trim();
   if (!trimmed || trimmed.length > STRUCTURE_MAX_TEXT) return undefined;
   return trimmed;

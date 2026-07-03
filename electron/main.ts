@@ -133,6 +133,7 @@ function optionalText(value: unknown, name: string): string {
   // Strip/collapse ASCII control characters (including newlines) so
   // renderer-supplied structure edits are already clean before they reach
   // disk, mirroring electron/vault.ts's cleanText.
+  // eslint-disable-next-line no-control-regex -- control chars are the target of this sanitizer
   const cleaned = value.replace(/[\x00-\x1F\x7F]+/g, " ");
   if (cleaned.length > STRUCTURE_MAX_TEXT) throw new Error(`Invalid ${name}.`);
   return cleaned;
