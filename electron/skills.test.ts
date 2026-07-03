@@ -66,6 +66,40 @@ describe("SkillService", () => {
     expect(skill).toContain("**Playbooks** (`playbooks`)");
   });
 
+  it("neutralizes backticks and leading Markdown markers in vault name and structure text", () => {
+    // Simulate hostile/uncleaned vault.json content reaching the renderer
+    // directly (defense in depth alongside electron/vault.ts's cleanText):
+    // a backtick must not be able to close the code span it is wrapped in,
+    // and a leading `#`/`-`/`>` must not create new Markdown structure.
+    const hostile: VaultSummary = {
+      id: "d",
+      name: "# Injected `heading`",
+      repositoryPath: "/vaults/hostile",
+      format: "html",
+      structure: {
+        "safe-segment": {
+          title: "- Injected `title`",
+          description: "> Injected `description`",
+        },
+      },
+    };
+
+    const skill = new SkillService(temporaryDirectory()).render([hostile]);
+
+    // The raw backtick must never appear unescaped in the rendered output.
+    expect(skill).not.toContain("`heading`");
+    expect(skill).not.toContain("`title`");
+    expect(skill).not.toContain("`description`");
+    expect(skill).toContain("\\`heading\\`");
+    // The heading line itself is still a single "###" heading, not upgraded
+    // or duplicated by the name's own leading "#".
+    expect(skill).toMatch(/^### Injected \\`heading\\`$/m);
+    // A leading list/quote marker in title/description text does not survive
+    // to create a second, nested list item or blockquote line.
+    expect(skill).not.toMatch(/^\s*-\s*-\s*Injected/m);
+    expect(skill).not.toMatch(/^\s*>\s*Injected `description`/m);
+  });
+
   it("fingerprints stably and changes when the vault list changes", () => {
     const service = new SkillService(temporaryDirectory());
     expect(service.fingerprint([vaultA])).toBe(service.fingerprint([vaultA]));

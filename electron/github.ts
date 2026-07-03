@@ -280,9 +280,13 @@ export class GitHubService {
           next = link;
         }
       } catch (error) {
-        // A single revoked/unreachable account must not blank the whole list; its
-        // entry was already dropped by request() on a 401.
-        if (!(error instanceof TokenRevokedError)) throw error;
+        // A single revoked or transiently unreachable account must not blank the
+        // whole list. TokenRevokedError already dropped the account in
+        // request(); any other per-account failure (e.g. a network error) is
+        // logged and skipped so the remaining accounts' results still return.
+        if (!(error instanceof TokenRevokedError)) {
+          console.error(`Could not list repositories for ${account.login}:`, error);
+        }
       }
     }
     return repos;

@@ -467,6 +467,35 @@ describe("VaultService", () => {
     });
   });
 
+  it("parses -z status output for a staged rename and an untracked non-ASCII filename", async () => {
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = await service.createEmpty("My Notes");
+
+    // Renaming a committed file and staging it produces a git rename entry,
+    // which in `-z` mode is two NUL-terminated fields (new path, then old
+    // path) rather than a single "old -> new" line.
+    fs.renameSync(
+      path.join(vault.repositoryPath, "documents", "welcome.html"),
+      path.join(vault.repositoryPath, "documents", "renamed.html"),
+    );
+    execFileSync("git", ["-C", vault.repositoryPath, "add", "-A"]);
+
+    // An untracked file with a non-ASCII name: the newline-terminated
+    // `git status --porcelain` format C-quotes this (e.g. `"caf\303\251.html"`),
+    // which would hide the change without `-z` parsing.
+    fs.writeFileSync(path.join(vault.repositoryPath, "documents", "café.html"), "<h1>Café</h1>");
+
+    const status = await service.changes(vault.id);
+
+    expect(status.changed).toBe(true);
+    expect(status.changes).toContainEqual({
+      kind: "renamed",
+      path: "documents/renamed.html",
+      previousPath: "documents/welcome.html",
+    });
+    expect(status.changes).toContainEqual({ kind: "untracked", path: "documents/café.html" });
+  });
+
   it("does not report changes outside the configured documents directory", async () => {
     const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
     const vault = await service.createEmpty("My Notes");
@@ -609,6 +638,23 @@ describe("VaultService", () => {
     ).toBeUndefined();
   });
 
+  it("throws instead of clobbering an existing-but-unparsable vault.json", async () => {
+    const root = temporaryDirectory();
+    fs.mkdirSync(path.join(root, "documents"));
+    const corrupt = "{ not valid json";
+    fs.writeFileSync(path.join(root, "vault.json"), corrupt);
+
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = service.addLocal(root);
+
+    // Merging the patch into `{}` here would silently discard every other field
+    // already in vault.json; a corrupt file must fail loud instead.
+    await expect(service.updateVault(vault.id, { name: "New Name" })).rejects.toThrow(
+      "vault.json exists but could not be parsed",
+    );
+    expect(fs.readFileSync(path.join(root, "vault.json"), "utf8")).toBe(corrupt);
+  });
+
   it("re-reads vault.json on every list so external edits surface", () => {
     const root = temporaryDirectory();
     const documents = path.join(root, "documents");
@@ -680,5 +726,38 @@ describe("VaultService", () => {
     expect(vault.structure?.safe).toMatchObject({ title: "Safe" });
     expect(vault.structure?.safe?.description).toBeUndefined();
     expect(service.manifest(vault.id).tree.find((node) => node.id === "safe")).toMatchObject({ label: "Safe" });
+  });
+
+  it("strips control characters and newlines from vault name and structure text", () => {
+    const root = temporaryDirectory();
+    const documents = path.join(root, "documents");
+    fs.mkdirSync(path.join(documents, "safe"), { recursive: true });
+    fs.writeFileSync(path.join(documents, "safe", "a.html"), "<h1>A</h1>");
+    fs.writeFileSync(
+      path.join(root, "vault.json"),
+      JSON.stringify({
+        name: "Evil\n# Injected heading\tvault",
+        structure: {
+          safe: {
+            title: "Title\n# Injected",
+            description: "Desc\r\n> Injected quote",
+          },
+        },
+      }),
+    );
+
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = service.addLocal(root);
+
+    // A newline (or any other ASCII control character) in vault.json-derived
+    // text must never survive into a single-line, plain-text field: it would
+    // otherwise let a hostile vault.json inject its own Markdown structure
+    // (headings, lists, quotes) into generated skill files.
+    expect(vault.name).not.toMatch(/[\n\r\t]/);
+    expect(vault.name).toBe("Evil # Injected heading vault");
+    expect(vault.structure?.safe?.title).not.toMatch(/[\n\r\t]/);
+    expect(vault.structure?.safe?.title).toBe("Title # Injected");
+    expect(vault.structure?.safe?.description).not.toMatch(/[\n\r\t]/);
+    expect(vault.structure?.safe?.description).toBe("Desc > Injected quote");
   });
 });
