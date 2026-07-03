@@ -63,4 +63,6 @@
       Run locally before release; `npm run build` passes here.
 - [x] 3.3 Verifier pass: PASS, no unrelated changes, all 1.x/2.x tasks
       evidenced in the diff; jsdom confirmed devDependencies-only.
-- [ ] 3.4 Reviewer pass (risky classification) → APPROVE required.
+- [x] 3.4 Reviewer pass (risky classification): initial REQUEST_CHANGES
+      (structure-key injection bypass, artifact mismatch on 2.7) fixed in
+      follow-up commits; final verdict APPROVE, commit readiness READY.
