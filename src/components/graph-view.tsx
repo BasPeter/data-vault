@@ -16,20 +16,17 @@ import type { GraphData, GraphNode } from "@/types";
 type SimNode = GraphNode & SimulationNodeDatum;
 type SimLink = SimulationLinkDatum<SimNode>;
 
-// Folder → colour. Works on both light and dark backgrounds.
-const FOLDER_COLORS: Record<string, string> = {
-  "10-kennisbank": "#60a5fa",
-  "20-aantekeningen": "#34d399",
-  "30-projecten": "#f59e0b",
-  "(root)": "#a78bfa",
-};
-const FALLBACK_COLORS = ["#f472b6", "#22d3ee", "#a3e635", "#fb923c"];
+// Colour palette assigned to folders by order of first appearance in the
+// graph data, so the legend never depends on any particular vault's folder
+// names (see vault-format spec "No Personal Vault Data").
+const PALETTE = ["#60a5fa", "#34d399", "#f59e0b", "#a78bfa", "#f472b6", "#22d3ee", "#a3e635", "#fb923c"];
 
-function colorFor(folder: string) {
-  if (FOLDER_COLORS[folder]) return FOLDER_COLORS[folder];
-  let h = 0;
-  for (const c of folder) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return FALLBACK_COLORS[h % FALLBACK_COLORS.length];
+function folderColors(data: GraphData | null): Map<string, string> {
+  const colors = new Map<string, string>();
+  for (const node of data?.nodes ?? []) {
+    if (!colors.has(node.folder)) colors.set(node.folder, PALETTE[colors.size % PALETTE.length]);
+  }
+  return colors;
 }
 
 const radius = (n: GraphNode) => 6 + Math.min(n.degree, 6) * 2.5;
@@ -125,6 +122,8 @@ export function GraphView({
     sim.force("center", forceCenter(size.w / 2, size.h / 2));
     sim.alpha(0.3).restart();
   }, [size.w, size.h, hasSize]);
+
+  const colors = useMemo(() => folderColors(data), [data]);
 
   // Neighbour lookup for hover highlighting.
   const neighbors = useMemo(() => {
@@ -277,7 +276,12 @@ export function GraphView({
                 onClick={() => onSelect(n.id)}
               >
                 {active && <circle r={r + 4} fill="none" className="stroke-primary" strokeWidth={2 / transform.k} />}
-                <circle r={r} fill={colorFor(n.folder)} stroke="white" strokeWidth={1.5 / transform.k} />
+                <circle
+                  r={r}
+                  fill={colors.get(n.folder) ?? PALETTE[0]}
+                  stroke="white"
+                  strokeWidth={1.5 / transform.k}
+                />
                 <text
                   y={r + 11}
                   textAnchor="middle"
@@ -296,7 +300,7 @@ export function GraphView({
       {/* Legend */}
       {data && data.nodes.length > 0 && (
         <div className="bg-card/80 absolute bottom-3 left-3 rounded-md border p-2 text-xs backdrop-blur">
-          {Object.entries(FOLDER_COLORS).map(([folder, color]) => (
+          {Array.from(colors.entries()).map(([folder, color]) => (
             <div key={folder} className="flex items-center gap-2 py-0.5">
               <span className="inline-block size-2.5 rounded-full" style={{ backgroundColor: color }} />
               <span className="text-muted-foreground">{folder}</span>

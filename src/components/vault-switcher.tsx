@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   Check,
@@ -25,7 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import { VaultInitDialog } from "@/components/vault-init-dialog";
-import { VaultStructureEditor } from "@/components/vault-structure-editor";
+import { VaultStructureEditor, type VaultStructureEditorHandle } from "@/components/vault-structure-editor";
 import { cn } from "@/lib/utils";
 import type { TreeNode, VaultFormat, VaultStructure, VaultSummary, VaultUpdate } from "@/types";
 
@@ -361,6 +361,7 @@ function VaultSettingsDialog({
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [key, setKey] = useState<string | null>(null);
+  const structureEditorRef = useRef<VaultStructureEditorHandle>(null);
 
   // Reset fields whenever a vault is opened, and clear the key on close so
   // reopening the same vault re-initialises from its latest values.
@@ -398,8 +399,29 @@ function VaultSettingsDialog({
     };
   }, [vault]);
 
+  // Clearing a configured remote isn't a supported operation on the main
+  // process side (no "unset remote" call exists), so an emptied field must
+  // block the save with a note rather than silently keeping the old remote.
+  const remoteCleared = Boolean(vault?.remoteUrl) && remoteUrl.trim() === "";
+
+  // Navigating back from the structure view must not silently discard
+  // unapplied JSON-mode text: resolve() applies/validates it first, and only
+  // leaves the structure view when that succeeds.
+  const goToSettings = () => {
+    const resolved = structureEditorRef.current?.resolve();
+    if (resolved === null) return;
+    if (resolved) setStructure(resolved);
+    setView("settings");
+  };
+
   const submit = async () => {
-    if (!vault) return;
+    if (!vault || remoteCleared) return;
+    let effectiveStructure = structure;
+    if (view === "structure") {
+      const resolved = structureEditorRef.current?.resolve();
+      if (resolved === null) return;
+      if (resolved) effectiveStructure = resolved;
+    }
     setBusy(true);
     setError(null);
     setNotice(null);
@@ -409,7 +431,8 @@ function VaultSettingsDialog({
       if (remoteUrl.trim() && remoteUrl.trim() !== (vault.remoteUrl ?? "")) update.remoteUrl = remoteUrl.trim();
       if (format !== vault.format) update.format = format;
       if (defaultLanguage.trim() !== (vault.defaultLanguage ?? "")) update.defaultLanguage = defaultLanguage.trim();
-      if (JSON.stringify(structure) !== JSON.stringify(vault.structure ?? {})) update.structure = structure;
+      if (JSON.stringify(effectiveStructure) !== JSON.stringify(vault.structure ?? {}))
+        update.structure = effectiveStructure;
       if (Object.keys(update).length === 0) {
         onOpenChange(false);
         return;
@@ -482,6 +505,12 @@ function VaultSettingsDialog({
                 onChange={(event) => setRemoteUrl(event.target.value)}
                 placeholder="git@github.com:you/vault.git"
               />
+              {remoteCleared && (
+                <p className="text-muted-foreground text-xs">
+                  Clearing a configured remote isn't supported yet — enter a new URL or restore the previous one to
+                  save.
+                </p>
+              )}
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium" htmlFor="vault-format">
@@ -577,7 +606,7 @@ function VaultSettingsDialog({
               <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
                 Cancel
               </Button>
-              <Button onClick={submit} disabled={busy || !name.trim()}>
+              <Button onClick={submit} disabled={busy || !name.trim() || remoteCleared}>
                 {busy ? "Saving…" : "Save"}
               </Button>
             </DialogFooter>
@@ -586,12 +615,7 @@ function VaultSettingsDialog({
           <>
             <DialogHeader>
               <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Back to settings"
-                  onClick={() => setView("settings")}
-                >
+                <Button variant="ghost" size="icon-sm" aria-label="Back to settings" onClick={goToSettings}>
                   <ArrowLeft />
                 </Button>
                 <DialogTitle>Desired structure</DialogTitle>
@@ -600,7 +624,15 @@ function VaultSettingsDialog({
                 Add, nest, and describe directories. Copy an AI prompt to have an agent draft this from your documents.
               </DialogDescription>
             </DialogHeader>
-            {vault && <VaultStructureEditor vault={vault} tree={tree} structure={structure} onChange={setStructure} />}
+            {vault && (
+              <VaultStructureEditor
+                ref={structureEditorRef}
+                vault={vault}
+                tree={tree}
+                structure={structure}
+                onChange={setStructure}
+              />
+            )}
             {error && (
               <p role="alert" className="text-destructive text-sm">
                 {error}
@@ -612,11 +644,11 @@ function VaultSettingsDialog({
               </p>
             )}
             <DialogFooter>
-              <Button variant="ghost" onClick={() => setView("settings")} disabled={busy}>
+              <Button variant="ghost" onClick={goToSettings} disabled={busy}>
                 <ArrowLeft />
                 Back
               </Button>
-              <Button onClick={submit} disabled={busy || !name.trim()}>
+              <Button onClick={submit} disabled={busy || !name.trim() || remoteCleared}>
                 {busy ? "Saving…" : "Save"}
               </Button>
             </DialogFooter>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, ClipboardCheck, ClipboardCopy, FolderPlus, Plus, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -91,6 +91,23 @@ function toStructure(nodes: EditorNode[]): VaultStructure {
     if (title || description || Object.keys(children).length || !node.onDisk) out[segment] = meta;
   }
   return out;
+}
+
+// Surface the same problems `toStructure` silently drops rows for (duplicate
+// or unsafe segment names) so the user can fix them instead of losing edits.
+function structureIssues(nodes: EditorNode[]): string[] {
+  const issues: string[] = [];
+  const seen = new Set<string>();
+  for (const node of nodes) {
+    const segment = node.segment.trim();
+    if (segment) {
+      if (!isSafeSegment(segment)) issues.push(`"${segment}" is not a valid directory name.`);
+      else if (seen.has(segment)) issues.push(`"${segment}" is used more than once at this level.`);
+      seen.add(segment);
+    }
+    issues.push(...structureIssues(node.children));
+  }
+  return issues;
 }
 
 function patchNode(nodes: EditorNode[], target: string, fn: (node: EditorNode) => EditorNode): EditorNode[] {
@@ -198,153 +215,190 @@ type VaultStructureEditorProps = {
   onChange: (structure: VaultStructure) => void;
 };
 
-export function VaultStructureEditor({ vault, tree, structure, onChange }: VaultStructureEditorProps) {
-  // Seed from the live draft (held by the settings dialog) so navigating away
-  // and back preserves in-progress edits rather than reverting to disk.
-  const [nodes, setNodes] = useState<EditorNode[]>(() => buildNodes(tree, structure));
-  const [mode, setMode] = useState<"visual" | "json">("visual");
-  const [jsonText, setJsonText] = useState("");
-  const [jsonError, setJsonError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-  const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
+// Imperative escape hatch for the settings dialog's footer Save/Back actions,
+// which live outside this component: `resolve()` applies/validates any
+// unapplied JSON-mode text before the caller reads the structure, so Save can
+// never silently persist the stale visual-row structure while JSON edits are
+// pending. Returns null (and shows the inline JSON error) if the pending text
+// is invalid, in which case the caller must not proceed.
+export type VaultStructureEditorHandle = {
+  resolve: () => VaultStructure | null;
+};
 
-  // Re-seed when the manifest arrives (the dialog loads it asynchronously) so
-  // existing folders appear without losing any edits already in flight.
-  const seeded = useRef(false);
-  useEffect(() => {
-    if (seeded.current || tree.length === 0) return;
-    seeded.current = true;
-    setNodes(buildNodes(tree, structure));
-  }, [tree, structure]);
+export const VaultStructureEditor = forwardRef<VaultStructureEditorHandle, VaultStructureEditorProps>(
+  function VaultStructureEditor({ vault, tree, structure, onChange }, ref) {
+    // Seed from the live draft (held by the settings dialog) so navigating away
+    // and back preserves in-progress edits rather than reverting to disk.
+    const [nodes, setNodes] = useState<EditorNode[]>(() => buildNodes(tree, structure));
+    const [mode, setMode] = useState<"visual" | "json">("visual");
+    const [jsonText, setJsonText] = useState("");
+    const [jsonError, setJsonError] = useState<string | null>(null);
+    const [copied, setCopied] = useState(false);
+    const onChangeRef = useRef(onChange);
+    onChangeRef.current = onChange;
 
-  // Push the structure up to the dialog whenever the rows change so a later
-  // Save (and the JSON view) always reflect the current edits.
-  useEffect(() => {
-    onChangeRef.current(toStructure(nodes));
-  }, [nodes]);
+    useImperativeHandle(ref, () => ({
+      resolve: () => {
+        if (mode !== "json") return toStructure(nodes);
+        try {
+          const parsed = parseStructure(jsonText);
+          setNodes(buildNodes(tree, parsed));
+          setJsonError(null);
+          return parsed;
+        } catch (cause) {
+          setJsonError(cause instanceof Error ? cause.message : String(cause));
+          return null;
+        }
+      },
+    }));
 
-  const enterJson = () => {
-    setJsonText(JSON.stringify(toStructure(nodes), null, 2));
-    setJsonError(null);
-    setMode("json");
-  };
+    const visualIssues = useMemo(() => (mode === "visual" ? structureIssues(nodes) : []), [mode, nodes]);
 
-  const applyJson = () => {
-    try {
-      setNodes(buildNodes(tree, parseStructure(jsonText)));
+    // Re-seed when the manifest arrives (the dialog loads it asynchronously) so
+    // existing folders appear without losing any edits already in flight.
+    const seeded = useRef(false);
+    useEffect(() => {
+      if (seeded.current || tree.length === 0) return;
+      seeded.current = true;
+      setNodes(buildNodes(tree, structure));
+    }, [tree, structure]);
+
+    // Push the structure up to the dialog whenever the rows change so a later
+    // Save (and the JSON view) always reflect the current edits.
+    useEffect(() => {
+      onChangeRef.current(toStructure(nodes));
+    }, [nodes]);
+
+    const enterJson = () => {
+      setJsonText(JSON.stringify(toStructure(nodes), null, 2));
       setJsonError(null);
-      setMode("visual");
-    } catch (cause) {
-      setJsonError(cause instanceof Error ? cause.message : String(cause));
-    }
-  };
-
-  const copyPrompt = async () => {
-    const prompt = buildAgentPrompt(vault, tree);
-    try {
-      await navigator.clipboard.writeText(prompt);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Clipboard access can be denied; fall back to the JSON-style box so the
-      // user can still select and copy the prompt manually.
       setMode("json");
-      setJsonText(prompt);
-      setJsonError("Copy was blocked — select the text above and copy it manually.");
-    }
-  };
+    };
 
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="bg-muted flex rounded-md p-0.5">
-          <ModeTab active={mode === "visual"} onClick={() => setMode("visual")}>
-            Visual
-          </ModeTab>
-          <ModeTab active={mode === "json"} onClick={enterJson}>
-            JSON
-          </ModeTab>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={copyPrompt}>
-            {copied ? <ClipboardCheck /> : <ClipboardCopy />}
-            {copied ? "Copied" : "Copy AI prompt"}
-          </Button>
-        </div>
-      </div>
+    const applyJson = () => {
+      try {
+        setNodes(buildNodes(tree, parseStructure(jsonText)));
+        setJsonError(null);
+        setMode("visual");
+      } catch (cause) {
+        setJsonError(cause instanceof Error ? cause.message : String(cause));
+      }
+    };
 
-      {mode === "visual" ? (
-        <>
+    const copyPrompt = async () => {
+      const prompt = buildAgentPrompt(vault, tree);
+      try {
+        await navigator.clipboard.writeText(prompt);
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 2000);
+      } catch {
+        // Clipboard access can be denied; fall back to the JSON-style box so the
+        // user can still select and copy the prompt manually.
+        setMode("json");
+        setJsonText(prompt);
+        setJsonError("Copy was blocked — select the text above and copy it manually.");
+      }
+    };
+
+    return (
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="bg-muted flex rounded-md p-0.5">
+            <ModeTab active={mode === "visual"} onClick={() => setMode("visual")}>
+              Visual
+            </ModeTab>
+            <ModeTab active={mode === "json"} onClick={enterJson}>
+              JSON
+            </ModeTab>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={copyPrompt}>
+              {copied ? <ClipboardCheck /> : <ClipboardCopy />}
+              {copied ? "Copied" : "Copy AI prompt"}
+            </Button>
+          </div>
+        </div>
+
+        {mode === "visual" ? (
+          <>
+            <div className="flex flex-col gap-2">
+              {nodes.length === 0 && (
+                <p className="text-muted-foreground rounded-md border border-dashed px-3 py-6 text-center text-sm">
+                  No directories yet. Add the structure you want this vault to grow into.
+                </p>
+              )}
+              {nodes.map((node) => (
+                <NodeRow
+                  key={node.uid}
+                  node={node}
+                  depth={0}
+                  onPatch={(uid, patch) => setNodes((rows) => patchNode(rows, uid, (n) => ({ ...n, ...patch })))}
+                  onAddChild={(uid) =>
+                    setNodes((rows) =>
+                      patchNode(rows, uid, (n) => ({ ...n, children: [...n.children, plannedNode("", {})] })),
+                    )
+                  }
+                  onRemove={(uid) => setNodes((rows) => removeNode(rows, uid))}
+                />
+              ))}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="self-start"
+              onClick={() => setNodes((rows) => [...rows, plannedNode("", {})])}
+            >
+              <FolderPlus />
+              Add directory
+            </Button>
+            {visualIssues.length > 0 && (
+              <div role="alert" className="text-destructive text-sm">
+                {visualIssues.map((issue) => (
+                  <p key={issue}>{issue}</p>
+                ))}
+              </div>
+            )}
+            <p className="text-muted-foreground text-xs">
+              <span className="text-foreground font-medium">Planned</span> directories are a blueprint and need not
+              exist yet. Removing a row only deletes its description — documents in an existing folder stay visible
+              either way.
+            </p>
+          </>
+        ) : (
           <div className="flex flex-col gap-2">
-            {nodes.length === 0 && (
-              <p className="text-muted-foreground rounded-md border border-dashed px-3 py-6 text-center text-sm">
-                No directories yet. Add the structure you want this vault to grow into.
+            <Textarea
+              aria-label="Structure JSON"
+              className="min-h-64 font-mono text-xs"
+              spellCheck={false}
+              value={jsonText}
+              onChange={(event) => setJsonText(event.target.value)}
+            />
+            {jsonError && (
+              <p role="alert" className="text-destructive text-sm">
+                {jsonError}
               </p>
             )}
-            {nodes.map((node) => (
-              <NodeRow
-                key={node.uid}
-                node={node}
-                depth={0}
-                onPatch={(uid, patch) => setNodes((rows) => patchNode(rows, uid, (n) => ({ ...n, ...patch })))}
-                onAddChild={(uid) =>
-                  setNodes((rows) =>
-                    patchNode(rows, uid, (n) => ({ ...n, children: [...n.children, plannedNode("", {})] })),
-                  )
-                }
-                onRemove={(uid) => setNodes((rows) => removeNode(rows, uid))}
-              />
-            ))}
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setJsonError(null);
+                  setMode("visual");
+                }}
+              >
+                Discard
+              </Button>
+              <Button size="sm" onClick={applyJson}>
+                Apply JSON
+              </Button>
+            </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="self-start"
-            onClick={() => setNodes((rows) => [...rows, plannedNode("", {})])}
-          >
-            <FolderPlus />
-            Add directory
-          </Button>
-          <p className="text-muted-foreground text-xs">
-            <span className="text-foreground font-medium">Planned</span> directories are a blueprint and need not exist
-            yet. Removing a row only deletes its description — documents in an existing folder stay visible either way.
-          </p>
-        </>
-      ) : (
-        <div className="flex flex-col gap-2">
-          <Textarea
-            aria-label="Structure JSON"
-            className="min-h-64 font-mono text-xs"
-            spellCheck={false}
-            value={jsonText}
-            onChange={(event) => setJsonText(event.target.value)}
-          />
-          {jsonError && (
-            <p role="alert" className="text-destructive text-sm">
-              {jsonError}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setJsonError(null);
-                setMode("visual");
-              }}
-            >
-              Discard
-            </Button>
-            <Button size="sm" onClick={applyJson}>
-              Apply JSON
-            </Button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+        )}
+      </div>
+    );
+  },
+);
 
 function ModeTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: string }) {
   return (

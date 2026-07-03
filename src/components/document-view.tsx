@@ -3,7 +3,7 @@ import { FileQuestion, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { BlameLine, LoadedDoc } from "@/types";
-import DOMPurify from "dompurify";
+import { sanitize } from "@/lib/sanitize";
 
 type Status = "idle" | "loading" | "loaded" | "error" | "empty";
 
@@ -70,8 +70,14 @@ export function DocumentView({
     };
   }, [vaultId, docId, version]);
 
+  // Markdown documents never get a blame gutter, so skip the fetch (and its
+  // loading indicator) entirely for them.
   useEffect(() => {
-    if (!showBlame || !docId) return;
+    if (!showBlame || !docId || doc?.format !== "html") {
+      setBlame(null);
+      setBlameError(null);
+      return;
+    }
     let cancelled = false;
     setBlame(null);
     setBlameError(null);
@@ -86,7 +92,7 @@ export function DocumentView({
     return () => {
       cancelled = true;
     };
-  }, [vaultId, docId, version, showBlame]);
+  }, [vaultId, docId, version, showBlame, doc]);
 
   // Inject the document and (re)render Mermaid diagrams. Re-runs on theme change.
   useEffect(() => {
@@ -97,18 +103,16 @@ export function DocumentView({
     renderDocumentHtml(doc, showBlame)
       .then((html) => {
         if (cancelled) return;
-        el.innerHTML = DOMPurify.sanitize(html, {
-          USE_PROFILES: { html: true },
-          ADD_ATTR: ["data-vault-source-line"],
-          FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "form"],
-        });
+        el.innerHTML = sanitize(html, { addAttr: ["data-vault-source-line"] });
         normalizeMarkdownMermaid(el);
       })
       .then(() => {
         if (!cancelled && doc.format === "markdown")
           installMarkdownNavigation(el, doc.id, documentIds, onNavigateDocument);
       })
-      .then(() => renderMermaid(el))
+      .then(() => {
+        if (!cancelled) return renderMermaid(el);
+      })
       .catch((err) => console.error("Mermaid render failed", err))
       .then(() => {
         if (!cancelled && doc.format === "html" && showBlame && blame) removeGutter = installBlameGutter(el, blame);
@@ -143,13 +147,13 @@ export function DocumentView({
 
   return (
     <article className={cn("mx-auto w-full px-6 py-8", showBlame ? "max-w-5xl" : "max-w-4xl")}>
-      {showBlame && !blame && !blameError && (
+      {showBlame && doc.format === "html" && !blame && !blameError && (
         <div className="text-muted-foreground mb-3 flex items-center gap-2 text-xs">
           <Loader2 className="size-3 animate-spin" />
           Loading line history…
         </div>
       )}
-      {showBlame && blameError && (
+      {showBlame && doc.format === "html" && blameError && (
         <div role="alert" className="text-destructive mb-3 text-xs">
           Line history unavailable: {blameError}
         </div>
