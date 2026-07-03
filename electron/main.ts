@@ -107,10 +107,18 @@ function openDocumentFromArgs(argv: string[]): void {
 }
 
 function assertTrusted(event: IpcMainInvokeEvent): void {
-  const url = event.senderFrame?.url;
+  const frame = event.senderFrame;
+  const url = frame?.url;
   if (!url) throw new Error("Missing IPC sender.");
-  const trusted = url.startsWith("file://") || url.startsWith("http://localhost:");
-  if (!trusted) throw new Error("Untrusted IPC sender.");
+  const trustedUrl = url.startsWith("file://") || url.startsWith("http://localhost:");
+  if (!trustedUrl) throw new Error("Untrusted IPC sender.");
+  // Pin the sender to the app window's main frame once it exists (it always
+  // does by the time the renderer can call IPC) so a URL match alone — e.g. a
+  // navigated-away or embedded frame that still happens to be file:///localhost
+  // — is never enough to be trusted.
+  if (mainWindow && frame !== mainWindow.webContents.mainFrame) {
+    throw new Error("Untrusted IPC sender.");
+  }
 }
 
 function stringArgument(value: unknown, name: string): string {
@@ -121,8 +129,13 @@ function stringArgument(value: unknown, name: string): string {
 }
 
 function optionalText(value: unknown, name: string): string {
-  if (typeof value !== "string" || value.length > STRUCTURE_MAX_TEXT) throw new Error(`Invalid ${name}.`);
-  return value;
+  if (typeof value !== "string") throw new Error(`Invalid ${name}.`);
+  // Strip/collapse ASCII control characters (including newlines) so
+  // renderer-supplied structure edits are already clean before they reach
+  // disk, mirroring electron/vault.ts's cleanText.
+  const cleaned = value.replace(/[\x00-\x1F\x7F]+/g, " ");
+  if (cleaned.length > STRUCTURE_MAX_TEXT) throw new Error(`Invalid ${name}.`);
+  return cleaned;
 }
 
 function formatArgument(value: unknown): VaultFormat {
@@ -277,6 +290,21 @@ function watchVault(vaultId: string): void {
   if (!vaultChangePoll) vaultChangePoll = setInterval(pollWatchedVaults, 1500);
 }
 
+// Stop watching any vault that is no longer in the registry (e.g. after an
+// explicit removal or a full settings reset). Keyed off the registered-vault
+// list returned by service.list(), never off which vault is "active" in the
+// renderer, so this only ever prunes vaults that are actually gone.
+function pruneWatchedVaults(): void {
+  const registered = new Set(service.list().map((vault) => vault.id));
+  for (const vaultId of watchedVaults.keys()) {
+    if (!registered.has(vaultId)) watchedVaults.delete(vaultId);
+  }
+  if (watchedVaults.size === 0 && vaultChangePoll) {
+    clearInterval(vaultChangePoll);
+    vaultChangePoll = null;
+  }
+}
+
 function registerIpc(): void {
   ipcMain.handle("vault:list", (event) => {
     assertTrusted(event);
@@ -311,6 +339,7 @@ function registerIpc(): void {
   ipcMain.handle("vault:remove", (event, vaultId) => {
     assertTrusted(event);
     service.remove(stringArgument(vaultId, "vault ID"));
+    pruneWatchedVaults();
   });
   ipcMain.handle("vault:manifest", (event, vaultId) => {
     assertTrusted(event);
@@ -472,6 +501,7 @@ async function resetApplicationSettings(window: BrowserWindow): Promise<void> {
   if (response !== 1) return;
   service.reset();
   github.reset();
+  pruneWatchedVaults();
   await window.webContents.session.clearStorageData({ storages: ["localstorage"] });
   window.webContents.reload();
 }

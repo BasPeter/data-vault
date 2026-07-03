@@ -50,12 +50,24 @@ function readJson<T>(file: string): T | null {
   }
 }
 
+// Neutralize Markdown structure in vault.json-derived text before interpolating
+// it into generated SKILL.md files: escaping a backtick stops a value from
+// closing the code span it is wrapped in early, and stripping a leading
+// heading/list/quote marker stops a value from creating new Markdown structure
+// of its own. Defense in depth alongside electron/vault.ts's cleanText — even a
+// field added later without cleaning is neutralized at this interpolation site.
+function mdSafe(value: string): string {
+  return value.replace(/`/g, "\\`").replace(/^[ \t]*(?:#{1,6}|[-*+]|>)(?:[ \t]+|$)/, "");
+}
+
 function structureOutline(structure: VaultStructure, indent: string): string[] {
   const lines: string[] = [];
   for (const [segment, meta] of Object.entries(structure)) {
+    const safeSegment = mdSafe(segment);
     const title = meta.title?.trim();
-    const label = title ? `**${title}** (\`${segment}\`)` : `\`${segment}\``;
-    lines.push(`${indent}- ${meta.description ? `${label} — ${meta.description}` : label}`);
+    const label = title ? `**${mdSafe(title)}** (\`${safeSegment}\`)` : `\`${safeSegment}\``;
+    const description = meta.description ? mdSafe(meta.description) : undefined;
+    lines.push(`${indent}- ${description ? `${label} — ${description}` : label}`);
     if (meta.children) lines.push(...structureOutline(meta.children, `${indent}  `));
   }
   return lines;
@@ -63,7 +75,7 @@ function structureOutline(structure: VaultStructure, indent: string): string[] {
 
 function vaultEntry(vault: VaultSummary): string {
   const lines = [
-    `### ${vault.name}`,
+    `### ${mdSafe(vault.name)}`,
     "",
     `- Repository path: \`${vault.repositoryPath}\``,
     `- Documents directory: \`${vault.repositoryPath}/documents\` (unless \`vault.json\` sets \`documentsDirectory\`)`,

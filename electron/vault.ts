@@ -202,17 +202,32 @@ function kindForStatus(indexStatus: string, workingTreeStatus: string): VaultCha
   return "modified";
 }
 
-function parseStatusLine(line: string): VaultChange | null {
-  if (line.length < 4) return null;
-  const indexStatus = line[0];
-  const workingTreeStatus = line[1];
-  const rawPath = line.slice(3);
-  const kind = kindForStatus(indexStatus, workingTreeStatus);
-  if (kind === "renamed" || kind === "copied") {
-    const [previousPath, nextPath] = rawPath.split(" -> ");
-    return { kind, path: nextPath ?? rawPath, previousPath: nextPath ? previousPath : undefined };
+// Parse `git status --porcelain=v1 -z` output. In `-z` mode paths are never
+// quoted (unlike the newline-terminated format, which C-quotes non-ASCII
+// paths), and rename/copy entries are two NUL-terminated fields: the new path,
+// then the original path — rather than a single "old -> new" line.
+function parseStatusEntries(output: string): VaultChange[] {
+  const fields = output.split("\0");
+  if (fields.length && fields[fields.length - 1] === "") fields.pop();
+  const changes: VaultChange[] = [];
+  let index = 0;
+  while (index < fields.length) {
+    const entry = fields[index];
+    index += 1;
+    if (entry.length < 4) continue;
+    const indexStatus = entry[0];
+    const workingTreeStatus = entry[1];
+    const entryPath = entry.slice(3);
+    const kind = kindForStatus(indexStatus, workingTreeStatus);
+    if (kind === "renamed" || kind === "copied") {
+      const previousPath = fields[index];
+      index += 1;
+      changes.push({ kind, path: entryPath, previousPath });
+    } else {
+      changes.push({ kind, path: entryPath });
+    }
   }
-  return { kind, path: rawPath };
+  return changes;
 }
 
 function parseBlame(output: string): BlameLine[] {
@@ -454,7 +469,10 @@ function isSafeSegment(key: string): boolean {
 
 function cleanText(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
+  // Strip/collapse ASCII control characters (including newlines and tabs) so
+  // vault.json-derived text can never smuggle multi-line Markdown structure
+  // into generated skill files; keep it single-line plain text.
+  const trimmed = value.replace(/[\x00-\x1F\x7F]+/g, " ").trim();
   if (!trimmed || trimmed.length > STRUCTURE_MAX_TEXT) return undefined;
   return trimmed;
 }
@@ -716,9 +734,22 @@ export class VaultService {
 
   private writeConfig(repositoryPath: string, patch: Partial<VaultConfig>): void {
     const file = path.join(repositoryPath, "vault.json");
-    const config: Record<string, unknown> = fs.existsSync(file)
-      ? { ...this.config(repositoryPath) }
-      : { schemaVersion: 1, documentsDirectory: "documents" };
+    let config: Record<string, unknown>;
+    if (fs.existsSync(file)) {
+      // Unlike the lenient readJson used everywhere else (which must tolerate a
+      // broken config when merely displaying the vault), a save that silently
+      // merges into `{}` here would destroy every other field already in
+      // vault.json. Fail loud instead so the user can fix or remove the file.
+      try {
+        config = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+      } catch (error) {
+        throw new Error("vault.json exists but could not be parsed as JSON. Fix or remove it before saving changes.", {
+          cause: error,
+        });
+      }
+    } else {
+      config = { schemaVersion: 1, documentsDirectory: "documents" };
+    }
     for (const [key, value] of Object.entries(patch)) {
       if (value === undefined) delete config[key];
       else config[key] = value;
@@ -958,11 +989,8 @@ export class VaultService {
     const quickNotesId = documentsPrefix ? `${documentsPrefix}/${QUICK_NOTES_FILE}` : QUICK_NOTES_FILE;
     const inDocumentsDirectory = (filePath: string) =>
       documentsPrefix ? filePath === documentsPrefix || filePath.startsWith(`${documentsPrefix}/`) : true;
-    const output = await this.git(vault.repositoryPath, ["status", "--porcelain=v1", "--untracked-files=all"]);
-    const changes = output
-      .split(/\r?\n/)
-      .map(parseStatusLine)
-      .filter((change): change is VaultChange => change !== null)
+    const output = await this.git(vault.repositoryPath, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
+    const changes = parseStatusEntries(output)
       .map((change) => ({
         ...change,
         path: change.path.split(path.sep).join("/"),
@@ -1024,7 +1052,7 @@ export class VaultService {
     const hasConfig = fs.existsSync(path.join(repositoryPath, "vault.json"));
     const config = this.config(repositoryPath);
     this.resolveDocumentsRoot(repositoryPath, config);
-    const name = config.name?.trim() || fallbackName?.trim() || path.basename(repositoryPath);
+    const name = cleanText(config.name) || fallbackName?.trim() || path.basename(repositoryPath);
     const format = formatFromConfig(config);
     const summary: VaultSummary = { id, name, repositoryPath, hasConfig, format };
     const defaultLanguage = cleanText(config.defaultLanguage);
