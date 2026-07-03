@@ -2,13 +2,69 @@
 import type { AppChangelog } from "../src/types";
 
 export const APP_CHANGELOG = {
-  "generatedAt": "2026-06-30T14:58:56+02:00",
+  "generatedAt": "2026-07-03T08:46:27+02:00",
   "repositoryUrl": "https://github.com/BasPeter/data-vault.git",
   "releases": [
     {
-      "version": "0.12.6",
-      "date": "2026-06-30T14:58:56+02:00",
+      "version": "0.12.7",
+      "date": "2026-07-03T08:46:27+02:00",
       "commits": [
+        {
+          "hash": "e9853d2819033b58a1f5cc8795c2d5989b828c0c",
+          "shortHash": "e9853d2",
+          "subject": "docs(openspec): record reviewer approval for fix-code-review-findings"
+        },
+        {
+          "hash": "2ccaa7b15f27e5cad62fce469fc83afa685b2ea3",
+          "shortHash": "2ccaa7b",
+          "subject": "fix(electron): close skill-injection bypass via structure keys"
+        },
+        {
+          "hash": "f3887bab878ee1e809172e216fd72652d7a0c760",
+          "shortHash": "f3887ba",
+          "subject": "docs(openspec): record remote-clearing deviation and verifier result"
+        },
+        {
+          "hash": "a71a6c3fd4f4bb0b7266677f7f94abe42149adac",
+          "shortHash": "a71a6c3",
+          "subject": "docs(openspec): mark fix-code-review-findings implementation tasks complete"
+        },
+        {
+          "hash": "ecea4cc22c1a425b9c4f4a3d6e4bece4b4c02c9f",
+          "shortHash": "ecea4cc",
+          "subject": "fix(renderer): apply code-review fixes for data loss, races, and sanitization"
+        },
+        {
+          "hash": "8c3042bf91dad738e9725d8bc4ac485d22a99218",
+          "shortHash": "8c3042b",
+          "subject": "style(electron): suppress no-control-regex on intentional sanitizer patterns"
+        },
+        {
+          "hash": "38074145610b534906f7a2b7014ed82164fe0a0d",
+          "shortHash": "3807414",
+          "subject": "fix(electron): harden skill text sanitization, status parsing, config writes, and IPC validation"
+        },
+        {
+          "hash": "7a84dae50742359b355862e3a4a980aff3856a52",
+          "shortHash": "7a84dae",
+          "subject": "docs(openspec): add fix-code-review-findings change artifacts"
+        },
+        {
+          "hash": "6d2b04e81fac476bf9c4fb2a04f23d3cdd010607",
+          "shortHash": "6d2b04e",
+          "subject": "chore(agents): adopt ai-instructions-core multi-agent framework"
+        }
+      ]
+    },
+    {
+      "version": "0.12.6",
+      "date": "2026-06-30T15:01:09+02:00",
+      "commits": [
+        {
+          "hash": "38ab837018ba3c0b3651a42a1f6574a62af82a86",
+          "shortHash": "38ab837",
+          "subject": "Prepare release 0.12.6"
+        },
         {
           "hash": "5585ea8490f99a6ce83733ff74876c3d32acc051",
           "shortHash": "5585ea8",
