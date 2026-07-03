@@ -99,8 +99,11 @@ URL-based check during window creation). Dev-mode localhost check stays.
 - Mermaid step gated on `!cancelled` (fix 9).
 - `copyInstruction` gets try/catch parity with sibling copy paths
   (fix 10).
-- Remote URL field: empty input clears the remote when one was
-  configured, instead of being ignored (fix 11).
+- Remote URL field: the main-process API has no clear-remote call and
+  `updateVault` rejects an empty `remoteUrl`, so emptying the field now
+  shows an inline note and blocks Save instead of the previous silent
+  no-op; true clearing is deferred to a follow-up IPC capability
+  (fix 11).
 - Blame fetch skipped when `format !== "html"` (fix 13).
 - `aria-label="Toggle theme"`; e2e updated (fix 14).
 - `listRepos`: per-account try/catch keeps other accounts' results on

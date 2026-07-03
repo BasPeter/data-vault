@@ -56,7 +56,11 @@ specs.
 10. `copyInstruction` lacks clipboard error handling
     (`src/components/vault-changes-indicator.tsx`).
 11. Clearing a configured remote URL is a silent no-op
-    (`src/components/vault-switcher.tsx`) — allow clearing.
+    (`src/components/vault-switcher.tsx`). Decision: true clearing needs a
+    new main-process IPC capability (out of scope for this change), so the
+    renderer now blocks Save with an inline note when the field is emptied
+    instead of silently ignoring it. Real clearing is deferred to a
+    follow-up change that adds a clear-remote IPC.
 12. Duplicate sibling segments silently dropped in the visual structure
     editor — surface inline feedback.
 13. Blame spinner shown for Markdown documents that never get a gutter

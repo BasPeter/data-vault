@@ -41,7 +41,9 @@
       use it from document-view, quick-notes, update-button.
 - [x] 2.6 `document-view.tsx`: gate mermaid step on `!cancelled`; skip
       blame fetch/spinner for markdown format.
-- [x] 2.7 `vault-switcher.tsx`: allow clearing a configured remote URL.
+- [x] 2.7 `vault-switcher.tsx`: emptying a configured remote URL now
+      blocks Save with an inline note instead of a silent no-op; true
+      clearing deferred to a follow-up clear-remote IPC capability.
 - [x] 2.8 `vault-changes-indicator.tsx`: try/catch around clipboard write.
 - [x] 2.9 `theme-toggle.tsx`: `aria-label="Toggle theme"`; update
       `tests/e2e/workspace.spec.ts` assertion.
@@ -59,5 +61,6 @@
       network policy blocks the Electron binary download (403 on
       github.com release assets), so Playwright cannot launch the app.
       Run locally before release; `npm run build` passes here.
-- [ ] 3.3 Verifier pass (diff vs tasks, unrelated-change check).
+- [x] 3.3 Verifier pass: PASS, no unrelated changes, all 1.x/2.x tasks
+      evidenced in the diff; jsdom confirmed devDependencies-only.
 - [ ] 3.4 Reviewer pass (risky classification) → APPROVE required.
