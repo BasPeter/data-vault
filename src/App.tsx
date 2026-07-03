@@ -59,6 +59,17 @@ function documentIds(nodes: TreeNode[], output = new Set<string>()): Set<string>
   return output;
 }
 
+// `location.hash` may contain a stale or hand-edited percent-escape that
+// `decodeURIComponent` rejects; treat a malformed hash as absent rather than
+// crashing the app.
+function currentHashId(): string {
+  try {
+    return decodeURIComponent(location.hash.slice(1));
+  } catch {
+    return "";
+  }
+}
+
 type DocumentTab = {
   id: string;
 };
@@ -72,6 +83,7 @@ export default function App() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const activeIdRef = useRef<string | null>(null);
   const vaultIdRef = useRef<string | null>(null);
+  const vaultsRef = useRef<VaultSummary[]>([]);
   const pendingOpenRequestRef = useRef<DocumentOpenRequest | null>(null);
   const tabsRef = useRef<DocumentTab[]>([]);
   const tabsInitializedRef = useRef(false);
@@ -91,6 +103,10 @@ export default function App() {
   useEffect(() => {
     vaultIdRef.current = vaultId;
   }, [vaultId]);
+
+  useEffect(() => {
+    vaultsRef.current = vaults;
+  }, [vaults]);
 
   useEffect(() => {
     tabsRef.current = tabs;
@@ -124,12 +140,14 @@ export default function App() {
       tabsInitializedRef.current = false;
       return;
     }
+    let cancelled = false;
     window.vaultApi.watch(vaultId).catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
     window.vaultApi
       .manifest(vaultId)
       .then((next) => {
+        if (cancelled) return;
         const validIds = documentIds(next.tree);
-        const hashId = decodeURIComponent(location.hash.slice(1));
+        const hashId = currentHashId();
         const pendingRequest =
           pendingOpenRequestRef.current?.vaultId === vaultId ? pendingOpenRequestRef.current : null;
         const prunedTabs = tabsRef.current.filter((tab) => validIds.has(tab.id));
@@ -159,7 +177,12 @@ export default function App() {
         if (pendingRequest && nextActiveId === pendingRequest.documentId) pendingOpenRequestRef.current = null;
         if (nextActiveId) location.hash = encodeURIComponent(nextActiveId);
       })
-      .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
+      .catch((cause) => {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [vaultId, version]);
 
   useEffect(() => {
@@ -186,6 +209,13 @@ export default function App() {
 
   const requestOpenDocument = useCallback(
     (request: DocumentOpenRequest) => {
+      // The bridge event's vaultId is not trusted: a stale request (e.g. for a
+      // vault removed since the event was queued) must be ignored rather than
+      // adopted, which would otherwise white-screen the app.
+      if (!vaultsRef.current.some((candidate) => candidate.id === request.vaultId)) {
+        setError(`Unknown vault: ${request.vaultId}`);
+        return;
+      }
       pendingOpenRequestRef.current = request;
       if (vaultIdRef.current !== request.vaultId) {
         setVaultId(request.vaultId);
@@ -340,7 +370,7 @@ export default function App() {
 
   useEffect(() => {
     const onHash = () => {
-      const id = decodeURIComponent(location.hash.slice(1));
+      const id = currentHashId();
       if (id && ids.has(id)) openDocument(id);
     };
     window.addEventListener("hashchange", onHash);
@@ -350,7 +380,8 @@ export default function App() {
   if (loading) return <CenteredMessage title="Loading vaults…" />;
   if (!vaultId) return <Onboarding onLocal={addLocal} onCloned={refreshVaults} error={error} />;
 
-  const vault = vaults.find((candidate) => candidate.id === vaultId)!;
+  const vault = vaults.find((candidate) => candidate.id === vaultId) ?? vaults[0];
+  if (!vault) return <CenteredMessage title="Loading vault…" />;
   const setupVault = vault.hasConfig === false && !skippedSetupVaults.has(vault.id) ? vault : null;
   const title = activeId ? documentLabel(manifest.tree, activeId) : null;
 

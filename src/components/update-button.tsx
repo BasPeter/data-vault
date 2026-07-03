@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import DOMPurify from "dompurify";
 import { Check, Clipboard, Download, FileText, RefreshCw, RotateCcw, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { sanitize } from "@/lib/sanitize";
 import type { AppChangelog, AppChangelogRelease, UpdateStatus } from "@/types";
 
 const initialStatus: UpdateStatus = { state: "idle", currentVersion: "" };
@@ -65,10 +65,6 @@ function formatDate(value: string): string {
   return new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric" }).format(date);
 }
 
-function sanitizeReleaseNotes(html: string): string {
-  return DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
-}
-
 function ChangelogRelease({ release }: { release: AppChangelogRelease }) {
   return (
     <section className="border-b py-4 last:border-b-0">
@@ -94,7 +90,7 @@ function ChangelogRelease({ release }: { release: AppChangelogRelease }) {
 
 function UpdateFeedRelease({ status }: { status: UpdateStatus }) {
   if (!status.version || !status.latestReleaseNotes) return null;
-  const releaseNotes = sanitizeReleaseNotes(status.latestReleaseNotes);
+  const releaseNotes = sanitize(status.latestReleaseNotes);
   return (
     <section className="border-b py-4">
       <div className="flex items-baseline justify-between gap-3">

@@ -118,9 +118,13 @@ export function VaultChangesIndicator({
       : "No uncommitted changes";
 
   const copyInstruction = async () => {
-    await navigator.clipboard.writeText(commitInstruction(repositoryPath, status.changes));
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(commitInstruction(repositoryPath, status.changes));
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
   };
 
   return (

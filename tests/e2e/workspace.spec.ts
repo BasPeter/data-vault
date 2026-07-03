@@ -1,6 +1,15 @@
 import { existsSync, readFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { captureScreenshot, expect, test } from "./electron-app";
+import { SkillService } from "../../electron/skills";
+
+// Derive the expected skill versions from the source of truth instead of
+// hardcoding them, so a version bump doesn't silently make this test brittle.
+// `status()` only reads (never writes), so a non-existent home directory is fine.
+const skillVersions = new SkillService(path.join(os.tmpdir(), "data-vault-skill-versions-probe")).status([]).skills;
+const vaultGuideVersion = skillVersions.find((skill) => skill.name === "vault-guide")?.latestVersion;
+const documentReviewerVersion = skillVersions.find((skill) => skill.name === "document-reviewer")?.latestVersion;
 
 test("uses the workspace features in one session", async ({ appLaunch }, testInfo) => {
   test.slow();
@@ -19,8 +28,8 @@ test("uses the workspace features in one session", async ({ appLaunch }, testInf
     await footer.getByRole("button", { name: "Agent skills are up to date" }).click();
     await expect(page.getByText("Vault Guide")).toBeVisible();
     await expect(page.getByText("Document Reviewer")).toBeVisible();
-    await expect(page.getByText("Installed: v9")).toBeVisible();
-    await expect(page.getByText("Latest: v5")).toBeVisible();
+    await expect(page.getByText(`Installed: v${vaultGuideVersion}`)).toBeVisible();
+    await expect(page.getByText(`Latest: v${documentReviewerVersion}`)).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(footer.getByRole("button", { name: /^Data Vault/ })).toBeVisible();
 
@@ -125,7 +134,7 @@ test("uses the workspace features in one session", async ({ appLaunch }, testInf
 
   await test.step("toggles the theme", async () => {
     const html = page.locator("html");
-    const toggle = page.getByRole("button", { name: "Thema wisselen" });
+    const toggle = page.getByRole("button", { name: "Toggle theme" });
     await expect(html).toHaveClass(/dark/);
     await captureScreenshot(page, testInfo, "dark-theme");
     await toggle.click();

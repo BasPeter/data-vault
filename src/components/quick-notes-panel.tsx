@@ -1,15 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import DOMPurify from "dompurify";
 import { Pencil, StickyNote, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-
-const sanitize = (html: string) =>
-  DOMPurify.sanitize(html, {
-    USE_PROFILES: { html: true },
-    FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "form"],
-  });
+import { sanitize } from "@/lib/sanitize";
 
 export function QuickNotesPanel({ vaultId, version }: { vaultId: string; version: number }) {
   const [open, setOpen] = useState(false);
@@ -20,12 +14,13 @@ export function QuickNotesPanel({ vaultId, version }: { vaultId: string; version
   const [error, setError] = useState<string | null>(null);
   const safeHtml = useMemo(() => sanitize(html), [html]);
 
+  // Refresh the read-only `html` preview whenever the sheet opens, the vault
+  // changes, or the vault content version bumps. `draft`/`editing` are reset
+  // only when open/vaultId change below — a version bump must never wipe an
+  // in-progress draft.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    setHtml("");
-    setDraft("");
-    setEditing(false);
     setError(null);
     window.vaultApi
       .quickNotes(vaultId)
@@ -39,6 +34,13 @@ export function QuickNotesPanel({ vaultId, version }: { vaultId: string; version
       cancelled = true;
     };
   }, [open, vaultId, version]);
+
+  useEffect(() => {
+    if (!open) return;
+    setHtml("");
+    setDraft("");
+    setEditing(false);
+  }, [open, vaultId]);
 
   const onOpenChange = (next: boolean) => {
     setOpen(next);
