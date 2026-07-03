@@ -464,7 +464,12 @@ export function syncFailureMessage(url: string | undefined, error: unknown, auth
 }
 
 function isSafeSegment(key: string): boolean {
-  return key.length > 0 && key !== "." && key !== ".." && !/[/\\]/.test(key);
+  // A structure key becomes a directory name and, unlike title/description
+  // text, is never routed through cleanText — reject control characters
+  // (including newlines) here too so a hostile key can't smuggle multi-line
+  // Markdown into generated skill files via structureOutline's `safeSegment`.
+  // eslint-disable-next-line no-control-regex -- control chars are the target of this sanitizer
+  return key.length > 0 && key !== "." && key !== ".." && !/[/\\]/.test(key) && !/[\x00-\x1F\x7F]/.test(key);
 }
 
 function cleanText(value: unknown): string | undefined {
@@ -747,6 +752,13 @@ export class VaultService {
         throw new Error("vault.json exists but could not be parsed as JSON. Fix or remove it before saving changes.", {
           cause: error,
         });
+      }
+      // JSON.parse happily accepts non-object top-level values (e.g. `[1,2]`
+      // or `"x"`); assigning patch keys onto one of those would silently do
+      // nothing and JSON.stringify would drop the patch entirely. Fail loud
+      // instead, same as the parse-failure case above.
+      if (typeof config !== "object" || config === null || Array.isArray(config)) {
+        throw new Error("vault.json exists but is not a JSON object. Fix or remove it before saving changes.");
       }
     } else {
       config = { schemaVersion: 1, documentsDirectory: "documents" };

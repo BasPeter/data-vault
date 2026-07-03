@@ -760,4 +760,51 @@ describe("VaultService", () => {
     expect(vault.structure?.safe?.description).not.toMatch(/[\n\r\t]/);
     expect(vault.structure?.safe?.description).toBe("Desc > Injected quote");
   });
+
+  it("drops a structure key containing a newline or other control character", () => {
+    const root = temporaryDirectory();
+    const documents = path.join(root, "documents");
+    fs.mkdirSync(path.join(documents, "safe"), { recursive: true });
+    fs.writeFileSync(path.join(documents, "safe", "a.html"), "<h1>A</h1>");
+    fs.writeFileSync(
+      path.join(root, "vault.json"),
+      JSON.stringify({
+        name: "Example",
+        structure: {
+          "docs\n\n## Injected heading": { title: "Bad" },
+          "tab\ttab": { title: "Also bad" },
+          safe: { title: "Safe" },
+        },
+      }),
+    );
+
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = service.addLocal(root);
+
+    // A key becomes a directory name and is never routed through cleanText —
+    // a key carrying a newline could otherwise inject multi-line Markdown
+    // into generated skill files via the raw key text. Reject it the same
+    // way a path-separator key is already rejected.
+    expect(Object.keys(vault.structure ?? {})).toEqual(["safe"]);
+    expect(vault.structure?.safe).toMatchObject({ title: "Safe" });
+  });
+
+  it("throws instead of silently discarding a patch when vault.json is valid JSON but not an object", async () => {
+    const root = temporaryDirectory();
+    fs.mkdirSync(path.join(root, "documents"));
+    const notAnObject = "[1,2]";
+    fs.writeFileSync(path.join(root, "vault.json"), notAnObject);
+
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = service.addLocal(root);
+
+    // `[1,2]` is valid JSON, so JSON.parse succeeds; without an explicit
+    // object check, patch fields get assigned onto the array (a no-op for
+    // named keys) and JSON.stringify would silently drop the patch instead of
+    // failing loud like the parse-failure path already does.
+    await expect(service.updateVault(vault.id, { name: "New Name" })).rejects.toThrow(
+      "vault.json exists but is not a JSON object",
+    );
+    expect(fs.readFileSync(path.join(root, "vault.json"), "utf8")).toBe(notAnObject);
+  });
 });
