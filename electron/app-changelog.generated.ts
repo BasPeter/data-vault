@@ -2,13 +2,29 @@
 import type { AppChangelog } from "../src/types";
 
 export const APP_CHANGELOG = {
-  "generatedAt": "2026-07-03T08:46:27+02:00",
+  "generatedAt": "2026-07-10T12:41:07+02:00",
   "repositoryUrl": "https://github.com/BasPeter/data-vault.git",
   "releases": [
     {
-      "version": "0.12.7",
-      "date": "2026-07-03T08:46:27+02:00",
+      "version": "0.13.0",
+      "date": "2026-07-10T12:41:07+02:00",
       "commits": [
+        {
+          "hash": "0a7ae88e7b9c7c846e7637eefc1e581b237a23dd",
+          "shortHash": "0a7ae88",
+          "subject": "feat(claude): add cowork plugin export and update assistance"
+        }
+      ]
+    },
+    {
+      "version": "0.12.7",
+      "date": "2026-07-03T09:01:10+02:00",
+      "commits": [
+        {
+          "hash": "8f8b2f2d913245e7a61ffb8fad47722936a02603",
+          "shortHash": "8f8b2f2",
+          "subject": "chore(release): prepare 0.12.7"
+        },
         {
           "hash": "e9853d2819033b58a1f5cc8795c2d5989b828c0c",
           "shortHash": "e9853d2",
