@@ -4,6 +4,7 @@ import { defineConfig } from "vitest/config";
 // under `tests/e2e` use a `.spec.ts` suffix and are run by Playwright, so they
 // are intentionally excluded from the Vitest run.
 export default defineConfig({
+  resolve: { alias: { "@": new URL("./src", import.meta.url).pathname } },
   test: {
     include: ["electron/**/*.test.ts", "src/**/*.test.{ts,tsx}"],
   },

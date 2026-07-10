@@ -44,6 +44,8 @@ const api: VaultApi = {
   },
   skillStatus: () => ipcRenderer.invoke("skill:status"),
   installSkills: () => ipcRenderer.invoke("skill:install"),
+  exportClaudePlugin: () => ipcRenderer.invoke("skill:export-claude-plugin"),
+  claudePluginStatus: () => ipcRenderer.invoke("skill:claude-plugin-status"),
   githubStatus: () => ipcRenderer.invoke("github:status"),
   startDeviceFlow: () => ipcRenderer.invoke("github:start-device-flow"),
   cancelDeviceFlow: () => ipcRenderer.invoke("github:cancel-device-flow"),

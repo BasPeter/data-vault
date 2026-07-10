@@ -3,6 +3,9 @@ import fs from "node:fs";
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type IpcMainInvokeEvent } from "electron";
 import { VaultService } from "./vault";
 import { SkillService } from "./skills";
+import { ClaudePluginExporter } from "./claude-plugin";
+import { CLAUDE_PLUGIN_SAVE_DIALOG, createClaudePluginExportHandler } from "./claude-plugin-ipc";
+import { ClaudePluginStateService } from "./claude-plugin-state";
 import { GitHubService } from "./github";
 import {
   changelog,
@@ -26,6 +29,8 @@ app.setName(APPLICATION_NAME);
 
 let service: VaultService;
 let skills: SkillService;
+let claudePluginState: ClaudePluginStateService;
+const claudePluginExporter = new ClaudePluginExporter();
 let github: GitHubService;
 let vaultChangePoll: NodeJS.Timeout | null = null;
 let mainWindow: BrowserWindow | null = null;
@@ -455,6 +460,37 @@ function registerIpc(): void {
     assertTrusted(event);
     return skills.install(service.list());
   });
+  ipcMain.handle(
+    "skill:export-claude-plugin",
+    createClaudePluginExportHandler({
+      assertTrusted,
+      windowFromSender: (sender) => BrowserWindow.fromWebContents(sender as Electron.WebContents),
+      showSaveDialog: (window) => dialog.showSaveDialog(window as BrowserWindow, CLAUDE_PLUGIN_SAVE_DIALOG),
+      pathExists: fs.existsSync,
+      confirmReplace: async (window, filePath) => {
+        const confirmation = await dialog.showMessageBox(window as BrowserWindow, {
+          type: "warning",
+          title: "Replace Claude plugin?",
+          message: `${path.basename(filePath)} already exists. Replace it?`,
+          buttons: ["Cancel", "Replace"],
+          defaultId: 0,
+          cancelId: 0,
+        });
+        return confirmation.response === 1;
+      },
+      listVaults: () => service.list(),
+      exportPlugin: (filePath, vaults, overwriteConfirmed) =>
+        claudePluginExporter.export(filePath, vaults, overwriteConfirmed),
+      recordExport: (result, vaults) => {
+        if (result.exported) claudePluginState.record(result.fingerprint, skills.fingerprint(vaults));
+      },
+    }),
+  );
+  ipcMain.handle("skill:claude-plugin-status", (event) => {
+    assertTrusted(event);
+    const vaults = service.list();
+    return claudePluginState.status(skills.fingerprint(vaults), skills.claudeSkillsCurrent(vaults));
+  });
   ipcMain.handle("github:status", (event) => {
     assertTrusted(event);
     return github.getStatus();
@@ -618,6 +654,7 @@ if (!singleInstanceLock) {
     // overwrite the developer's real ~/.claude and ~/.codex skills. Production
     // keeps the default (the real home directory).
     skills = new SkillService(process.env.NODE_ENV === "test" ? app.getPath("userData") : undefined);
+    claudePluginState = new ClaudePluginStateService(app.getPath("userData"));
     autoInstallSkills();
     configureUpdater();
     registerIpc();

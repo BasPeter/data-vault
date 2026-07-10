@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { Check, RefreshCw, Sparkles, TriangleAlert } from "lucide-react";
+import { Check, Download, RefreshCw, Sparkles, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import type { SkillStatus, VaultSummary } from "@/types";
+import type { ClaudePluginStatus, SkillStatus, VaultSummary } from "@/types";
+import { canonicalVaultSignature } from "./agent-skills-signature";
 
 function headline(status: SkillStatus): string {
   switch (status.state) {
@@ -65,6 +66,17 @@ export function AgentSkillsPanel({ vaults }: { vaults: VaultSummary[] }) {
   const [status, setStatus] = useState<SkillStatus | null>(null);
   const [statusError, setStatusError] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [pluginStatus, setPluginStatus] = useState<ClaudePluginStatus | null>(null);
+  const [copyMessage, setCopyMessage] = useState<string | null>(null);
+
+  const refreshPluginStatus = useCallback(() => {
+    window.vaultApi
+      .claudePluginStatus()
+      .then(setPluginStatus)
+      .catch(() => setPluginStatus(null));
+  }, []);
 
   const refreshStatus = useCallback(() => {
     window.vaultApi
@@ -78,14 +90,17 @@ export function AgentSkillsPanel({ vaults }: { vaults: VaultSummary[] }) {
 
   // Re-check whenever the registered vaults change so the stale indicator
   // appears after a vault is added, removed, or renamed.
-  const signature = vaults
-    .map((vault) => `${vault.id}:${vault.name}:${vault.repositoryPath}:${vault.remoteUrl ?? ""}`)
-    .join("|");
+  const signature = canonicalVaultSignature(vaults);
   useEffect(() => {
     refreshStatus();
-    window.addEventListener("focus", refreshStatus);
-    return () => window.removeEventListener("focus", refreshStatus);
-  }, [signature, refreshStatus]);
+    refreshPluginStatus();
+    const refresh = () => {
+      refreshStatus();
+      refreshPluginStatus();
+    };
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [signature, refreshPluginStatus, refreshStatus]);
 
   const stale = statusError || (status !== null && status.state !== "current");
 
@@ -93,11 +108,43 @@ export function AgentSkillsPanel({ vaults }: { vaults: VaultSummary[] }) {
     setBusy(true);
     try {
       setStatus(await window.vaultApi.installSkills());
+      refreshPluginStatus();
       setStatusError(false);
     } catch {
       // Leave the previous status; the button stays available to retry.
     } finally {
       setBusy(false);
+    }
+  };
+
+  const exportPlugin = async () => {
+    setExporting(true);
+    setExportMessage(null);
+    try {
+      const result = await window.vaultApi.exportClaudePlugin();
+      if (result.exported) {
+        setExportMessage(
+          `Exported ${result.filePath} (${result.fingerprint.slice(0, 12)}).${result.warning ? ` ${result.warning}` : ""}`,
+        );
+        refreshPluginStatus();
+      }
+    } catch (error) {
+      setExportMessage(
+        error instanceof Error ? error.message : "Export failed. Choose another destination and try again.",
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const copyUpdatePrompt = async () => {
+    if (!pluginStatus?.updatePrompt) return;
+    setCopyMessage(null);
+    try {
+      await navigator.clipboard.writeText(pluginStatus.updatePrompt);
+      setCopyMessage("Cowork update prompt copied.");
+    } catch {
+      setCopyMessage("Could not copy the Cowork update prompt.");
     }
   };
 
@@ -197,6 +244,57 @@ export function AgentSkillsPanel({ vaults }: { vaults: VaultSummary[] }) {
             )}
           </div>
         )}
+        <details className="mt-4 border-t pt-4">
+          <summary className="cursor-pointer text-sm font-medium">Claude Desktop and Cowork plugin</summary>
+          <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+            Export a snapshot, then upload the ZIP in Claude Desktop under Customize &gt; Plugins. After changing
+            vaults, remove the old plugin, export again, and upload the new snapshot.
+          </p>
+          <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
+            Standalone Claude skills remain installed. Using both may show duplicate capabilities; Data Vault never
+            removes either copy automatically.
+          </p>
+          <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
+            The snapshot includes vault names, local repository paths, configured remote URLs, language, and structure
+            metadata. It never includes vault documents or credentials.
+          </p>
+          <Button className="mt-3 w-full" size="sm" variant="outline" onClick={exportPlugin} disabled={exporting}>
+            {exporting ? <RefreshCw className="animate-spin" /> : <Download />}
+            {exporting ? "Exporting..." : "Export Claude plugin"}
+          </Button>
+          {exportMessage && (
+            <p
+              className="text-muted-foreground mt-2 break-words text-xs"
+              role={exportMessage.startsWith("Exported") ? "status" : "alert"}
+              aria-live={exportMessage.startsWith("Exported") ? "polite" : "assertive"}
+            >
+              {exportMessage}
+            </p>
+          )}
+          {pluginStatus?.state === "not-exported" && (
+            <p className="text-muted-foreground mt-2 text-xs">No Claude plugin export has been recorded yet.</p>
+          )}
+          {pluginStatus?.state === "current" && (
+            <p className="text-muted-foreground mt-2 text-xs">The last exported plugin matches your Claude skills.</p>
+          )}
+          {pluginStatus?.state === "stale" && pluginStatus.updatePrompt && (
+            <div className="mt-3 rounded-md border p-3">
+              <p className="text-xs font-medium">Your exported plugin needs updating.</p>
+              <Button className="mt-2 w-full" size="sm" variant="outline" onClick={copyUpdatePrompt}>
+                Copy Cowork update prompt
+              </Button>
+              {copyMessage && (
+                <p
+                  className="text-muted-foreground mt-2 text-xs"
+                  role={copyMessage.startsWith("Could not") ? "alert" : "status"}
+                  aria-live={copyMessage.startsWith("Could not") ? "assertive" : "polite"}
+                >
+                  {copyMessage}
+                </p>
+              )}
+            </div>
+          )}
+        </details>
       </PopoverContent>
     </Popover>
   );

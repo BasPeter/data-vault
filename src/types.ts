@@ -154,6 +154,16 @@ export type SkillStatus = {
   skills: AgentSkillVersionStatus[];
 };
 
+export type ClaudePluginExportResult =
+  | { exported: false }
+  | { exported: true; filePath: string; pluginVersion: string; fingerprint: string; warning?: string };
+
+export type ClaudePluginStatus = {
+  state: "not-exported" | "current" | "stale";
+  pluginFingerprint?: string;
+  updatePrompt?: string;
+};
+
 export type GitHubAccount = {
   login: string;
   avatarUrl?: string;
@@ -226,6 +236,8 @@ export type VaultApi = {
   onOpenDocument: (listener: (request: DocumentOpenRequest) => void) => () => void;
   skillStatus: () => Promise<SkillStatus>;
   installSkills: () => Promise<SkillStatus>;
+  exportClaudePlugin: () => Promise<ClaudePluginExportResult>;
+  claudePluginStatus: () => Promise<ClaudePluginStatus>;
   githubStatus: () => Promise<GitHubStatus>;
   startDeviceFlow: () => Promise<GitHubDeviceFlowStart>;
   cancelDeviceFlow: () => Promise<void>;

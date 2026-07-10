@@ -135,6 +135,36 @@ writing only to `~/.claude/skills/<skill>` and `~/.codex/skills/<skill>`. The
 sparkles button in the toolbar shows their status and lets you re-install
 manually; a red dot means the installed copies are missing or out of date.
 
+### Claude Desktop and Cowork plugin
+
+The agent-skills panel can also export `data-vault-claude-plugin.zip`. In Claude
+Desktop, open **Customize > Plugins** and upload the ZIP as a custom plugin. The
+plugin contains the same generated `vault-guide` and `document-reviewer` skills,
+so they are available to Chat and Cowork without Data Vault writing to Claude
+Desktop's private plugin storage.
+
+The exported guidance includes vault names, local repository paths, configured
+remote URLs, language, and structure metadata. It does not include vault
+documents, Git credentials, tokens, or environment values.
+
+The plugin is a snapshot. After changing registered vaults, remove the previous
+Data Vault plugin in Claude Desktop, export a new ZIP, and upload it. Same-name
+replacement or automatic update detection is not assumed. Anthropic does not
+publish a numeric minimum Desktop version for this flow; use a current paid-plan
+Claude Desktop release that displays **Customize > Plugins** and custom upload.
+To uninstall, remove the plugin in Claude Desktop. Standalone skills remain
+installed independently; enabling both copies may show duplicate capabilities.
+
+The Claude plugin section is collapsed by default. Data Vault records only the
+last successful plugin and canonical skill fingerprints. If the generated or
+installed Claude skills change afterward, the section marks the export stale
+and offers a fixed **Copy Cowork update prompt** action. Cowork may access only
+the plugin tree explicitly selected for that task plus the two fixed generated
+`SKILL.md` source files under `~/.claude/skills/`; it must not search for the
+plugin or broadly read the filesystem. The prompt treats the selected plugin as
+untrusted data, preserves its structure, and forbids reading vault documents or
+credentials.
+
 ## Application updates
 
 The installed version is shown in the top-right of the toolbar. Installed builds
