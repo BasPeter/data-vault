@@ -59,7 +59,73 @@ test("uses the workspace features in one session", async ({ appLaunch }, testInf
     await expect(page.getByRole("heading", { name: "Meeting Notes", level: 1 })).toBeVisible();
     await page.getByRole("tab", { name: "Overview" }).click();
     await expect(page.getByText("knowledge", { exact: true })).toBeVisible();
-    await expect(page.locator(".doc-content svg")).toBeVisible();
+    await expect(page.locator(".doc-content svg").first()).toBeVisible();
+    const diagrams = page.locator(".doc-content .mermaid");
+    await expect(diagrams).toHaveCount(2);
+    for (const label of ["Zoom in diagram", "Zoom out diagram", "Reset diagram view"]) {
+      await expect(diagrams.first().getByRole("button", { name: label })).toBeVisible();
+    }
+    const firstSvg = diagrams.first().locator("svg");
+    const secondSvg = diagrams.nth(1).locator("svg");
+    await diagrams.first().getByRole("button", { name: "Zoom in diagram" }).click();
+    await expect(firstSvg).toHaveAttribute("data-mermaid-scale", "1.2");
+    await expect(secondSvg).toHaveAttribute("data-mermaid-scale", "1");
+
+    const viewport = diagrams.first().getByRole("region", { name: /use arrow keys to pan/i });
+    const viewportBox = await viewport.boundingBox();
+    if (!viewportBox) throw new Error("Mermaid viewport has no bounding box");
+    const xBeforeDrag = Number(await firstSvg.getAttribute("data-mermaid-x"));
+    await page.mouse.move(viewportBox.x + viewportBox.width / 2, viewportBox.y + viewportBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(viewportBox.x + viewportBox.width / 2 + 35, viewportBox.y + viewportBox.height / 2 + 25);
+    await page.mouse.up();
+    await expect.poll(async () => Number(await firstSvg.getAttribute("data-mermaid-x"))).toBeGreaterThan(xBeforeDrag);
+    await viewport.focus();
+    const xBeforeKeyboard = Number(await firstSvg.getAttribute("data-mermaid-x"));
+    await page.keyboard.press("ArrowRight");
+    await expect
+      .poll(async () => Number(await firstSvg.getAttribute("data-mermaid-x")))
+      .toBeGreaterThan(xBeforeKeyboard);
+
+    const scaleBeforePlainWheel = await firstSvg.getAttribute("data-mermaid-scale");
+    const plainWheelPrevented = await viewport.evaluate((element) => {
+      const event = new WheelEvent("wheel", { deltaY: 300, bubbles: true, cancelable: true });
+      element.dispatchEvent(event);
+      return event.defaultPrevented;
+    });
+    expect(plainWheelPrevented).toBe(false);
+    await expect(firstSvg).toHaveAttribute("data-mermaid-scale", scaleBeforePlainWheel!);
+
+    const modifiedWheelPrevented = await viewport.evaluate((element) => {
+      const event = new WheelEvent("wheel", { deltaY: -100, ctrlKey: true, bubbles: true, cancelable: true });
+      element.dispatchEvent(event);
+      return event.defaultPrevented;
+    });
+    expect(modifiedWheelPrevented).toBe(true);
+    await expect
+      .poll(async () => Number(await firstSvg.getAttribute("data-mermaid-scale")))
+      .toBeGreaterThan(Number(scaleBeforePlainWheel));
+
+    await diagrams.first().getByRole("button", { name: "Reset diagram view" }).click();
+    await expect(firstSvg).toHaveAttribute("data-mermaid-scale", "1");
+    await expect(firstSvg).toHaveAttribute("data-mermaid-x", "0");
+    await page.emulateMedia({ media: "print" });
+    await expect
+      .poll(() =>
+        diagrams
+          .first()
+          .locator(".mermaid-navigation-controls")
+          .evaluate((element) => getComputedStyle(element).display),
+      )
+      .toBe("none");
+    await expect.poll(() => firstSvg.evaluate((element) => getComputedStyle(element).transform)).toBe("none");
+    await page.emulateMedia({ media: "screen" });
+
+    await diagrams.first().getByRole("button", { name: "Zoom in diagram" }).click();
+    await page.getByRole("button", { name: "Toggle theme" }).click();
+    await expect(diagrams.first().locator("svg")).toHaveAttribute("data-mermaid-scale", "1");
+    await page.getByRole("button", { name: "Toggle theme" }).click();
+    await expect(diagrams.first().locator("svg")).toHaveAttribute("data-mermaid-scale", "1");
     await captureScreenshot(page, testInfo, "document-with-metadata");
     await captureScreenshot(page, testInfo, "mermaid-diagram");
 

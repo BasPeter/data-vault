@@ -7,4 +7,14 @@ tags: knowledge
   See the <a href="#10-knowledge/architecture.html">architecture</a> and the
   <a href="#20-notes/meeting.html">meeting notes</a>.
 </p>
-<pre class="mermaid">graph TD; A[Overview] --> B[Architecture];</pre>
+<pre class="mermaid">
+graph LR
+  A[Overview] --> B[Architecture]
+  B --> C[Renderer]
+  C --> D[Sanitization]
+  D --> E[Mermaid]
+  E --> F[Navigation]
+  F --> G[Zoom]
+  F --> H[Pan]
+</pre>
+<pre class="mermaid">flowchart TD; One[Independent] --> Two[Diagram];</pre>

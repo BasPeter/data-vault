@@ -243,7 +243,23 @@
     @apply bg-muted/40;
   }
   .doc-content .mermaid {
-    @apply my-6 flex justify-center rounded-lg border bg-white/5 p-4;
+    @apply relative my-6 rounded-lg border bg-white/5 p-4;
+  }
+  .doc-content .mermaid-navigation-controls {
+    @apply absolute top-2 right-2 z-10 flex gap-1 rounded-md border bg-background/90 p-1 shadow-sm backdrop-blur;
+  }
+  .doc-content .mermaid-navigation-button {
+    @apply text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:ring-ring inline-flex size-8 items-center justify-center rounded-sm text-lg leading-none focus-visible:ring-2 focus-visible:outline-none;
+  }
+  .doc-content .mermaid-navigation-viewport {
+    @apply flex min-h-48 w-full cursor-grab items-center justify-center overflow-hidden rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none;
+  }
+  .doc-content .mermaid-navigation-viewport[data-panning="true"] {
+    @apply cursor-grabbing;
+  }
+  .doc-content .mermaid-navigation-viewport svg {
+    transform-origin: 0 0;
+    will-change: transform;
   }
   .doc-content.blame-mode {
     position: relative;
@@ -340,5 +356,18 @@
 
   .doc-content .mermaid {
     background: white !important;
+  }
+
+  .doc-content .mermaid-navigation-controls {
+    display: none !important;
+  }
+
+  .doc-content .mermaid-navigation-viewport {
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  .doc-content .mermaid-navigation-viewport svg {
+    transform: none !important;
   }
 }

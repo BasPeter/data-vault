@@ -4,22 +4,9 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { BlameLine, LoadedDoc } from "@/types";
 import { sanitize } from "@/lib/sanitize";
+import { createMermaidGeneration, normalizeMarkdownMermaid, renderMermaid } from "@/lib/mermaid-navigation";
 
 type Status = "idle" | "loading" | "loaded" | "error" | "empty";
-
-async function renderMermaid(container: HTMLElement) {
-  const blocks = container.querySelectorAll<HTMLElement>(".mermaid");
-  if (!blocks.length) return;
-  const isDark = document.documentElement.classList.contains("dark");
-  const mermaid = (await import("mermaid")).default;
-  mermaid.initialize({
-    startOnLoad: false,
-    theme: isDark ? "dark" : "default",
-    securityLevel: "strict",
-  });
-  blocks.forEach((b) => b.removeAttribute("data-processed"));
-  await mermaid.run({ nodes: Array.from(blocks) });
-}
 
 export function DocumentView({
   vaultId,
@@ -100,6 +87,8 @@ export function DocumentView({
     if (!el || status !== "loaded" || !doc) return;
     let cancelled = false;
     let removeGutter = () => {};
+    let removeMermaidNavigation = () => {};
+    const mermaidGeneration = createMermaidGeneration();
     renderDocumentHtml(doc, showBlame)
       .then((html) => {
         if (cancelled) return;
@@ -111,7 +100,11 @@ export function DocumentView({
           installMarkdownNavigation(el, doc.id, documentIds, onNavigateDocument);
       })
       .then(() => {
-        if (!cancelled) return renderMermaid(el);
+        if (!cancelled)
+          return renderMermaid(el, mermaidGeneration, theme).then((cleanup) => {
+            if (cancelled) cleanup();
+            else removeMermaidNavigation = cleanup;
+          });
       })
       .catch((err) => console.error("Mermaid render failed", err))
       .then(() => {
@@ -119,6 +112,7 @@ export function DocumentView({
       });
     return () => {
       cancelled = true;
+      removeMermaidNavigation();
       removeGutter();
     };
   }, [doc, status, theme, showBlame, blame, documentIds, onNavigateDocument]);
@@ -178,15 +172,6 @@ async function renderDocumentHtml(doc: LoadedDoc, showBlame: boolean): Promise<s
   const { marked } = await import("marked");
   const html = await marked.parse(doc.source, { async: false, gfm: true });
   return String(html);
-}
-
-function normalizeMarkdownMermaid(container: HTMLElement): void {
-  container.querySelectorAll<HTMLElement>("pre > code.language-mermaid").forEach((code) => {
-    const pre = code.parentElement;
-    if (!pre) return;
-    pre.className = "mermaid";
-    pre.textContent = code.textContent ?? "";
-  });
 }
 
 function resolveMarkdownHref(sourceId: string, href: string, documentIds: Set<string>): string | null {
