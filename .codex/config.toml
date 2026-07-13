@@ -1,0 +1,27 @@
+[agents]
+max_threads = 4
+max_depth = 1
+
+[agents.copy_writer]
+description = "Specialist for bounded user-facing Electron/Node app descriptions, error messages, documentation, and UX copy."
+config_file = "agents/copy-writer.toml"
+
+[agents.debugger]
+description = "Read-only root-cause investigator for reproducing and isolating unclear failures."
+config_file = "agents/debugger.toml"
+
+[agents.implementer]
+description = "Bounded implementation agent for accepted code, test, documentation, build, or configuration changes."
+config_file = "agents/implementer.toml"
+
+[agents.reviewer]
+description = "Independent read-only review gate for architecture, risky changes, public APIs, persistence, security, data loss, and maintainability."
+config_file = "agents/reviewer.toml"
+
+[agents.scout]
+description = "Read-only repository explorer for focused file, pattern, caller, test, and build-command discovery."
+config_file = "agents/scout.toml"
+
+[agents.verifier]
+description = "Mechanical verification boundary for diff inspection, documented checks, and commit-readiness evidence."
+config_file = "agents/verifier.toml"
