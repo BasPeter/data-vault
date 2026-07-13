@@ -2,13 +2,34 @@
 import type { AppChangelog } from "../src/types";
 
 export const APP_CHANGELOG = {
-  "generatedAt": "2026-07-10T12:41:07+02:00",
+  "generatedAt": "2026-07-13T15:29:33+02:00",
   "repositoryUrl": "https://github.com/BasPeter/data-vault.git",
   "releases": [
     {
-      "version": "0.13.0",
-      "date": "2026-07-10T12:41:07+02:00",
+      "version": "0.14.0",
+      "date": "2026-07-13T15:29:33+02:00",
       "commits": [
+        {
+          "hash": "28a57a9743a094ce966f1fa557a3ebde1444105a",
+          "shortHash": "28a57a9",
+          "subject": "feat(mermaid): add zoom and pan navigation"
+        },
+        {
+          "hash": "470cff6ca3d4b89fd1ef263a310a0b6c0a7db160",
+          "shortHash": "470cff6",
+          "subject": "chore(codex): add project subagent configuration"
+        }
+      ]
+    },
+    {
+      "version": "0.13.0",
+      "date": "2026-07-10T12:45:17+02:00",
+      "commits": [
+        {
+          "hash": "a4a891cfcb851f6e2d788258f5f80c06c783a0ee",
+          "shortHash": "a4a891c",
+          "subject": "chore(release): prepare 0.13.0"
+        },
         {
           "hash": "0a7ae88e7b9c7c846e7637eefc1e581b237a23dd",
           "shortHash": "0a7ae88",
