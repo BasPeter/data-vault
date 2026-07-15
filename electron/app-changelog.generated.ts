@@ -2,13 +2,29 @@
 import type { AppChangelog } from "../src/types";
 
 export const APP_CHANGELOG = {
-  "generatedAt": "2026-07-13T15:29:33+02:00",
+  "generatedAt": "2026-07-15T12:01:15+02:00",
   "repositoryUrl": "https://github.com/BasPeter/data-vault.git",
   "releases": [
     {
-      "version": "0.14.0",
-      "date": "2026-07-13T15:29:33+02:00",
+      "version": "0.14.1",
+      "date": "2026-07-15T12:01:15+02:00",
       "commits": [
+        {
+          "hash": "6433c3a2860fc8d836653813d36ca1adb88ac07f",
+          "shortHash": "6433c3a",
+          "subject": "fix(pdf): hide document tabs in saved PDFs"
+        }
+      ]
+    },
+    {
+      "version": "0.14.0",
+      "date": "2026-07-13T16:59:41+02:00",
+      "commits": [
+        {
+          "hash": "9aa76f8ec3927a6c9f42b8c50e0744a27816b679",
+          "shortHash": "9aa76f8",
+          "subject": "chore(release): prepare 0.14.0"
+        },
         {
           "hash": "28a57a9743a094ce966f1fa557a3ebde1444105a",
           "shortHash": "28a57a9",
