@@ -111,6 +111,9 @@ test("uses the workspace features in one session", async ({ appLaunch }, testInf
     await expect(firstSvg).toHaveAttribute("data-mermaid-x", "0");
     await page.emulateMedia({ media: "print" });
     await expect
+      .poll(() => page.locator(".document-tabs").evaluate((element) => getComputedStyle(element).display))
+      .toBe("none");
+    await expect
       .poll(() =>
         diagrams
           .first()

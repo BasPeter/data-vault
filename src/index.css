@@ -313,6 +313,7 @@
   }
 
   header,
+  .document-tabs,
   [data-sidebar="sidebar"],
   [data-sidebar="sidebar-gap"],
   [role="alert"] {

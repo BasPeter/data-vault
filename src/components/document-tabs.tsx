@@ -84,7 +84,7 @@ export function DocumentTabs({
   };
 
   return (
-    <div className="app-no-drag bg-background sticky top-14 z-10 isolate flex h-10 shrink-0 items-end">
+    <div className="document-tabs app-no-drag bg-background sticky top-14 z-10 isolate flex h-10 shrink-0 items-end">
       <span aria-hidden="true" className="bg-border absolute inset-x-0 bottom-0 z-10 h-px" />
       {canScrollLeft && (
         <Button
