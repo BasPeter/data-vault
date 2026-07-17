@@ -2,13 +2,29 @@
 import type { AppChangelog } from "../src/types";
 
 export const APP_CHANGELOG = {
-  "generatedAt": "2026-07-17T11:32:59+02:00",
+  "generatedAt": "2026-07-17T12:01:39+02:00",
   "repositoryUrl": "https://github.com/BasPeter/data-vault.git",
   "releases": [
     {
-      "version": "0.15.0",
-      "date": "2026-07-17T11:32:59+02:00",
+      "version": "0.15.1",
+      "date": "2026-07-17T12:01:39+02:00",
       "commits": [
+        {
+          "hash": "3097404b024179c4e409108688d1d6443411437f",
+          "shortHash": "3097404",
+          "subject": "fix(agent-skills): make provider selection collapsible"
+        }
+      ]
+    },
+    {
+      "version": "0.15.0",
+      "date": "2026-07-17T11:34:18+02:00",
+      "commits": [
+        {
+          "hash": "a416d66267d945cb357de313ba402b32204855c0",
+          "shortHash": "a416d66",
+          "subject": "chore(release): prepare 0.15.0"
+        },
         {
           "hash": "3430339f807a14d2b090aa4118ab339f827891ec",
           "shortHash": "3430339",
