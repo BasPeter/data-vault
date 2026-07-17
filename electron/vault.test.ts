@@ -397,6 +397,78 @@ describe("VaultService", () => {
     );
   });
 
+  it("excludes the owned dashboard subtree from every document operation when documentsDirectory is the vault root", () => {
+    const root = temporaryDirectory();
+    fs.writeFileSync(
+      path.join(root, "vault.json"),
+      JSON.stringify({ schemaVersion: 1, name: "Root documents", documentsDirectory: "." }),
+    );
+    fs.writeFileSync(path.join(root, "visible.html"), "<h1>Visible</h1>");
+    execFileSync("git", ["-C", root, "init", "-b", "main"]);
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = service.addLocal(root);
+    const dashboard = service.createDashboard(vault.id, {
+      title: "Private executable view",
+      icon: "target",
+      color: "purple",
+      kind: "blank",
+    });
+    const dashboardDocumentId = `.data-vault/dashboards/${dashboard.id}/index.html`;
+    const dashboardFile = path.join(root, ...dashboardDocumentId.split("/"));
+
+    expect(service.manifest(vault.id).tree).toEqual([
+      expect.objectContaining({ type: "doc", id: "visible.html", label: "Visible" }),
+    ]);
+    expect(service.graph(vault.id).nodes.map(({ id }) => id)).toEqual(["visible.html"]);
+    expect(() => service.document(vault.id, dashboardDocumentId)).toThrow("Document not found");
+    expect(() => service.documentPath(vault.id, dashboardDocumentId)).toThrow("Document not found");
+    expect(() => service.resolveDocumentPath(dashboardFile)).toThrow("Invalid document path");
+  });
+
+  it("rejects a document symlink or junction whose canonical target is inside the dashboard namespace", () => {
+    const root = temporaryDirectory();
+    fs.writeFileSync(
+      path.join(root, "vault.json"),
+      JSON.stringify({ schemaVersion: 1, name: "Root documents", documentsDirectory: "." }),
+    );
+    execFileSync("git", ["-C", root, "init", "-b", "main"]);
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = service.addLocal(root);
+    const dashboard = service.createDashboard(vault.id, {
+      title: "Executable view",
+      icon: "target",
+      color: "purple",
+      kind: "blank",
+    });
+    const bundle = path.join(root, ".data-vault", "dashboards", dashboard.id);
+    const entrypoint = path.join(bundle, "index.html");
+    const aliasFile = path.join(root, "dashboard-alias.html");
+    let documentId = "dashboard-alias.html";
+    if (!trySymlink(entrypoint, aliasFile, "file")) {
+      const aliasDirectory = path.join(root, "dashboard-alias");
+      expect(trySymlink(bundle, aliasDirectory, "junction")).toBe(true);
+      documentId = "dashboard-alias/index.html";
+    }
+
+    expect(() => service.document(vault.id, documentId)).toThrow("Document not found");
+    expect(() => service.documentPath(vault.id, documentId)).toThrow("Document not found");
+  });
+
+  it("rejects a configured document root inside the owned dashboard namespace", () => {
+    const root = temporaryDirectory();
+    fs.mkdirSync(path.join(root, ".data-vault", "dashboards", "documents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, "vault.json"),
+      JSON.stringify({
+        documentsDirectory: ".data-vault/dashboards/documents",
+        dashboards: { schemaVersion: 1, directory: ".data-vault/dashboards" },
+      }),
+    );
+
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    expect(() => service.addLocal(root)).toThrow("overlaps the dashboard namespace");
+  });
+
   it("changes the content signature when a document changes", () => {
     const root = temporaryDirectory();
     const documents = path.join(root, "documents");
@@ -412,6 +484,25 @@ describe("VaultService", () => {
     expect(service.contentSignature(vault.id)).toBe(before);
 
     fs.writeFileSync(path.join(documents, "document.html"), "<h1>After</h1><p>New content</p>");
+    expect(service.contentSignature(vault.id)).not.toBe(before);
+  });
+
+  it("changes the content signature when an owned dashboard file changes", async () => {
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = await service.createEmpty("Dashboard watch");
+    const dashboard = service.createDashboard(vault.id, {
+      title: "Watch me",
+      icon: "chart",
+      color: "blue",
+      kind: "blank",
+    });
+    const before = service.contentSignature(vault.id);
+
+    fs.appendFileSync(
+      path.join(vault.repositoryPath, ".data-vault", "dashboards", dashboard.id, "app.js"),
+      "\ndocument.body.dataset.changed = 'true';\n",
+    );
+
     expect(service.contentSignature(vault.id)).not.toBe(before);
   });
 
@@ -465,6 +556,29 @@ describe("VaultService", () => {
       changed: true,
       changes: [{ kind: "untracked", path: "documents/draft.html" }],
     });
+  });
+
+  it("reports owned dashboard files as ordinary vault changes without indexing them as documents", async () => {
+    const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+    const vault = await service.createEmpty("Dashboard changes");
+    const dashboard = service.createDashboard(vault.id, {
+      title: "Progress",
+      icon: "check",
+      color: "green",
+      kind: "personal-progress",
+    });
+
+    const status = await service.changes(vault.id);
+    expect(status.changed).toBe(true);
+    expect(status.changes).toContainEqual({
+      kind: "untracked",
+      path: `.data-vault/dashboards/${dashboard.id}/dashboard.json`,
+    });
+    expect(status.changes).toContainEqual({
+      kind: "untracked",
+      path: `.data-vault/dashboards/${dashboard.id}/app.js`,
+    });
+    expect(service.manifest(vault.id).tree.some((node) => node.id.includes(".data-vault"))).toBe(false);
   });
 
   it("parses -z status output for a staged rename and an untracked non-ASCII filename", async () => {

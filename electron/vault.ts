@@ -3,6 +3,28 @@ import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
+import { DashboardStorage } from "./dashboard-storage";
+import { DashboardStateService } from "./dashboard-state";
+import {
+  DASHBOARD_DOCUMENT_ID_MAX_LENGTH,
+  DASHBOARD_DOCUMENT_MAX_BYTES,
+  DASHBOARD_DOCUMENT_REQUEST_MAX_COUNT,
+  DASHBOARD_DOCUMENTS_RESPONSE_MAX_BYTES,
+  DASHBOARD_INDEX_MAX_DOCUMENTS,
+  DASHBOARD_INDEX_MAX_LINKS_PER_DOCUMENT,
+  DASHBOARD_INDEX_MAX_TAGS_PER_DOCUMENT,
+  DASHBOARD_INDEX_RESPONSE_MAX_BYTES,
+  DASHBOARD_NAMESPACE_DIRECTORY,
+  DASHBOARD_SCHEMA_VERSION,
+  type DashboardCreateInput,
+  type DashboardDocumentSnapshot,
+  type DashboardDocumentsSnapshot,
+  type DashboardEffectivePermissions,
+  type DashboardManifest,
+  type DashboardRemoval,
+  type DashboardState,
+  type DashboardVaultIndexSnapshot,
+} from "../src/dashboard-contracts";
 import type {
   BlameLine,
   DirectoryMeta,
@@ -38,6 +60,7 @@ type VaultConfig = {
   format?: VaultFormat;
   defaultLanguage?: string;
   structure?: VaultStructure;
+  dashboards?: unknown;
 };
 
 // Bounds applied to the optional vault.json `structure` tree so that a malformed
@@ -517,6 +540,7 @@ function sanitizeStructure(value: unknown): VaultStructure | undefined {
 export class VaultService {
   private readonly registryFile: string;
   private readonly repositoriesDirectory: string;
+  private readonly dashboardState = new DashboardStateService();
 
   constructor(
     private readonly userDataDirectory: string,
@@ -792,7 +816,161 @@ export class VaultService {
     // Opening a specific vault creates its documents directory if missing so an
     // empty or freshly created repository renders instead of erroring.
     const root = this.resolveDocumentsRoot(vault.repositoryPath, config, true);
-    return { tree: this.walk(root, root, sanitizeStructure(config.structure), format) };
+    const dashboardRoot = this.dashboardRoot(vault.repositoryPath, config);
+    return { tree: this.walk(root, root, sanitizeStructure(config.structure), format, dashboardRoot) };
+  }
+
+  dashboards(vaultId: string): DashboardManifest[] {
+    return this.dashboardStorage(vaultId).discover();
+  }
+
+  createDashboard(vaultId: string, input: DashboardCreateInput): DashboardManifest {
+    return this.dashboardStorage(vaultId).create(input);
+  }
+
+  renameDashboard(vaultId: string, dashboardId: string, title: string): DashboardManifest {
+    return this.dashboardStorage(vaultId).rename(dashboardId, title);
+  }
+
+  reorderDashboards(vaultId: string, dashboardIds: string[]): DashboardManifest[] {
+    return this.dashboardStorage(vaultId).reorder(dashboardIds);
+  }
+
+  removeDashboard(vaultId: string, dashboardId: string): DashboardRemoval {
+    return this.dashboardStorage(vaultId).remove(dashboardId);
+  }
+
+  dashboardAgentHandoff(vaultId: string, dashboardId: string): string {
+    return this.dashboardStorage(vaultId).agentHandoff(dashboardId);
+  }
+
+  dashboardRuntimeSource(
+    vaultId: string,
+    dashboardId: string,
+  ): {
+    vaultId: string;
+    repositoryPath: string;
+    manifest: DashboardManifest;
+    bundleDirectory: string;
+  } {
+    const vault = this.vault(vaultId);
+    return {
+      vaultId,
+      repositoryPath: vault.repositoryPath,
+      ...this.dashboardStorage(vaultId).runtimeSource(dashboardId),
+    };
+  }
+
+  dashboardReadState(vaultId: string, dashboardId: string): DashboardState {
+    return this.dashboardState.read(this.dashboardStorage(vaultId), dashboardId);
+  }
+
+  dashboardWriteState(vaultId: string, dashboardId: string, runtimeId: string, state: unknown): void {
+    this.dashboardState.write(this.dashboardStorage(vaultId), dashboardId, runtimeId, state);
+  }
+
+  releaseDashboardRuntime(runtimeId: string): void {
+    this.dashboardState.releaseRuntime(runtimeId);
+  }
+
+  dashboardSelectionDocuments(vaultId: string): Array<{ id: string; title: string }> {
+    return this.dashboardDocumentNodes(this.manifest(vaultId).tree)
+      .map(({ id, label }) => ({ id, title: label }))
+      .sort((left, right) => left.id.localeCompare(right.id));
+  }
+
+  dashboardVaultIndex(vaultId: string, permissions: DashboardEffectivePermissions): DashboardVaultIndexSnapshot {
+    if (!permissions.capabilities.includes("vault:index:read")) throw new Error("Dashboard access denied.");
+    const nodes = this.dashboardDocumentNodes(this.manifest(vaultId).tree).sort((left, right) =>
+      left.id < right.id ? -1 : left.id > right.id ? 1 : 0,
+    );
+    const ids = new Set(nodes.map(({ id }) => id));
+    const limits = {
+      maxDocuments: DASHBOARD_INDEX_MAX_DOCUMENTS,
+      maxLinksPerDocument: DASHBOARD_INDEX_MAX_LINKS_PER_DOCUMENT,
+      maxTagsPerDocument: DASHBOARD_INDEX_MAX_TAGS_PER_DOCUMENT,
+      maxEncodedBytes: DASHBOARD_INDEX_RESPONSE_MAX_BYTES,
+    } as const;
+    const documents: DashboardVaultIndexSnapshot["documents"] = [];
+    let truncated = nodes.length > DASHBOARD_INDEX_MAX_DOCUMENTS;
+    const emptySnapshotBytes = Buffer.byteLength(
+      JSON.stringify({ schemaVersion: DASHBOARD_SCHEMA_VERSION, documents: [], truncated: false, limits }),
+      "utf8",
+    );
+    let documentBytes = 0;
+
+    for (const node of nodes.slice(0, DASHBOARD_INDEX_MAX_DOCUMENTS)) {
+      const document = this.document(vaultId, node.id);
+      const candidate = {
+        id: node.id,
+        title: node.label,
+        metadata: { date: node.date ?? null },
+        tags: [...new Set(node.tags)].sort().slice(0, DASHBOARD_INDEX_MAX_TAGS_PER_DOCUMENT),
+        links: [...new Set(linksForDocument(document, ids).filter((target) => ids.has(target)))]
+          .sort()
+          .slice(0, DASHBOARD_INDEX_MAX_LINKS_PER_DOCUMENT),
+      };
+      const candidateBytes = Buffer.byteLength(JSON.stringify(candidate), "utf8");
+      const separatorBytes = documents.length === 0 ? 0 : 1;
+      if (emptySnapshotBytes + documentBytes + separatorBytes + candidateBytes > DASHBOARD_INDEX_RESPONSE_MAX_BYTES) {
+        truncated = true;
+        break;
+      }
+      documents.push(candidate);
+      documentBytes += separatorBytes + candidateBytes;
+    }
+
+    return { schemaVersion: DASHBOARD_SCHEMA_VERSION, documents, truncated, limits };
+  }
+
+  dashboardDocuments(
+    vaultId: string,
+    permissions: DashboardEffectivePermissions,
+    documentIds: readonly string[],
+  ): DashboardDocumentsSnapshot {
+    const denied = (): never => {
+      throw new Error("Dashboard document request denied.");
+    };
+    if (!permissions.capabilities.includes("vault:documents:read") || !Array.isArray(documentIds)) denied();
+    if (documentIds.length > DASHBOARD_DOCUMENT_REQUEST_MAX_COUNT || new Set(documentIds).size !== documentIds.length) {
+      denied();
+    }
+    const selected = new Set(permissions.selectedDocumentIds);
+    for (const id of documentIds) {
+      if (!this.validDashboardDocumentId(id) || !selected.has(id)) denied();
+    }
+
+    const currentIds = new Set(this.dashboardDocumentNodes(this.manifest(vaultId).tree).map(({ id }) => id));
+    if (documentIds.some((id) => !currentIds.has(id))) denied();
+
+    const documents: DashboardDocumentSnapshot[] = [];
+    try {
+      for (const id of documentIds) {
+        const document = this.document(vaultId, id);
+        if (Buffer.byteLength(document.source, "utf8") > DASHBOARD_DOCUMENT_MAX_BYTES) denied();
+        documents.push({
+          id: document.id,
+          title: document.title,
+          format: document.format,
+          contentTrust: "untrusted",
+          content: document.source,
+        });
+      }
+    } catch {
+      denied();
+    }
+
+    const snapshot: DashboardDocumentsSnapshot = {
+      schemaVersion: DASHBOARD_SCHEMA_VERSION,
+      documents,
+      limits: {
+        maxDocuments: DASHBOARD_DOCUMENT_REQUEST_MAX_COUNT,
+        maxDocumentBytes: DASHBOARD_DOCUMENT_MAX_BYTES,
+        maxEncodedBytes: DASHBOARD_DOCUMENTS_RESPONSE_MAX_BYTES,
+      },
+    };
+    if (Buffer.byteLength(JSON.stringify(snapshot), "utf8") > DASHBOARD_DOCUMENTS_RESPONSE_MAX_BYTES) denied();
+    return snapshot;
   }
 
   document(vaultId: string, documentId: string): LoadedDoc {
@@ -841,6 +1019,8 @@ export class VaultService {
       const extension = extensionFor(format);
       const root = this.resolveDocumentsRoot(vault.repositoryPath, config);
       if (!isWithin(root, canonical)) continue;
+      const dashboardRoot = this.dashboardRoot(vault.repositoryPath, config);
+      if (dashboardRoot && isWithin(dashboardRoot, canonical)) throw new Error("Invalid document path.");
       const documentId = path.relative(root, canonical).split(path.sep).join("/");
       if (
         !documentId ||
@@ -898,8 +1078,16 @@ export class VaultService {
     }
     const candidate = path.resolve(root, documentId);
     if (!isWithin(root, candidate) || !fs.existsSync(candidate)) throw new Error("Document not found.");
+    const dashboardRoot = this.dashboardRoot(vault.repositoryPath, this.config(vault.repositoryPath));
+    if (dashboardRoot && isWithin(dashboardRoot, candidate)) throw new Error("Document not found.");
     const canonical = fs.realpathSync(candidate);
-    if (!isWithin(root, canonical) || !fs.statSync(canonical).isFile()) throw new Error("Document not found.");
+    if (
+      !isWithin(root, canonical) ||
+      (dashboardRoot !== null && isWithin(dashboardRoot, canonical)) ||
+      !fs.statSync(canonical).isFile()
+    ) {
+      throw new Error("Document not found.");
+    }
     if (fs.statSync(canonical).size > MAX_DOCUMENT_BYTES) throw new Error("Document is too large.");
     return { candidate, canonical, format };
   }
@@ -949,6 +1137,9 @@ export class VaultService {
     };
 
     visit(root);
+    if (this.config(vault.repositoryPath).dashboards !== undefined) {
+      entries.push(...new DashboardStorage(vault.repositoryPath).contentSignatureEntries());
+    }
     return entries.join("\n");
   }
 
@@ -1000,6 +1191,9 @@ export class VaultService {
     const documentsRoot = this.resolveDocumentsRoot(vault.repositoryPath, config, true);
     const documentsPrefix = path.relative(vault.repositoryPath, documentsRoot).split(path.sep).join("/");
     const quickNotesId = documentsPrefix ? `${documentsPrefix}/${QUICK_NOTES_FILE}` : QUICK_NOTES_FILE;
+    const dashboardStorage = new DashboardStorage(vault.repositoryPath);
+    const dashboardsConfigured = config.dashboards !== undefined && dashboardStorage.isConfigured();
+    const dashboardPrefix = DASHBOARD_NAMESPACE_DIRECTORY;
     const inDocumentsDirectory = (filePath: string) =>
       documentsPrefix ? filePath === documentsPrefix || filePath.startsWith(`${documentsPrefix}/`) : true;
     const output = await this.git(vault.repositoryPath, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
@@ -1009,7 +1203,14 @@ export class VaultService {
         path: change.path.split(path.sep).join("/"),
         previousPath: change.previousPath?.split(path.sep).join("/"),
       }))
-      .filter((change) => inDocumentsDirectory(change.path))
+      .filter((change) =>
+        [change.path, change.previousPath].some(
+          (filePath) =>
+            filePath !== undefined &&
+            (inDocumentsDirectory(filePath) ||
+              (dashboardsConfigured && (filePath === dashboardPrefix || filePath.startsWith(`${dashboardPrefix}/`)))),
+        ),
+      )
       .filter((change) => change.path !== quickNotesId);
     return { changed: changes.length > 0, changes };
   }
@@ -1082,6 +1283,16 @@ export class VaultService {
     return this.resolveDocumentsRoot(vault.repositoryPath, this.config(vault.repositoryPath), true);
   }
 
+  private dashboardStorage(vaultId: string): DashboardStorage {
+    return new DashboardStorage(this.vault(vaultId).repositoryPath);
+  }
+
+  private dashboardRoot(repositoryPath: string, config: VaultConfig): string | null {
+    if (config.dashboards === undefined) return null;
+    const storage = new DashboardStorage(repositoryPath);
+    return storage.isConfigured() ? storage.namespaceRoot : null;
+  }
+
   // Resolve (and validate) the documents directory. With `create`, a missing
   // directory is created rather than rejected, so freshly cloned or empty vaults
   // open cleanly. Only write paths pass `create`; read paths keep the default so
@@ -1106,10 +1317,20 @@ export class VaultService {
     if (!isWithin(repositoryRoot, canonical) || !fs.statSync(canonical).isDirectory()) {
       throw new Error("Documents directory escapes the repository.");
     }
+    // A configured dashboard namespace is exclusively app-owned. It may sit
+    // below the document root (notably when documentsDirectory is `.`), but the
+    // document root may never be the namespace itself or one of its descendants.
+    if (config.dashboards !== undefined) new DashboardStorage(repositoryRoot).isConfigured();
     return canonical;
   }
 
-  private walk(root: string, directory: string, meta: VaultStructure | undefined, format: VaultFormat): TreeNode[] {
+  private walk(
+    root: string,
+    directory: string,
+    meta: VaultStructure | undefined,
+    format: VaultFormat,
+    dashboardRoot: string | null,
+  ): TreeNode[] {
     const nodes: TreeNode[] = [];
     for (const entry of fs
       .readdirSync(directory, { withFileTypes: true })
@@ -1117,10 +1338,11 @@ export class VaultService {
       if (entry.name.startsWith(".") || entry.name.startsWith("_") || entry.isSymbolicLink()) continue;
       if (directory === root && entry.name.toLowerCase() === QUICK_NOTES_FILE) continue;
       const absolute = path.join(directory, entry.name);
+      if (dashboardRoot && path.resolve(absolute) === dashboardRoot) continue;
       const id = path.relative(root, absolute).split(path.sep).join("/");
       if (entry.isDirectory()) {
         const directoryMeta = meta?.[entry.name];
-        const children = this.walk(root, absolute, directoryMeta?.children, format);
+        const children = this.walk(root, absolute, directoryMeta?.children, format, dashboardRoot);
         if (children.length) {
           const folder: TreeNode = {
             type: "folder",
@@ -1152,5 +1374,30 @@ export class VaultService {
       else output.push({ id: node.id, label: node.label, folder: folder || "(root)", tags: node.tags, degree: 0 });
     }
     return output;
+  }
+
+  private dashboardDocumentNodes(
+    nodes: TreeNode[],
+    output: Array<{ id: string; label: string; date: string | null; tags: string[] }> = [],
+  ): Array<{ id: string; label: string; date: string | null; tags: string[] }> {
+    for (const node of nodes) {
+      if (node.type === "folder") this.dashboardDocumentNodes(node.children, output);
+      else output.push({ id: node.id, label: node.label, date: node.date, tags: [...node.tags] });
+    }
+    return output;
+  }
+
+  private validDashboardDocumentId(documentId: unknown): documentId is string {
+    return (
+      typeof documentId === "string" &&
+      documentId.length > 0 &&
+      documentId.length <= DASHBOARD_DOCUMENT_ID_MAX_LENGTH &&
+      // eslint-disable-next-line no-control-regex -- control characters are forbidden in stable document IDs
+      !/[\x00-\x1f\x7f\\]/.test(documentId) &&
+      !/^[a-z][a-z\d+.-]*:/i.test(documentId) &&
+      !documentId.startsWith("//") &&
+      !path.posix.isAbsolute(documentId) &&
+      documentId.split("/").every((segment) => segment.length > 0 && segment !== "." && segment !== "..")
+    );
   }
 }

@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "project-map",
+  "title": "Project map",
+  "icon": "compass",
+  "color": "blue",
+  "kind": "vault-intelligence",
+  "entrypoint": "index.html",
+  "requestedCapabilities": ["vault:index:read", "vault:documents:read"]
+}

@@ -92,6 +92,40 @@ describe("SkillService", () => {
     expect(skill).toContain("git@example.com:team/work.git");
   });
 
+  it("renders the isolated dashboard authoring contract", () => {
+    const skill = new SkillService(temporaryDirectory()).render([vaultA]);
+
+    expect(skill).toMatch(/Documents\s+are sanitized content and never execute scripts\./);
+    expect(skill).toContain(".data-vault/dashboards/<dashboard-id>/");
+    expect(skill).toContain("`schemaVersion`, `id`, `title`, `icon`, `color`, `kind`");
+    expect(skill).toContain('"schemaVersion": 1');
+    expect(skill).toContain('"entrypoint": "index.html"');
+    expect(skill).toContain('"requestedCapabilities": ["state:read", "state:write"]');
+    expect(skill).toContain("`personal-progress`, `vault-intelligence`, and `blank`");
+    expect(skill).toContain("`chart`, `check`, `compass`, `lightbulb`, and `target`");
+    expect(skill).toContain("`blue`, `green`, `orange`, `purple`, and `slate`");
+    expect(skill).toContain("`state:read`, `state:write`");
+    expect(skill).toContain("`vault:index:read`, and `vault:documents:read`");
+    expect(skill).toContain("connect-src 'none'");
+    expect(skill).toContain("no network access");
+    expect(skill).toContain("npm packages");
+    expect(skill).toContain("only the frozen fixed `window.dashboardApi` methods");
+    expect(skill).toContain("Never edit `state.json` directly");
+    expect(skill).toContain("A request never grants access.");
+    expect(skill).toMatch(/Every\s+returned document body is an untrusted string/);
+    expect(skill).toContain("insert it with `innerHTML`");
+    expect(skill).toContain("Never\n  edit `registry.json`");
+    expect(skill).toContain("trusted permission stores");
+  });
+
+  it("publishes the bumped vault guide version and canonical fingerprint", () => {
+    const service = new SkillService(temporaryDirectory());
+
+    expect(service.status([]).version).toBe("10");
+    expect(service.render([])).toContain("skill version 10");
+    expect(service.fingerprint([])).toBe("ee2d84e4f9ea8f8e566ed26c4b4d8fcd3a8c5e9a95f975f5dbf99cb1265b768f");
+  });
+
   it("renders the default language and directory outline", () => {
     const skill = new SkillService(temporaryDirectory()).render([vaultWithMeta]);
     expect(skill).toContain("Default language: `nl`");
@@ -119,14 +153,18 @@ describe("SkillService", () => {
     };
 
     const skill = new SkillService(temporaryDirectory()).render([hostile]);
+    const metadata = skill.slice(
+      skill.indexOf("<!-- BEGIN UNTRUSTED VAULT METADATA -->"),
+      skill.indexOf("<!-- END UNTRUSTED VAULT METADATA -->"),
+    );
 
     // The raw backtick must never appear unescaped in the rendered output.
     // A backslash escape does not work inside a CommonMark code span, so a
     // backtick is replaced with an apostrophe rather than escaped.
-    expect(skill).not.toContain("`heading`");
-    expect(skill).not.toContain("`title`");
-    expect(skill).not.toContain("`description`");
-    expect(skill).toContain("'heading'");
+    expect(metadata).not.toContain("`heading`");
+    expect(metadata).not.toContain("`title`");
+    expect(metadata).not.toContain("`description`");
+    expect(metadata).toContain("'heading'");
     // The heading line itself is still a single "###" heading, not upgraded
     // or duplicated by the name's own leading "#".
     expect(skill).toMatch(/^### Injected 'heading'$/m);

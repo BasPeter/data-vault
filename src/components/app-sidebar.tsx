@@ -1,8 +1,26 @@
-import { Copy, FileText, Folder, FolderOpen } from "lucide-react";
+import {
+  BarChart3,
+  CheckCircle2,
+  Compass,
+  Copy,
+  FileText,
+  Folder,
+  FolderOpen,
+  Lightbulb,
+  MoreHorizontal,
+  Plus,
+  Target,
+} from "lucide-react";
 import { AgentSkillsPanel } from "@/components/agent-skills-panel";
 import { UpdateButton } from "@/components/update-button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Sidebar,
   SidebarContent,
@@ -16,6 +34,7 @@ import {
   SidebarMenuSub,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import type { DashboardManifest } from "@/dashboard-contracts";
 import type { TreeNode, VaultSummary } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -26,7 +45,29 @@ type Props = {
   onCopyPath: (id: string) => void;
   vaultName: string;
   vaults: VaultSummary[];
+  dashboards: DashboardManifest[];
+  activeDashboardId: string | null;
+  onSelectDashboard: (id: string) => void;
+  onCreateDashboard: () => void;
+  onRenameDashboard: (dashboard: DashboardManifest) => void;
+  onMoveDashboard: (dashboardId: string, direction: -1 | 1) => void;
+  onRemoveDashboard: (dashboard: DashboardManifest) => void;
 };
+
+const dashboardIcons = {
+  chart: BarChart3,
+  check: CheckCircle2,
+  compass: Compass,
+  lightbulb: Lightbulb,
+  target: Target,
+} as const;
+const dashboardColors = {
+  blue: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
+  green: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+  orange: "bg-orange-500/15 text-orange-700 dark:text-orange-300",
+  purple: "bg-purple-500/15 text-purple-700 dark:text-purple-300",
+  slate: "bg-slate-500/15 text-slate-700 dark:text-slate-300",
+} as const;
 
 function TreeItems({
   nodes,
@@ -82,7 +123,21 @@ function TreeItems({
   );
 }
 
-export function AppSidebar({ tree, activeId, onSelect, onCopyPath, vaultName, vaults }: Props) {
+export function AppSidebar({
+  tree,
+  activeId,
+  onSelect,
+  onCopyPath,
+  vaultName,
+  vaults,
+  dashboards,
+  activeDashboardId,
+  onSelectDashboard,
+  onCreateDashboard,
+  onRenameDashboard,
+  onMoveDashboard,
+  onRemoveDashboard,
+}: Props) {
   return (
     <Sidebar>
       <SidebarHeader
@@ -97,6 +152,112 @@ export function AppSidebar({ tree, activeId, onSelect, onCopyPath, vaultName, va
         </div>
       </SidebarHeader>
       <SidebarContent>
+        <SidebarGroup>
+          <div className="flex items-center justify-between px-2">
+            <SidebarGroupLabel className="px-0">Dashboards</SidebarGroupLabel>
+            <button
+              className="hover:bg-sidebar-accent grid size-7 place-items-center rounded-md"
+              aria-label="Create dashboard"
+              title="Create dashboard"
+              onClick={onCreateDashboard}
+            >
+              <Plus className="size-4" />
+            </button>
+          </div>
+          {dashboards.length ? (
+            <div
+              aria-label="Dashboard launchers"
+              tabIndex={0}
+              className="grid max-h-64 grid-cols-2 gap-2 overflow-y-auto overscroll-contain px-1 pr-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {dashboards.map((dashboard, index) => {
+                const Icon = dashboardIcons[dashboard.icon];
+                const actions: Array<{
+                  label: string;
+                  disabled?: boolean;
+                  destructive?: boolean;
+                  onSelect: () => void;
+                }> = [
+                  { label: "Rename", onSelect: () => onRenameDashboard(dashboard) },
+                  {
+                    label: "Move earlier",
+                    disabled: index === 0,
+                    onSelect: () => onMoveDashboard(dashboard.id, -1),
+                  },
+                  {
+                    label: "Move later",
+                    disabled: index === dashboards.length - 1,
+                    onSelect: () => onMoveDashboard(dashboard.id, 1),
+                  },
+                  { label: "Remove…", destructive: true, onSelect: () => onRemoveDashboard(dashboard) },
+                ];
+                return (
+                  <ContextMenu key={dashboard.id}>
+                    <ContextMenuTrigger asChild>
+                      <div className="group relative">
+                        <button
+                          aria-label={`Open ${dashboard.title} dashboard`}
+                          aria-pressed={activeDashboardId === dashboard.id}
+                          onClick={() => onSelectDashboard(dashboard.id)}
+                          className="flex w-full flex-col items-center gap-1.5 rounded-lg p-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          <span
+                            className={cn(
+                              "grid size-14 place-items-center rounded-[1.35rem] border transition-colors",
+                              dashboardColors[dashboard.color],
+                              activeDashboardId === dashboard.id && "ring-2 ring-ring",
+                            )}
+                          >
+                            <Icon className="size-6" />
+                          </span>
+                          <span className="w-full truncate text-center text-xs font-medium">{dashboard.title}</span>
+                        </button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              aria-label={`${dashboard.title} dashboard menu`}
+                              className="absolute right-0.5 top-0.5 grid size-6 place-items-center rounded-md opacity-0 hover:bg-sidebar-accent focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
+                            >
+                              <MoreHorizontal className="size-4" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent>
+                            {actions.map((action) => (
+                              <DropdownMenuItem
+                                key={action.label}
+                                disabled={action.disabled}
+                                variant={action.destructive ? "destructive" : "default"}
+                                onSelect={action.onSelect}
+                              >
+                                {action.label}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent>
+                      {actions.map((action) => (
+                        <ContextMenuItem
+                          key={action.label}
+                          disabled={action.disabled}
+                          variant={action.destructive ? "destructive" : "default"}
+                          onSelect={action.onSelect}
+                        >
+                          {action.label}
+                        </ContextMenuItem>
+                      ))}
+                    </ContextMenuContent>
+                  </ContextMenu>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-muted-foreground px-2 py-1 text-xs">
+              Create a dashboard for progress, work, goals, or ideas.
+            </p>
+          )}
+        </SidebarGroup>
         <SidebarGroup>
           <SidebarGroupLabel>Documents</SidebarGroupLabel>
           {tree.length ? (

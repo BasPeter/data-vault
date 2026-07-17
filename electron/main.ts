@@ -1,11 +1,25 @@
 import path from "node:path";
 import fs from "node:fs";
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type IpcMainInvokeEvent } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeTheme,
+  protocol,
+  shell,
+  type IpcMainInvokeEvent,
+} from "electron";
 import { VaultService } from "./vault";
 import { SkillService } from "./skills";
 import { ClaudePluginExporter } from "./claude-plugin";
 import { CLAUDE_PLUGIN_SAVE_DIALOG, createClaudePluginExportHandler } from "./claude-plugin-ipc";
 import { ClaudePluginStateService } from "./claude-plugin-state";
+import { createDashboardStorageHandlers } from "./dashboard-storage-ipc";
+import { DashboardRuntimeController, dashboardPreloadPath } from "./dashboard-runtime";
+import { DashboardPermissionStore, canonicalDashboardCapabilityRequest } from "./dashboard-permissions";
+import { DASHBOARD_SCHEME, DASHBOARD_SCHEME_PRIVILEGES } from "./dashboard-runtime-assets";
 import { GitHubService } from "./github";
 import {
   changelog,
@@ -16,6 +30,7 @@ import {
   updateStatus,
 } from "./updater";
 import type { DocumentOpenRequest, VaultFormat, VaultStructure, VaultUpdate } from "../src/types";
+import type { DashboardCapabilityId } from "../src/dashboard-contracts";
 
 // Bounds for the optional vault.json `structure` tree, mirrored from
 // electron/vault.ts. The renderer is trusted but validated defensively.
@@ -25,6 +40,7 @@ const STRUCTURE_MAX_TEXT = 1000;
 
 const APPLICATION_NAME = "Data Vault";
 const PROTOCOL = "data-vault";
+protocol.registerSchemesAsPrivileged([{ scheme: DASHBOARD_SCHEME, privileges: DASHBOARD_SCHEME_PRIVILEGES }]);
 app.setName(APPLICATION_NAME);
 
 let service: VaultService;
@@ -34,6 +50,8 @@ const claudePluginExporter = new ClaudePluginExporter();
 let github: GitHubService;
 let vaultChangePoll: NodeJS.Timeout | null = null;
 let mainWindow: BrowserWindow | null = null;
+let dashboardRuntime: DashboardRuntimeController | null = null;
+let dashboardPermissions: DashboardPermissionStore;
 let pendingOpenRequest: DocumentOpenRequest | null = null;
 const deferredOpenArgs: string[][] = [];
 const watchedVaults = new Map<string, string>();
@@ -275,6 +293,9 @@ function autoInstallSkills(): void {
 }
 
 function broadcastVaultChanged(vaultId: string): void {
+  // Dashboard source/config is untrusted mutable vault content. Invalidate its
+  // runtime authority before notifying the renderer to refresh and reopen.
+  dashboardRuntime?.stopForVault(vaultId);
   for (const window of BrowserWindow.getAllWindows()) {
     window.webContents.send("vault:changed", vaultId);
   }
@@ -320,6 +341,7 @@ function pruneWatchedVaults(): void {
 }
 
 function registerIpc(): void {
+  const dashboardHandlers = createDashboardStorageHandlers(assertTrusted, () => service);
   ipcMain.handle("vault:list", (event) => {
     assertTrusted(event);
     return service.list();
@@ -417,6 +439,91 @@ function registerIpc(): void {
     assertTrusted(event);
     return service.sync(stringArgument(vaultId, "vault ID"));
   });
+  ipcMain.handle("dashboard:list", dashboardHandlers.list);
+  ipcMain.handle("dashboard:create", dashboardHandlers.create);
+  ipcMain.handle("dashboard:rename", dashboardHandlers.rename);
+  ipcMain.handle("dashboard:reorder", dashboardHandlers.reorder);
+  ipcMain.handle("dashboard:remove", (event, vaultId, dashboardId) => {
+    assertTrusted(event);
+    const trustedVaultId = stringArgument(vaultId, "vault ID");
+    const trustedDashboardId = stringArgument(dashboardId, "dashboard ID");
+    // Authority must be gone before the bundle can move to trash.
+    dashboardRuntime?.stopForDashboard(trustedVaultId, trustedDashboardId);
+    return service.removeDashboard(trustedVaultId, trustedDashboardId);
+  });
+  ipcMain.handle("dashboard:agent-handoff", dashboardHandlers.agentHandoff);
+  ipcMain.handle("dashboard-runtime:open", async (event, vaultId, dashboardId) => {
+    assertTrusted(event);
+    if (!dashboardRuntime) throw new Error("Dashboard runtime is unavailable.");
+    await dashboardRuntime.open(stringArgument(vaultId, "vault ID"), stringArgument(dashboardId, "dashboard ID"));
+  });
+  ipcMain.handle("dashboard-runtime:set-bounds", (event, bounds) => {
+    assertTrusted(event);
+    dashboardRuntime?.setBounds(bounds);
+  });
+  ipcMain.handle("dashboard-runtime:set-content-bounds", (event, bounds) => {
+    assertTrusted(event);
+    dashboardRuntime?.setHostContentBounds(bounds);
+  });
+  ipcMain.handle("dashboard-runtime:stop", (event) => {
+    assertTrusted(event);
+    dashboardRuntime?.stop();
+  });
+  ipcMain.handle("dashboard-runtime:suspend", (event) => {
+    assertTrusted(event);
+    return dashboardRuntime?.suspend() ?? null;
+  });
+  ipcMain.handle("dashboard-runtime:resume", (event, runtimeId) => {
+    assertTrusted(event);
+    dashboardRuntime?.resume(stringArgument(runtimeId, "dashboard runtime token"));
+  });
+  ipcMain.handle("dashboard-runtime:status", (event) => {
+    assertTrusted(event);
+    const status = dashboardRuntime?.getStatusForTesting();
+    return status ? { runtimeId: status.runtimeId, status: status.status, attached: status.attached } : null;
+  });
+  ipcMain.handle("dashboard-runtime:authority-count-for-testing", (event) => {
+    assertTrusted(event);
+    if (process.env.NODE_ENV !== "test") throw new Error("Dashboard runtime test status is unavailable.");
+    return dashboardRuntime?.getAuthorityCountForTesting() ?? 0;
+  });
+  ipcMain.handle("dashboard-permissions:details", (event, vaultId, dashboardId) => {
+    assertTrusted(event);
+    return runtime().permissionDetails(
+      stringArgument(vaultId, "vault ID"),
+      stringArgument(dashboardId, "dashboard ID"),
+    );
+  });
+  ipcMain.handle("dashboard-permissions:grant", (event, vaultId, dashboardId, capabilities, selectedDocumentIds) => {
+    assertTrusted(event);
+    const requested = canonicalDashboardCapabilityRequest(capabilities as DashboardCapabilityId[]);
+    if (!Array.isArray(selectedDocumentIds) || selectedDocumentIds.length > 2_000)
+      throw new Error("Invalid dashboard document selection.");
+    const selection = selectedDocumentIds.map((id) => stringArgument(id, "document ID"));
+    return runtime().grantPermissions(
+      stringArgument(vaultId, "vault ID"),
+      stringArgument(dashboardId, "dashboard ID"),
+      requested,
+      selection,
+    );
+  });
+  ipcMain.handle("dashboard-permissions:revoke", (event, vaultId, dashboardId) => {
+    assertTrusted(event);
+    runtime().revokePermissions(stringArgument(vaultId, "vault ID"), stringArgument(dashboardId, "dashboard ID"));
+  });
+  const runtime = (): DashboardRuntimeController => {
+    if (!dashboardRuntime) throw new Error("Dashboard runtime is unavailable.");
+    return dashboardRuntime;
+  };
+  ipcMain.handle("dashboard-api:get-info", (event) => runtime().handleApiCall(event, "get-info"));
+  ipcMain.handle("dashboard-api:read-state", (event) => runtime().handleApiCall(event, "read-state"));
+  ipcMain.handle("dashboard-api:write-state", (event, request) =>
+    runtime().handleApiCall(event, "write-state", request),
+  );
+  ipcMain.handle("dashboard-api:read-vault-index", (event) => runtime().handleApiCall(event, "read-vault-index"));
+  ipcMain.handle("dashboard-api:read-documents", (event, request) =>
+    runtime().handleApiCall(event, "read-documents", request),
+  );
   ipcMain.handle("app:update-status", (event) => {
     assertTrusted(event);
     return updateStatus();
@@ -440,6 +547,7 @@ function registerIpc(): void {
   ipcMain.handle("app:set-title-bar-theme", (event, value) => {
     assertTrusted(event);
     const theme = titleBarThemeArgument(value);
+    nativeTheme.themeSource = theme;
     if (process.platform !== "win32") return;
     BrowserWindow.fromWebContents(event.sender)?.setTitleBarOverlay({
       color: "#00000000",
@@ -625,10 +733,58 @@ function createWindow(): void {
     },
   });
   mainWindow = window;
+  dashboardRuntime = new DashboardRuntimeController(
+    window,
+    dashboardPreloadPath(__dirname),
+    (vaultId, dashboardId) => service.dashboardRuntimeSource(vaultId, dashboardId),
+    {
+      permissions: (source, digest) =>
+        dashboardPermissions.effective({
+          repositoryPath: source.repositoryPath,
+          dashboardId: source.manifest.id,
+          requestedCapabilities: source.manifest.requestedCapabilities,
+          bundleDigest: digest,
+        }),
+      grant: (source, digest, capabilities, selectedDocumentIds) =>
+        dashboardPermissions.grant(
+          {
+            repositoryPath: source.repositoryPath,
+            dashboardId: source.manifest.id,
+            requestedCapabilities: source.manifest.requestedCapabilities,
+            bundleDigest: digest,
+          },
+          capabilities,
+          selectedDocumentIds,
+        ),
+      revoke: (source, digest) =>
+        dashboardPermissions.revoke({
+          repositoryPath: source.repositoryPath,
+          dashboardId: source.manifest.id,
+          requestedCapabilities: source.manifest.requestedCapabilities,
+          bundleDigest: digest,
+        }),
+      documentsForSelection: (vaultId) => service.dashboardSelectionDocuments(vaultId),
+      readState: (vaultId, dashboardId) => service.dashboardReadState(vaultId, dashboardId),
+      writeState: (vaultId, dashboardId, runtimeId, state) =>
+        service.dashboardWriteState(vaultId, dashboardId, runtimeId, state),
+      releaseState: (runtimeId) => service.releaseDashboardRuntime(runtimeId),
+      readVaultIndex: (vaultId, permissions) => service.dashboardVaultIndex(vaultId, permissions),
+      readDocuments: (vaultId, permissions, documentIds) =>
+        service.dashboardDocuments(vaultId, permissions, documentIds),
+    },
+  );
 
   window.once("ready-to-show", () => window.show());
+  window.on("close", () => dashboardRuntime?.stop());
+  window.webContents.on("did-start-navigation", (_event, _url, _isInPlace, isMainFrame) => {
+    if (isMainFrame) dashboardRuntime?.stop();
+  });
   window.on("closed", () => {
-    if (mainWindow === window) mainWindow = null;
+    if (mainWindow === window) {
+      dashboardRuntime?.dispose();
+      dashboardRuntime = null;
+      mainWindow = null;
+    }
   });
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("https://")) void shell.openExternal(url);
@@ -658,6 +814,7 @@ if (!singleInstanceLock) {
     registerProtocolClient();
     github = new GitHubService(app.getPath("userData"));
     service = new VaultService(app.getPath("userData"), (account, owner) => github.authHeaderValue(account, owner));
+    dashboardPermissions = new DashboardPermissionStore(app.getPath("userData"));
     // E2E runs launch against a throwaway `--user-data-dir`, but skills install to
     // the home directory, which the Chromium switch does not isolate. Redirect the
     // skills home into that same throwaway dir under test so automated runs never

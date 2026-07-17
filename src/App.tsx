@@ -12,6 +12,9 @@ import {
 } from "lucide-react";
 import { GithubConnectDialog } from "@/components/github-connect-dialog";
 import { AppSidebar } from "@/components/app-sidebar";
+import { DashboardCreateDialog } from "@/components/dashboard-create-dialog";
+import { DashboardHost } from "@/components/dashboard-host";
+import { DashboardPermissionDialog } from "@/components/dashboard-permission-dialog";
 import { DocumentPicker } from "@/components/document-picker";
 import { DocumentTabs } from "@/components/document-tabs";
 import { DocumentView } from "@/components/document-view";
@@ -29,6 +32,8 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { useTheme } from "@/hooks/use-theme";
 import { cn } from "@/lib/utils";
+import { parseStoredAppView, safeAppView, type AppView } from "@/app-view";
+import type { DashboardCreateInput, DashboardManifest } from "@/dashboard-contracts";
 import type { DocumentOpenRequest, Manifest, TreeNode, VaultFormat, VaultSummary } from "@/types";
 
 function firstDocument(nodes: TreeNode[]): string | null {
@@ -87,7 +92,12 @@ export default function App() {
   const pendingOpenRequestRef = useRef<DocumentOpenRequest | null>(null);
   const tabsRef = useRef<DocumentTab[]>([]);
   const tabsInitializedRef = useRef(false);
-  const [view, setView] = useState<"doc" | "graph">("doc");
+  const [view, setView] = useState<AppView>({ kind: "document" });
+  const [dashboards, setDashboards] = useState<DashboardManifest[]>([]);
+  const [createDashboardOpen, setCreateDashboardOpen] = useState(false);
+  const [permissionDashboard, setPermissionDashboard] = useState<DashboardManifest | null>(null);
+  const trustedFlowRuntimeRef = useRef<string | null>(null);
+  const viewInitializedVaultRef = useRef<string | null>(null);
   const [version, setVersion] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -138,6 +148,9 @@ export default function App() {
       setActiveId(null);
       activeIdRef.current = null;
       tabsInitializedRef.current = false;
+      setDashboards([]);
+      setView({ kind: "document" });
+      viewInitializedVaultRef.current = null;
       return;
     }
     let cancelled = false;
@@ -180,10 +193,34 @@ export default function App() {
       .catch((cause) => {
         if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
       });
+    window.vaultApi
+      .dashboards(vaultId)
+      .then((next) => {
+        if (cancelled) return;
+        setDashboards(next);
+        const ids = new Set(next.map(({ id }) => id));
+        if (viewInitializedVaultRef.current !== vaultId) {
+          viewInitializedVaultRef.current = vaultId;
+          setView(safeAppView(parseStoredAppView(localStorage.getItem(`data-vault:last-view:${vaultId}`)), ids));
+        } else setView((current) => safeAppView(current, ids));
+      })
+      .catch((cause) => {
+        if (!cancelled) {
+          setDashboards([]);
+          setView({ kind: "document" });
+          setError(cause instanceof Error ? cause.message : String(cause));
+        }
+      });
     return () => {
       cancelled = true;
     };
   }, [vaultId, version]);
+
+  useEffect(() => {
+    if (vaultId && viewInitializedVaultRef.current === vaultId) {
+      localStorage.setItem(`data-vault:last-view:${vaultId}`, JSON.stringify(view));
+    }
+  }, [vaultId, view]);
 
   useEffect(() => {
     return window.vaultApi.onVaultChanged((changedVaultId) => {
@@ -204,7 +241,7 @@ export default function App() {
     setActiveId(id);
     activeIdRef.current = id;
     location.hash = encodeURIComponent(id);
-    setView("doc");
+    setView({ kind: "document" });
   }, []);
 
   const requestOpenDocument = useCallback(
@@ -336,7 +373,7 @@ export default function App() {
   };
 
   const savePdf = async () => {
-    if (!vaultId || !activeId || view !== "doc") return;
+    if (!vaultId || !activeId || view.kind !== "document") return;
     setSavingPdf(true);
     setError(null);
     try {
@@ -360,6 +397,96 @@ export default function App() {
       }
     },
     [vaultId],
+  );
+
+  const beginTrustedFlow = useCallback(async () => {
+    trustedFlowRuntimeRef.current = view.kind === "dashboard" ? await window.vaultApi.suspendDashboard() : null;
+  }, [view.kind]);
+
+  const endTrustedFlow = useCallback(async () => {
+    const runtimeId = trustedFlowRuntimeRef.current;
+    trustedFlowRuntimeRef.current = null;
+    if (!runtimeId) return;
+    try {
+      await window.vaultApi.resumeDashboard(runtimeId);
+      window.dispatchEvent(new Event("dashboard-host-resume"));
+    } catch {
+      // Switching, removing, or reloading a dashboard deliberately invalidates the old generation.
+    }
+  }, []);
+
+  const reloadDashboards = useCallback(async () => {
+    if (!vaultId) return [];
+    const next = await window.vaultApi.dashboards(vaultId);
+    setDashboards(next);
+    setView((current) => safeAppView(current, new Set(next.map(({ id }) => id))));
+    return next;
+  }, [vaultId]);
+
+  const createDashboard = useCallback(
+    async (input: DashboardCreateInput) => {
+      if (!vaultId) return;
+      const created = await window.vaultApi.createDashboard(vaultId, input);
+      await reloadDashboards();
+      trustedFlowRuntimeRef.current = null;
+      setView({ kind: "dashboard", dashboardId: created.id });
+    },
+    [reloadDashboards, vaultId],
+  );
+
+  const renameDashboard = useCallback(
+    async (dashboard: DashboardManifest) => {
+      if (!vaultId) return;
+      await beginTrustedFlow();
+      const title = window.prompt("Dashboard name", dashboard.title)?.trim();
+      try {
+        if (title && title !== dashboard.title) {
+          await window.vaultApi.renameDashboard(vaultId, dashboard.id, title);
+          await reloadDashboards();
+        }
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      } finally {
+        await endTrustedFlow();
+      }
+    },
+    [beginTrustedFlow, endTrustedFlow, reloadDashboards, vaultId],
+  );
+
+  const moveDashboard = useCallback(
+    async (dashboardId: string, direction: -1 | 1) => {
+      if (!vaultId) return;
+      const index = dashboards.findIndex(({ id }) => id === dashboardId);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= dashboards.length) return;
+      const order = dashboards.map(({ id }) => id);
+      [order[index], order[target]] = [order[target], order[index]];
+      try {
+        setDashboards(await window.vaultApi.reorderDashboards(vaultId, order));
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      }
+    },
+    [dashboards, vaultId],
+  );
+
+  const removeDashboard = useCallback(
+    async (dashboard: DashboardManifest) => {
+      if (!vaultId) return;
+      await beginTrustedFlow();
+      try {
+        if (!window.confirm(`Remove “${dashboard.title}”? Its bundle will be moved to the dashboard trash.`)) return;
+        const removal = await window.vaultApi.removeDashboard(vaultId, dashboard.id);
+        await reloadDashboards();
+        if (view.kind === "dashboard" && view.dashboardId === dashboard.id) setView({ kind: "document" });
+        setError(`Dashboard removed. Recoverable bundle: ${removal.trashPath}`);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      } finally {
+        await endTrustedFlow();
+      }
+    },
+    [beginTrustedFlow, endTrustedFlow, reloadDashboards, vaultId, view],
   );
 
   const ids = useMemo(() => documentIds(manifest.tree), [manifest.tree]);
@@ -394,6 +521,21 @@ export default function App() {
         onCopyPath={copyDocumentPath}
         vaultName={vault.name}
         vaults={vaults}
+        dashboards={dashboards}
+        activeDashboardId={view.kind === "dashboard" ? view.dashboardId : null}
+        onSelectDashboard={(dashboardId) => setView({ kind: "dashboard", dashboardId })}
+        onCreateDashboard={() => {
+          void beginTrustedFlow().then(() => setCreateDashboardOpen(true));
+        }}
+        onRenameDashboard={(dashboard) => {
+          void renameDashboard(dashboard);
+        }}
+        onMoveDashboard={(dashboardId, direction) => {
+          void moveDashboard(dashboardId, direction);
+        }}
+        onRemoveDashboard={(dashboard) => {
+          void removeDashboard(dashboard);
+        }}
       />
       <SidebarInset>
         <AppHeader>
@@ -404,12 +546,15 @@ export default function App() {
               vaults={vaults}
               vaultId={vaultId}
               onSwitch={(id) => {
+                void window.vaultApi.stopDashboard();
                 setVaultId(id);
                 setTabs([]);
                 tabsRef.current = [];
                 setActiveId(null);
                 activeIdRef.current = null;
                 tabsInitializedRef.current = false;
+                setView({ kind: "document" });
+                viewInitializedVaultRef.current = null;
               }}
               onLocal={addLocal}
               onRefresh={async (preferred) => {
@@ -421,7 +566,11 @@ export default function App() {
             />
           </div>
           <span className="text-muted-foreground min-w-0 flex-1 truncate text-sm">
-            {view === "graph" ? "Graph" : title}
+            {view.kind === "graph"
+              ? "Graph"
+              : view.kind === "dashboard"
+                ? dashboards.find(({ id }) => id === view.dashboardId)?.title
+                : title}
           </span>
           <div className="app-no-drag app-header-actions flex shrink-0 items-center gap-1">
             <VaultChangesIndicator vaultId={vaultId} repositoryPath={vault.repositoryPath} version={version} />
@@ -435,29 +584,29 @@ export default function App() {
               size="icon"
               title="Save document as PDF"
               aria-label="Save document as PDF"
-              disabled={view !== "doc" || !activeId || savingPdf}
+              disabled={view.kind !== "document" || !activeId || savingPdf}
               onClick={savePdf}
             >
               <FileDown className={savingPdf ? "animate-pulse" : ""} />
             </Button>
             <Button
               className="app-header-secondary-action"
-              variant={showBlame && view === "doc" ? "secondary" : "ghost"}
+              variant={showBlame && view.kind === "document" ? "secondary" : "ghost"}
               size="icon"
               title={showBlame ? "Hide line history" : "Show line history"}
               aria-label={showBlame ? "Hide line history" : "Show line history"}
               aria-pressed={showBlame}
-              disabled={view !== "doc" || !activeId}
+              disabled={view.kind !== "document" || !activeId}
               onClick={() => setShowBlame((value) => !value)}
             >
               <GitCommitHorizontal />
             </Button>
             <Button
               className="app-header-primary-action"
-              variant={view === "graph" ? "secondary" : "ghost"}
+              variant={view.kind === "graph" ? "secondary" : "ghost"}
               size="icon"
               title="Graph"
-              onClick={() => setView(view === "graph" ? "doc" : "graph")}
+              onClick={() => setView(view.kind === "graph" ? { kind: "document" } : { kind: "graph" })}
             >
               <Network />
             </Button>
@@ -473,8 +622,24 @@ export default function App() {
           </div>
         )}
         <main className="min-h-0 flex-1">
-          {view === "graph" ? (
+          {view.kind === "graph" ? (
             <GraphView vaultId={vaultId} activeId={activeId} onSelect={openDocument} version={version} />
+          ) : view.kind === "dashboard" ? (
+            (() => {
+              const dashboard = dashboards.find(({ id }) => id === view.dashboardId);
+              return dashboard ? (
+                <DashboardHost
+                  vaultId={vaultId}
+                  dashboard={dashboard}
+                  version={version}
+                  onManageAccess={() => {
+                    void beginTrustedFlow().then(() => setPermissionDashboard(dashboard));
+                  }}
+                />
+              ) : (
+                <DocumentPicker tree={manifest.tree} onSelect={openDocument} />
+              );
+            })()
           ) : (
             <div className="flex h-full min-h-0 flex-col">
               <DocumentTabs
@@ -512,6 +677,25 @@ export default function App() {
           onDone={async (preferred) => {
             await refreshVaults(preferred);
             setVersion((value) => value + 1);
+          }}
+        />
+        <DashboardCreateDialog
+          open={createDashboardOpen}
+          onOpenChange={(open) => {
+            setCreateDashboardOpen(open);
+            if (!open) void endTrustedFlow();
+          }}
+          onCreate={createDashboard}
+        />
+        <DashboardPermissionDialog
+          open={permissionDashboard !== null}
+          vaultId={vaultId}
+          dashboard={permissionDashboard}
+          onOpenChange={(open) => {
+            if (!open) {
+              setPermissionDashboard(null);
+              void endTrustedFlow();
+            }
           }}
         />
       </SidebarInset>

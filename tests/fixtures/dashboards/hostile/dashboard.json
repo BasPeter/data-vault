@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "boundary-probe",
+  "title": "Boundary probe",
+  "icon": "lightbulb",
+  "color": "orange",
+  "kind": "blank",
+  "entrypoint": "index.html",
+  "requestedCapabilities": []
+}

@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "weekly-focus",
+  "title": "Weekly focus",
+  "icon": "target",
+  "color": "green",
+  "kind": "personal-progress",
+  "entrypoint": "index.html",
+  "requestedCapabilities": ["state:read", "state:write"]
+}
