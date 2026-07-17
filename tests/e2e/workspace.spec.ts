@@ -17,6 +17,7 @@ test("uses the workspace features in one session", async ({ appLaunch }, testInf
     const footer = page.locator('[data-sidebar="footer"]');
     await expect(footer.getByText("Set up agent skills")).toBeVisible();
     await footer.getByRole("button", { name: "Set up agent skills" }).click();
+    await page.getByRole("button", { name: "Install for" }).click();
     for (const provider of ["Claude", "Codex", "OpenCode"]) {
       await page.getByRole("checkbox", { name: new RegExp(provider) }).check();
     }

@@ -167,6 +167,13 @@ describe("AgentSkillsPanel Claude plugin export", () => {
     const nextApi = api(async () => ({ exported: false }));
     window.vaultApi = nextApi;
     await openPanel();
+    const providerSelection = Array.from(document.body.querySelectorAll<HTMLButtonElement>("button")).find(
+      (button) => button.textContent === "Install for",
+    )!;
+    expect(providerSelection.getAttribute("aria-expanded")).toBe("false");
+    expect(document.body.querySelector('input[type="checkbox"]')).toBeNull();
+    await act(async () => providerSelection.click());
+    expect(providerSelection.getAttribute("aria-expanded")).toBe("true");
     const opencode = Array.from(document.body.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')).find(
       (input) => input.parentElement?.textContent?.includes("OpenCode"),
     )!;

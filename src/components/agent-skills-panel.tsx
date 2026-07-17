@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Check, Download, RefreshCw, Sparkles, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { AgentSkillProviderId, ClaudePluginStatus, SkillStatus, VaultSummary } from "@/types";
 import { canonicalVaultSignature } from "./agent-skills-signature";
@@ -255,46 +256,54 @@ export function AgentSkillsPanel({ vaults }: { vaults: VaultSummary[] }) {
           </div>
         </div>
 
-        <fieldset className="mt-4 border-t pt-4" disabled={!selectionLoaded || selectionBusy}>
-          <legend className="text-sm font-medium">Install for</legend>
-          <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
-            Select the providers that should receive future skill updates. Deselecting stops future writes and does not
-            remove files already installed outside Data Vault.
-          </p>
-          <div className="mt-3 grid gap-2">
-            {status?.providers.map((provider) => (
-              <label key={provider.id} className="flex cursor-pointer items-start gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={selection.includes(provider.id)}
-                  onChange={() => toggleProvider(provider.id)}
-                />
-                <span>
-                  <span className="font-medium">{provider.label}</span>
-                  <span className="text-muted-foreground block text-xs">{provider.root}</span>
-                </span>
-              </label>
-            ))}
-          </div>
-          <Button
-            className="mt-3 w-full"
-            size="sm"
-            onClick={saveSelection}
-            disabled={!selectionLoaded || selectionBusy}
-          >
-            {selectionBusy && <RefreshCw className="animate-spin" />}
-            {selectionBusy ? "Saving..." : "Save providers"}
-          </Button>
-          {selectionMessage && (
-            <p
-              className="text-muted-foreground mt-2 text-xs"
-              role={selectionMessage.startsWith("Could not") ? "alert" : "status"}
-              aria-live={selectionMessage.startsWith("Could not") ? "assertive" : "polite"}
-            >
-              {selectionMessage}
-            </p>
-          )}
-        </fieldset>
+        <Collapsible className="mt-4 border-t pt-4">
+          <CollapsibleTrigger asChild>
+            <button type="button" className="cursor-pointer text-sm font-medium">
+              Install for
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <fieldset className="pt-3" disabled={!selectionLoaded || selectionBusy}>
+              <p className="text-muted-foreground text-xs leading-relaxed">
+                Select the providers that should receive future skill updates. Deselecting stops future writes and does
+                not remove files already installed outside Data Vault.
+              </p>
+              <div className="mt-3 grid gap-2">
+                {status?.providers.map((provider) => (
+                  <label key={provider.id} className="flex cursor-pointer items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={selection.includes(provider.id)}
+                      onChange={() => toggleProvider(provider.id)}
+                    />
+                    <span>
+                      <span className="font-medium">{provider.label}</span>
+                      <span className="text-muted-foreground block text-xs">{provider.root}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <Button
+                className="mt-3 w-full"
+                size="sm"
+                onClick={saveSelection}
+                disabled={!selectionLoaded || selectionBusy}
+              >
+                {selectionBusy && <RefreshCw className="animate-spin" />}
+                {selectionBusy ? "Saving..." : "Save providers"}
+              </Button>
+              {selectionMessage && (
+                <p
+                  className="text-muted-foreground mt-2 text-xs"
+                  role={selectionMessage.startsWith("Could not") ? "alert" : "status"}
+                  aria-live={selectionMessage.startsWith("Could not") ? "assertive" : "polite"}
+                >
+                  {selectionMessage}
+                </p>
+              )}
+            </fieldset>
+          </CollapsibleContent>
+        </Collapsible>
 
         {status?.providers.filter((provider) => provider.enabled).length ? (
           <div className="mt-4 grid gap-2">
