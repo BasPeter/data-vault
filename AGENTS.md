@@ -270,9 +270,9 @@ Copy Writer output is a Copy Report. It does not gate acceptance and carries no 
 
 ### Model-pin strategy
 
-Judgment-heavy agents (Architect, Debugger, Reviewer, Copy Writer) use `model: inherit` so they run on the strongest available model.
-Mechanical/bounded agents (Scout, Verifier, Implementer) pin a cheap model alias for cost discipline.
-Generic aliases and `inherit` survive model migrations without edits; a named model pin would not.
+Copy Writer, Debugger, Implementer, and Reviewer pin `model: terra`.
+Scout and Verifier pin `model: luna` for mechanical repository work.
+These generic aliases survive model migrations without edits.
 
 ## Build and Testing Rules
 
