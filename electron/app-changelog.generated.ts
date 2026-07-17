@@ -2,13 +2,34 @@
 import type { AppChangelog } from "../src/types";
 
 export const APP_CHANGELOG = {
-  "generatedAt": "2026-07-15T12:01:15+02:00",
+  "generatedAt": "2026-07-17T11:32:59+02:00",
   "repositoryUrl": "https://github.com/BasPeter/data-vault.git",
   "releases": [
     {
-      "version": "0.14.1",
-      "date": "2026-07-15T12:01:15+02:00",
+      "version": "0.15.0",
+      "date": "2026-07-17T11:32:59+02:00",
       "commits": [
+        {
+          "hash": "3430339f807a14d2b090aa4118ab339f827891ec",
+          "shortHash": "3430339",
+          "subject": "chore(agents): pin subagent models"
+        },
+        {
+          "hash": "6145bff5f5354e8d1bbc3ab6a2499a8bed62589e",
+          "shortHash": "6145bff",
+          "subject": "feat(agent-skills): add provider selection"
+        }
+      ]
+    },
+    {
+      "version": "0.14.1",
+      "date": "2026-07-15T12:07:27+02:00",
+      "commits": [
+        {
+          "hash": "5a0c6f121d6e4c1368a91c87606f2382c6a487b9",
+          "shortHash": "5a0c6f1",
+          "subject": "chore(release): prepare 0.14.1"
+        },
         {
           "hash": "6433c3a2860fc8d836653813d36ca1adb88ac07f",
           "shortHash": "6433c3a",
