@@ -120,8 +120,7 @@ the advanced Git-URL and local-folder options are available.
 
 ## Agent skills
 
-Data Vault generates two agent skills for Claude and Codex from your registered
-vault list:
+Data Vault generates two agent skills from your registered vault list:
 
 - **vault-guide** — how to read, create, edit, and cross-link vault documents
   (including the rule that cross-vault links may only point from a less public
@@ -130,10 +129,18 @@ vault list:
   vault's setup and rules: fragment shape, metadata, link integrity, naming,
   placement, language, and cross-vault privacy. It does not critique content.
 
-The skills install automatically on launch and whenever your vault list changes,
-writing only to `~/.claude/skills/<skill>` and `~/.codex/skills/<skill>`. The
-sparkles button in the toolbar shows their status and lets you re-install
-manually; a red dot means the installed copies are missing or out of date.
+Use the Agent Skills panel in the sidebar to explicitly select any combination
+of Claude, Codex, and OpenCode, then save. Data Vault installs and refreshes
+only the selected providers, writing to:
+
+- `~/.claude/skills/<skill>/SKILL.md` for Claude
+- `~/.codex/skills/<skill>/SKILL.md` for Codex
+- `~/.config/opencode/skills/<skill>/SKILL.md` for OpenCode
+
+Changing the selection takes effect immediately. Deselecting a provider stops
+future writes but does not delete previously installed files; remove those
+manually if wanted. The sparkles button shows status by provider and lets you
+retry failed or missing installations.
 
 ### Claude Desktop and Cowork plugin
 
@@ -152,12 +159,12 @@ Data Vault plugin in Claude Desktop, export a new ZIP, and upload it. Same-name
 replacement or automatic update detection is not assumed. Anthropic does not
 publish a numeric minimum Desktop version for this flow; use a current paid-plan
 Claude Desktop release that displays **Customize > Plugins** and custom upload.
-To uninstall, remove the plugin in Claude Desktop. Standalone skills remain
-installed independently; enabling both copies may show duplicate capabilities.
+To uninstall, remove the plugin in Claude Desktop. The plugin is independent of
+the standalone Claude selection; enabling both may show duplicate capabilities.
 
 The Claude plugin section is collapsed by default. Data Vault records only the
-last successful plugin and canonical skill fingerprints. If the generated or
-installed Claude skills change afterward, the section marks the export stale
+last successful plugin and canonical skill fingerprints. If the generated
+skills change afterward, the section marks the export stale
 and offers a fixed **Copy Cowork update prompt** action. Cowork may access only
 the plugin tree explicitly selected for that task plus the two fixed generated
 `SKILL.md` source files under `~/.claude/skills/`; it must not search for the

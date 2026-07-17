@@ -31,7 +31,7 @@ const STEPS: TourStep[] = [
   },
   {
     title: "Agent skills",
-    body: "At the bottom of the sidebar you can install the vault-guide and document-reviewer skills, letting Claude and Codex read, edit, and review your vaults.",
+    body: "At the bottom of the sidebar, choose Claude, Codex, and/or OpenCode, then save your selection to install the vault-guide and document-reviewer skills. You can change the selection later; existing files are never removed automatically.",
   },
   {
     title: "Stay up to date",

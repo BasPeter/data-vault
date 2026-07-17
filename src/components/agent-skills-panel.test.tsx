@@ -2,14 +2,57 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ClaudePluginExportResult, SkillStatus, VaultApi } from "@/types";
+import type { AgentSkillProviderId, ClaudePluginExportResult, SkillStatus, VaultApi } from "@/types";
 import { AgentSkillsPanel } from "./agent-skills-panel";
 
 const currentStatus: SkillStatus = {
   state: "current",
   version: "9",
   vaultCount: 1,
-  skills: [{ name: "vault-guide", label: "Vault Guide", latestVersion: "9", installedVersion: "9", state: "current" }],
+  providers: [
+    {
+      id: "claude",
+      label: "Claude",
+      root: "~/.claude/skills",
+      enabled: true,
+      state: "current",
+      skills: [
+        { name: "vault-guide", label: "Vault Guide", latestVersion: "9", installedVersion: "9", state: "current" },
+      ],
+    },
+    {
+      id: "codex",
+      label: "Codex",
+      root: "~/.codex/skills",
+      enabled: false,
+      state: "needs-install",
+      skills: [
+        {
+          name: "vault-guide",
+          label: "Vault Guide",
+          latestVersion: "9",
+          installedVersion: null,
+          state: "not-installed",
+        },
+      ],
+    },
+    {
+      id: "opencode",
+      label: "OpenCode",
+      root: "~/.config/opencode/skills",
+      enabled: false,
+      state: "needs-install",
+      skills: [
+        {
+          name: "vault-guide",
+          label: "Vault Guide",
+          latestVersion: "9",
+          installedVersion: null,
+          state: "not-installed",
+        },
+      ],
+    },
+  ],
 };
 
 let container: HTMLDivElement;
@@ -18,6 +61,8 @@ let root: Root;
 function api(exportClaudePlugin: () => Promise<ClaudePluginExportResult>): VaultApi {
   return {
     skillStatus: vi.fn(async () => currentStatus),
+    skillProviderSelection: vi.fn(async () => ["claude"] as AgentSkillProviderId[]),
+    saveSkillProviderSelection: vi.fn(async () => currentStatus),
     claudePluginStatus: vi.fn(async () => ({ state: "current", pluginFingerprint: "abc" })),
     exportClaudePlugin: vi.fn(exportClaudePlugin),
   } as unknown as VaultApi;
@@ -63,6 +108,79 @@ afterEach(async () => {
 });
 
 describe("AgentSkillsPanel Claude plugin export", () => {
+  it("shows a provider-specific install failure, its skill states, and the retry action", async () => {
+    const failedStatus: SkillStatus = {
+      ...currentStatus,
+      state: "error",
+      providers: currentStatus.providers.map((provider) =>
+        provider.id === "codex"
+          ? {
+              ...provider,
+              enabled: true,
+              state: "error",
+              error: "The global skills directory is not writable.",
+              skills: [
+                {
+                  name: "vault-guide",
+                  label: "Vault Guide",
+                  latestVersion: "9",
+                  installedVersion: null,
+                  state: "not-installed",
+                },
+                {
+                  name: "document-reviewer",
+                  label: "Document Reviewer",
+                  latestVersion: "9",
+                  installedVersion: "8",
+                  state: "outdated",
+                },
+              ],
+            }
+          : provider,
+      ),
+    };
+    const nextApi = api(async () => ({ exported: false }));
+    nextApi.skillStatus = vi.fn(async () => failedStatus);
+    nextApi.skillProviderSelection = vi.fn(async () => ["claude", "codex"] as AgentSkillProviderId[]);
+    window.vaultApi = nextApi;
+    await act(async () => {
+      root.render(<AgentSkillsPanel vaults={[{ id: "v", name: "Vault", repositoryPath: "/vault", format: "html" }]} />);
+    });
+    const trigger = Array.from(container.querySelectorAll("button")).find((button) =>
+      button.textContent?.includes("Agent skills need attention"),
+    )!;
+    await act(async () => trigger.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(document.body.textContent).toContain(
+      "Could not install Codex: The global skills directory is not writable. Select Re-install skills to retry.",
+    );
+    expect(document.body.textContent).toContain("Vault Guide: not installed");
+    expect(document.body.textContent).toContain("Document Reviewer: outdated");
+    expect(document.body.querySelector('[role="alert"]')?.textContent).toContain("Could not install Codex");
+    expect(
+      Array.from(document.body.querySelectorAll("button")).some((button) =>
+        button.textContent?.includes("Re-install skills"),
+      ),
+    ).toBe(true);
+  });
+
+  it("saves an explicit provider selection and explains that opt-out is non-destructive", async () => {
+    const nextApi = api(async () => ({ exported: false }));
+    window.vaultApi = nextApi;
+    await openPanel();
+    const opencode = Array.from(document.body.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')).find(
+      (input) => input.parentElement?.textContent?.includes("OpenCode"),
+    )!;
+    expect(opencode.checked).toBe(false);
+    expect(document.body.textContent).toContain("does not remove files already installed outside Data Vault");
+    await act(async () => opencode.click());
+    const save = Array.from(document.body.querySelectorAll("button")).find((button) =>
+      button.textContent?.includes("Save providers"),
+    )!;
+    await act(async () => save.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(nextApi.saveSkillProviderSelection).toHaveBeenCalledWith(["claude", "opencode"]);
+    expect(document.body.querySelector('[role="status"]')?.textContent).toContain("Provider selection saved.");
+  });
+
   it("invokes export, disables the action while pending, and reports success", async () => {
     let resolve!: (result: ClaudePluginExportResult) => void;
     const pending = new Promise<ClaudePluginExportResult>((done) => {
@@ -133,6 +251,25 @@ describe("AgentSkillsPanel Claude plugin export", () => {
     await act(async () => copy.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(details.textContent).toContain("Could not copy the Cowork update prompt.");
     expect(details.querySelector('[role="alert"][aria-live="assertive"]')).not.toBeNull();
+  });
+
+  it("explains when a stale plugin cannot offer the Cowork update action", async () => {
+    const nextApi = api(async () => ({ exported: false }));
+    nextApi.claudePluginStatus = vi.fn(async () => ({
+      state: "stale" as const,
+      pluginFingerprint: "old",
+      updateUnavailableReason: "Claude standalone skill sources are unavailable.",
+    }));
+    window.vaultApi = nextApi;
+    await openPanel();
+    expect(document.body.textContent).toContain(
+      "Cowork update action is unavailable: Claude standalone skill sources are unavailable.",
+    );
+    expect(
+      Array.from(document.body.querySelectorAll("button")).some((button) =>
+        button.textContent?.includes("Copy Cowork update prompt"),
+      ),
+    ).toBe(false);
   });
 
   it("refreshes freshness status for format, language, and nested structure-only changes", async () => {

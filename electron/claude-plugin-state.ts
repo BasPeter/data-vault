@@ -24,6 +24,9 @@ Do not read vault documents, Git credentials, tokens, environment variables, con
 
 When both skill files have been updated, validate that the plugin structure is unchanged and report completion.`;
 
+export const CLAUDE_COWORK_SOURCE_UNAVAILABLE =
+  "Select Claude in Agent Skills and save to install the source skills before copying the Cowork update prompt.";
+
 export class ClaudePluginStateService {
   private readonly file: string;
 
@@ -45,7 +48,7 @@ export class ClaudePluginStateService {
     }
   }
 
-  status(currentSkillFingerprint: string, claudeSkillsCurrent: boolean): ClaudePluginStatus {
+  status(currentSkillFingerprint: string, claudeSourceAvailable: boolean): ClaudePluginStatus {
     let candidate: unknown = null;
     try {
       candidate = JSON.parse(fs.readFileSync(this.file, "utf8"));
@@ -65,11 +68,13 @@ export class ClaudePluginStateService {
       return { state: "not-exported" };
     }
     const stored = candidate as PersistedState;
-    const state = claudeSkillsCurrent && stored.skillFingerprint === currentSkillFingerprint ? "current" : "stale";
+    const state = stored.skillFingerprint === currentSkillFingerprint ? "current" : "stale";
     return {
       state,
       pluginFingerprint: stored.pluginFingerprint,
-      updatePrompt: state === "stale" ? CLAUDE_COWORK_UPDATE_PROMPT : undefined,
+      updatePrompt: state === "stale" && claudeSourceAvailable ? CLAUDE_COWORK_UPDATE_PROMPT : undefined,
+      updateUnavailableReason:
+        state === "stale" && !claudeSourceAvailable ? CLAUDE_COWORK_SOURCE_UNAVAILABLE : undefined,
     };
   }
 }

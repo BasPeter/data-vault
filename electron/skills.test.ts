@@ -45,6 +45,13 @@ const vaultWithMeta: VaultSummary = {
 const claudeSkill = (home: string) => path.join(home, ".claude", "skills", "vault-guide", "SKILL.md");
 const codexSkill = (home: string) => path.join(home, ".codex", "skills", "vault-guide", "SKILL.md");
 const reviewerDir = (home: string, base: string) => path.join(home, base, "skills", "document-reviewer");
+const openCodeSkill = (home: string) => path.join(home, ".config", "opencode", "skills", "vault-guide", "SKILL.md");
+
+function configured(home: string, providers: unknown = ["claude", "codex"]): SkillService {
+  const service = new SkillService(home, home);
+  service.setEnabledProviders(providers);
+  return service;
+}
 
 describe("SkillService", () => {
   it("frames vault metadata as untrusted reference data", () => {
@@ -191,31 +198,14 @@ describe("SkillService", () => {
     expect(service.fingerprint([base])).not.toBe(service.fingerprint([{ ...base, format: "markdown" }]));
   });
 
-  it("installs the skill into the Claude and Codex skill directories", () => {
+  it("installs skills only into explicitly selected provider directories", () => {
     const home = temporaryDirectory();
-    const status = new SkillService(home).install([vaultA]);
+    const status = configured(home, ["opencode"]).install([vaultA]);
 
     expect(status.state).toBe("current");
-    expect(status.skills).toEqual([
-      {
-        name: "vault-guide",
-        label: "Vault Guide",
-        latestVersion: "9",
-        installedVersion: "9",
-        state: "current",
-      },
-      {
-        name: "document-reviewer",
-        label: "Document Reviewer",
-        latestVersion: "5",
-        installedVersion: "5",
-        state: "current",
-      },
-    ]);
-    for (const dir of [path.dirname(claudeSkill(home)), path.dirname(codexSkill(home))]) {
-      expect(fs.existsSync(path.join(dir, "SKILL.md"))).toBe(true);
-      expect(fs.existsSync(path.join(dir, ".vault-guide.json"))).toBe(true);
-    }
+    expect(fs.existsSync(openCodeSkill(home))).toBe(true);
+    expect(fs.existsSync(claudeSkill(home))).toBe(false);
+    expect(fs.existsSync(codexSkill(home))).toBe(false);
   });
 
   it("tells the writer to link documents and invoke the reviewer", () => {
@@ -233,7 +223,7 @@ describe("SkillService", () => {
 
   it("renders the document reviewer structural checks and each registered vault", () => {
     const home = temporaryDirectory();
-    new SkillService(home).install([vaultA, vaultWithMeta]);
+    configured(home).install([vaultA, vaultWithMeta]);
     const skill = fs.readFileSync(path.join(reviewerDir(home, ".claude"), "SKILL.md"), "utf8");
     expect(skill).toContain("name: document-reviewer");
     expect(skill).toContain("documents in the user's local Data Vault knowledge repositories");
@@ -248,7 +238,7 @@ describe("SkillService", () => {
 
   it("quotes the frontmatter description so a colon in the prose stays valid YAML", () => {
     const home = temporaryDirectory();
-    new SkillService(home).install([vaultA]);
+    configured(home).install([vaultA]);
     const reviewer = fs.readFileSync(path.join(reviewerDir(home, ".codex"), "SKILL.md"), "utf8");
     // The reviewer description contains "rules: format, ..." — an unquoted
     // colon-space here makes strict YAML loaders (Codex) reject the file.
@@ -259,7 +249,7 @@ describe("SkillService", () => {
 
   it("installs the document reviewer skill into both directories", () => {
     const home = temporaryDirectory();
-    new SkillService(home).install([vaultA]);
+    configured(home).install([vaultA]);
     for (const base of [".claude", ".codex"]) {
       const dir = reviewerDir(home, base);
       expect(fs.existsSync(path.join(dir, "SKILL.md"))).toBe(true);
@@ -269,40 +259,93 @@ describe("SkillService", () => {
 
   it("reports not-installed, then current, then outdated when vaults change", () => {
     const home = temporaryDirectory();
-    const service = new SkillService(home);
+    const service = new SkillService(home, home);
 
-    expect(service.status([vaultA]).state).toBe("not-installed");
+    expect(service.status([vaultA]).state).toBe("not-configured");
+    service.setEnabledProviders(["claude"]);
+    expect(service.status([vaultA]).state).toBe("needs-install");
     service.install([vaultA]);
     expect(service.status([vaultA]).state).toBe("current");
     const outdated = service.status([vaultA, vaultB]);
-    expect(outdated.state).toBe("outdated");
-    expect(outdated.skills.map((skill) => skill.state)).toEqual(["outdated", "outdated"]);
+    expect(outdated.state).toBe("needs-install");
+    expect(outdated.providers.find((provider) => provider.id === "claude")?.skills.map((skill) => skill.state)).toEqual(
+      ["outdated", "outdated"],
+    );
   });
 
   it("reports outdated when only the document reviewer skill is missing", () => {
     const home = temporaryDirectory();
-    const service = new SkillService(home);
+    const service = configured(home, ["claude"]);
     service.install([vaultA]);
     fs.rmSync(reviewerDir(home, ".claude"), { recursive: true, force: true });
-    expect(service.status([vaultA]).state).toBe("not-installed");
+    expect(service.status([vaultA]).state).toBe("needs-install");
   });
 
   it("reports outdated when an installed skill no longer matches its generated content", () => {
     const home = temporaryDirectory();
-    const service = new SkillService(home);
+    const service = configured(home, ["claude"]);
     service.install([vaultA]);
     fs.appendFileSync(claudeSkill(home), "\nLocally modified.\n");
-    expect(service.status([vaultA]).state).toBe("outdated");
+    expect(service.status([vaultA]).state).toBe("needs-install");
   });
 
-  it("tracks current Claude skill integrity independently from vault and file changes", () => {
+  it("preserves opt-out files while preventing later writes", () => {
     const home = temporaryDirectory();
-    const service = new SkillService(home);
-    expect(service.claudeSkillsCurrent([vaultA])).toBe(false);
+    const service = configured(home, ["claude"]);
+    service.install([vaultA]);
+    const installed = fs.readFileSync(claudeSkill(home), "utf8");
+    service.setEnabledProviders([]);
+    service.install([vaultB]);
+    expect(fs.readFileSync(claudeSkill(home), "utf8")).toBe(installed);
+  });
+
+  it("checks Cowork Claude sources on disk independently of provider selection", () => {
+    const home = temporaryDirectory();
+    const service = configured(home, ["claude"]);
     service.install([vaultA]);
     expect(service.claudeSkillsCurrent([vaultA])).toBe(true);
-    expect(service.claudeSkillsCurrent([vaultA, vaultB])).toBe(false);
+
+    // Deselecting Claude preserves current sources, so the fixed Cowork source
+    // allowlist remains available without treating selection as availability.
+    service.setEnabledProviders([]);
+    expect(service.claudeSkillsCurrent([vaultA])).toBe(true);
+
+    fs.rmSync(reviewerDir(home, ".claude"), { recursive: true, force: true });
+    expect(service.claudeSkillsCurrent([vaultA])).toBe(false);
+    service.setEnabledProviders(["claude"]);
+    expect(service.claudeSkillsCurrent([vaultA])).toBe(false);
+
+    service.install([vaultA]);
     fs.appendFileSync(claudeSkill(home), "\nTampered.\n");
     expect(service.claudeSkillsCurrent([vaultA])).toBe(false);
+  });
+
+  it("keeps provider-specific skill detail when one selected provider fails", () => {
+    const home = temporaryDirectory();
+    const service = configured(home, ["claude", "codex"]);
+    // A file at the trusted Codex root makes only that provider's write fail.
+    fs.mkdirSync(path.join(home, ".codex"));
+    fs.writeFileSync(path.join(home, ".codex", "skills"), "not a directory");
+
+    const status = service.install([vaultA]);
+    const claude = status.providers.find((provider) => provider.id === "claude");
+    const codex = status.providers.find((provider) => provider.id === "codex");
+    expect(claude?.state).toBe("current");
+    expect(codex?.state).toBe("error");
+    expect(codex?.skills.map((skill) => skill.name)).toEqual(["vault-guide", "document-reviewer"]);
+    expect(codex?.skills.every((skill) => skill.state === "not-installed")).toBe(true);
+  });
+
+  it("validates persisted provider selections and defaults missing or invalid preferences to no providers", () => {
+    const home = temporaryDirectory();
+    expect(new SkillService(home, home).getEnabledProviders()).toEqual([]);
+    configured(home, ["opencode"]);
+    expect(new SkillService(home, home).getEnabledProviders()).toEqual(["opencode"]);
+    fs.writeFileSync(
+      path.join(home, "agent-skill-providers.json"),
+      JSON.stringify({ version: 1, enabledProviders: ["claude", "unknown"] }),
+    );
+    expect(new SkillService(home, home).getEnabledProviders()).toEqual([]);
+    expect(() => configured(home).setEnabledProviders(["claude", "claude"])).toThrow("Invalid skill providers.");
   });
 });

@@ -3,7 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { randomUUID } from "node:crypto";
-import type { SkillStatus, VaultStructure, VaultSummary } from "../src/types";
+import type {
+  AgentSkillProviderId,
+  AgentSkillProviderStatus,
+  SkillStatus,
+  VaultStructure,
+  VaultSummary,
+} from "../src/types";
 
 // Bump a skill's version when its SKILL.md template or guidance changes so that
 // installed copies are reported as outdated and re-installed.
@@ -30,6 +36,27 @@ interface SkillDefinition {
 }
 
 export type CanonicalSkill = { name: string; content: string };
+
+export type SkillProvider = { id: AgentSkillProviderId; label: string; root: (homeDirectory: string) => string };
+
+// This fixed allowlist is the only source of filesystem roots. Renderer input
+// is restricted to these identifiers and can never supply a path.
+export const SKILL_PROVIDERS: readonly SkillProvider[] = [
+  { id: "claude", label: "Claude", root: (home) => path.join(home, ".claude", "skills") },
+  { id: "codex", label: "Codex", root: (home) => path.join(home, ".codex", "skills") },
+  { id: "opencode", label: "OpenCode", root: (home) => path.join(home, ".config", "opencode", "skills") },
+];
+
+const PREFERENCES_FILE = "agent-skill-providers.json";
+const PREFERENCES_VERSION = 1;
+
+function isProviderId(value: unknown): value is AgentSkillProviderId {
+  return typeof value === "string" && SKILL_PROVIDERS.some((provider) => provider.id === value);
+}
+
+function validProviders(value: unknown): value is AgentSkillProviderId[] {
+  return Array.isArray(value) && value.every(isProviderId) && new Set(value).size === value.length;
+}
 
 type Marker = { version: string; fingerprint: string };
 
@@ -389,10 +416,48 @@ export function renderCanonicalSkills(vaults: VaultSummary[]): CanonicalSkill[] 
 
 export class SkillService {
   // Fixed roots only — never renderer-supplied — per the AGENTS.md invariant.
-  private readonly bases: string[];
+  private readonly preferencesFile: string;
+  private enabledProviders: AgentSkillProviderId[];
+  private readonly installErrors = new Map<AgentSkillProviderId, string>();
 
-  constructor(homeDirectory: string = os.homedir()) {
-    this.bases = [path.join(homeDirectory, ".claude", "skills"), path.join(homeDirectory, ".codex", "skills")];
+  constructor(
+    private readonly homeDirectory: string = os.homedir(),
+    userDataDirectory: string = homeDirectory,
+  ) {
+    this.preferencesFile = path.join(userDataDirectory, PREFERENCES_FILE);
+    this.enabledProviders = this.readEnabledProviders();
+  }
+
+  private readEnabledProviders(): AgentSkillProviderId[] {
+    const preference = readJson<unknown>(this.preferencesFile);
+    if (
+      preference === null ||
+      typeof preference !== "object" ||
+      Array.isArray(preference) ||
+      (preference as { version?: unknown }).version !== PREFERENCES_VERSION ||
+      !validProviders((preference as { enabledProviders?: unknown }).enabledProviders)
+    )
+      return [];
+    return (preference as { enabledProviders: AgentSkillProviderId[] }).enabledProviders;
+  }
+
+  getEnabledProviders(): AgentSkillProviderId[] {
+    return [...this.enabledProviders];
+  }
+
+  setEnabledProviders(providers: unknown): void {
+    if (!validProviders(providers)) throw new Error("Invalid skill providers.");
+    atomicWrite(
+      this.preferencesFile,
+      `${JSON.stringify({ version: PREFERENCES_VERSION, enabledProviders: providers }, null, 2)}\n`,
+      0o600,
+    );
+    this.enabledProviders = [...providers];
+    this.installErrors.clear();
+  }
+
+  private enabled(): SkillProvider[] {
+    return SKILL_PROVIDERS.filter((provider) => this.enabledProviders.includes(provider.id));
   }
 
   // Backwards-compatible accessor for the primary skill's rendered SKILL.md.
@@ -413,68 +478,96 @@ export class SkillService {
     return createHash("sha256").update(payload).digest("hex");
   }
 
+  // The Cowork update prompt has a deliberately fixed source allowlist under
+  // ~/.claude. This integrity check is independent of provider selection:
+  // deselection never deletes files, so retained current sources remain safe
+  // to use, while missing, partial, or tampered sources disable that action.
   claudeSkillsCurrent(vaults: VaultSummary[]): boolean {
-    const base = this.bases[0];
+    const base = SKILL_PROVIDERS.find((provider) => provider.id === "claude")?.root(this.homeDirectory);
+    if (!base) return false;
     return SKILLS.every((skill) => {
       const directory = path.join(base, skill.name);
+      const skillFile = path.join(directory, SKILL_FILE);
       const marker = readJson<Marker>(path.join(directory, skill.markerFile));
-      return (
-        marker?.fingerprint === this.skillFingerprint(skill, vaults) &&
-        fs.existsSync(path.join(directory, SKILL_FILE)) &&
-        fs.readFileSync(path.join(directory, SKILL_FILE), "utf8") === skill.render(vaults)
-      );
+      try {
+        return (
+          marker?.fingerprint === this.skillFingerprint(skill, vaults) &&
+          fs.existsSync(skillFile) &&
+          fs.readFileSync(skillFile, "utf8") === skill.render(vaults)
+        );
+      } catch {
+        return false;
+      }
     });
   }
 
   install(vaults: VaultSummary[]): SkillStatus {
-    for (const skill of SKILLS) {
-      const content = skill.render(vaults);
-      const marker: Marker = { version: skill.version, fingerprint: this.skillFingerprint(skill, vaults) };
-      for (const base of this.bases) {
-        const directory = path.join(base, skill.name);
-        atomicWrite(path.join(directory, SKILL_FILE), content, 0o644);
-        atomicWrite(path.join(directory, skill.markerFile), `${JSON.stringify(marker, null, 2)}\n`, 0o600);
+    for (const provider of this.enabled()) {
+      try {
+        for (const skill of SKILLS) {
+          const directory = path.join(provider.root(this.homeDirectory), skill.name);
+          const marker: Marker = { version: skill.version, fingerprint: this.skillFingerprint(skill, vaults) };
+          atomicWrite(path.join(directory, SKILL_FILE), skill.render(vaults), 0o644);
+          atomicWrite(path.join(directory, skill.markerFile), `${JSON.stringify(marker, null, 2)}\n`, 0o600);
+        }
+        this.installErrors.delete(provider.id);
+      } catch (error) {
+        this.installErrors.set(provider.id, error instanceof Error ? error.message : "Installation failed.");
       }
     }
     return this.status(vaults);
   }
 
   status(vaults: VaultSummary[]): SkillStatus {
-    let installed = true;
-    let matches = true;
-    const skillStatuses: SkillStatus["skills"] = [];
-    for (const skill of SKILLS) {
-      const current = this.skillFingerprint(skill, vaults);
-      const expectedContent = skill.render(vaults);
-      let skillInstalled = true;
-      let skillMatches = true;
-      const installedVersions = new Set<string>();
-      for (const base of this.bases) {
-        const directory = path.join(base, skill.name);
-        const skillFile = path.join(directory, SKILL_FILE);
-        if (!fs.existsSync(skillFile)) {
-          installed = false;
-          skillInstalled = false;
-          continue;
-        }
-        const marker = readJson<Marker>(path.join(directory, skill.markerFile));
-        if (marker?.version) installedVersions.add(marker.version);
-        if (!marker || marker.fingerprint !== current || fs.readFileSync(skillFile, "utf8") !== expectedContent) {
-          matches = false;
-          skillMatches = false;
-        }
+    const providers = SKILL_PROVIDERS.map((provider) => this.providerStatus(provider, vaults));
+    const enabled = providers.filter((provider) => provider.enabled);
+    const state: SkillStatus["state"] =
+      enabled.length === 0
+        ? "not-configured"
+        : enabled.some((provider) => provider.state === "error")
+          ? "error"
+          : enabled.every((provider) => provider.state === "current")
+            ? "current"
+            : "needs-install";
+    return { state, version: VAULT_GUIDE_VERSION, vaultCount: vaults.length, providers };
+  }
+
+  private providerStatus(provider: SkillProvider, vaults: VaultSummary[]): AgentSkillProviderStatus {
+    const enabled = this.enabledProviders.includes(provider.id);
+    const root = provider.root(this.homeDirectory);
+    if (!enabled) return { id: provider.id, label: provider.label, root, enabled, state: "needs-install", skills: [] };
+    const error = this.installErrors.get(provider.id);
+    let current = true;
+    const skills: AgentSkillProviderStatus["skills"] = SKILLS.map((skill) => {
+      const directory = path.join(root, skill.name);
+      const skillFile = path.join(directory, SKILL_FILE);
+      const marker = readJson<Marker>(path.join(directory, skill.markerFile));
+      let matches = false;
+      try {
+        matches =
+          fs.existsSync(skillFile) &&
+          marker?.fingerprint === this.skillFingerprint(skill, vaults) &&
+          fs.readFileSync(skillFile, "utf8") === skill.render(vaults);
+      } catch {
+        // An unreadable file is treated as a stale skill.
       }
-      const installedVersion =
-        installedVersions.size === 0 ? null : installedVersions.size === 1 ? Array.from(installedVersions)[0] : "mixed";
-      skillStatuses.push({
+      if (!matches) current = false;
+      return {
         name: skill.name,
         label: skill.label,
         latestVersion: skill.version,
-        installedVersion,
-        state: !skillInstalled ? "not-installed" : skillMatches ? "current" : "outdated",
-      });
-    }
-    const state: SkillStatus["state"] = !installed ? "not-installed" : matches ? "current" : "outdated";
-    return { state, version: VAULT_GUIDE_VERSION, vaultCount: vaults.length, skills: skillStatuses };
+        installedVersion: marker?.version ?? null,
+        state: matches ? "current" : !fs.existsSync(skillFile) ? "not-installed" : "outdated",
+      };
+    });
+    return {
+      id: provider.id,
+      label: provider.label,
+      root,
+      enabled,
+      state: error ? "error" : current ? "current" : "needs-install",
+      error,
+      skills,
+    };
   }
 }

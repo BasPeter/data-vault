@@ -2,9 +2,9 @@
 
 ## 1. Format validation and bounded design
 
-- [ ] 1.1 Confirm the target Claude Desktop custom-plugin file contract using
+- [x] 1.1 Confirm the target Claude Desktop custom-plugin file contract using
       current official documentation and a minimal manual upload experiment.
-- [ ] 1.2 Record the accepted archive root/layout, observed same-name replacement
+- [x] 1.2 Record the accepted archive root/layout, observed same-name replacement
       behavior, manual update procedure, and minimum supported Claude Desktop
       version in implementation documentation.
 - [x] 1.3 Inspect available archive libraries; obtain user confirmation before
@@ -44,9 +44,9 @@
 - [x] 4.1 Run the narrow exporter and skill tests and fix failures.
 - [x] 4.2 Run `npm run test`, `npm run typecheck`, `npm run lint`,
       `npm run format:check`, and `npm run build`.
-- [ ] 4.3 Manually upload the exported plugin in Claude Desktop and verify both
+- [x] 4.3 Manually upload the exported plugin in Claude Desktop and verify both
       skills in Chat and a Cowork task using a non-personal test vault.
-- [ ] 4.4 Run OpenSpec verification and resolve every mismatch.
+- [x] 4.4 Run OpenSpec verification and resolve every mismatch.
 - [x] 4.5 Obtain independent Reviewer approval for security, archive handling,
       architecture, privacy, and whether tests prove intent.
 

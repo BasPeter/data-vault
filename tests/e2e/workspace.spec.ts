@@ -1,15 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { captureScreenshot, expect, test } from "./electron-app";
-import { SkillService } from "../../electron/skills";
-
-// Derive the expected skill versions from the source of truth instead of
-// hardcoding them, so a version bump doesn't silently make this test brittle.
-// `status()` only reads (never writes), so a non-existent home directory is fine.
-const skillVersions = new SkillService(path.join(os.tmpdir(), "data-vault-skill-versions-probe")).status([]).skills;
-const vaultGuideVersion = skillVersions.find((skill) => skill.name === "vault-guide")?.latestVersion;
-const documentReviewerVersion = skillVersions.find((skill) => skill.name === "document-reviewer")?.latestVersion;
 
 test("uses the workspace features in one session", async ({ appLaunch }, testInfo) => {
   test.slow();
@@ -24,24 +15,29 @@ test("uses the workspace features in one session", async ({ appLaunch }, testInf
     await expect(page.getByTestId("vault-switcher")).toContainText("Example Vault");
 
     const footer = page.locator('[data-sidebar="footer"]');
-    await expect(footer.getByText("Agent skills are up to date")).toBeVisible();
-    await footer.getByRole("button", { name: "Agent skills are up to date" }).click();
-    await expect(page.getByText("Vault Guide")).toBeVisible();
-    await expect(page.getByText("Document Reviewer")).toBeVisible();
-    await expect(page.getByText(`Installed: v${vaultGuideVersion}`)).toBeVisible();
-    await expect(page.getByText(`Latest: v${documentReviewerVersion}`)).toBeVisible();
+    await expect(footer.getByText("Set up agent skills")).toBeVisible();
+    await footer.getByRole("button", { name: "Set up agent skills" }).click();
+    for (const provider of ["Claude", "Codex", "OpenCode"]) {
+      await page.getByRole("checkbox", { name: new RegExp(provider) }).check();
+    }
+    await page.getByRole("button", { name: "Save providers" }).click();
+    await expect(page.getByText("Provider selection saved.")).toBeVisible();
+    await expect(page.getByRole("checkbox", { name: "OpenCode" })).toBeChecked();
+    await expect(page.getByText("Vault Guide: current").first()).toBeVisible();
+    await expect(page.getByText("Document Reviewer: current").first()).toBeVisible();
+    await expect(page.getByText(/Installed: v/).first()).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(footer.getByRole("button", { name: /^Data Vault/ })).toBeVisible();
 
     const header = page.locator("header");
     await expect(header.getByRole("button", { name: "Start guided tour" })).toBeVisible();
-    await expect(header.getByRole("button", { name: /Set up Claude and Codex skills/ })).toHaveCount(0);
+    await expect(header.getByRole("button", { name: /Set up Claude, Codex, and OpenCode skills/ })).toHaveCount(0);
     await captureScreenshot(page, testInfo, "document-tree");
     await captureScreenshot(page, testInfo, "sidebar-tools");
   });
 
   await test.step("isolates generated agent skills", async () => {
-    for (const base of [".claude", ".codex"]) {
+    for (const base of [".claude", ".codex", path.join(".config", "opencode")]) {
       for (const skill of ["vault-guide", "document-reviewer"]) {
         const skillFile = path.join(userDataDir, base, "skills", skill, "SKILL.md");
         await expect.poll(() => existsSync(skillFile)).toBe(true);

@@ -267,7 +267,8 @@ function titleBarThemeArgument(value: unknown): "light" | "dark" {
 function autoInstallSkills(): void {
   try {
     const vaults = service.list();
-    if (skills.status(vaults).state !== "current") skills.install(vaults);
+    const status = skills.status(vaults);
+    if (status.state !== "not-configured" && status.state !== "current") skills.install(vaults);
   } catch (error) {
     console.error("Automatic skill install failed:", error);
   }
@@ -455,6 +456,15 @@ function registerIpc(): void {
   ipcMain.handle("skill:status", (event) => {
     assertTrusted(event);
     return skills.status(service.list());
+  });
+  ipcMain.handle("skill:provider-selection", (event) => {
+    assertTrusted(event);
+    return skills.getEnabledProviders();
+  });
+  ipcMain.handle("skill:save-provider-selection", (event, providers: unknown) => {
+    assertTrusted(event);
+    skills.setEnabledProviders(providers);
+    return skills.install(service.list());
   });
   ipcMain.handle("skill:install", (event) => {
     assertTrusted(event);
@@ -653,7 +663,10 @@ if (!singleInstanceLock) {
     // skills home into that same throwaway dir under test so automated runs never
     // overwrite the developer's real ~/.claude and ~/.codex skills. Production
     // keeps the default (the real home directory).
-    skills = new SkillService(process.env.NODE_ENV === "test" ? app.getPath("userData") : undefined);
+    skills = new SkillService(
+      process.env.NODE_ENV === "test" ? app.getPath("userData") : undefined,
+      app.getPath("userData"),
+    );
     claudePluginState = new ClaudePluginStateService(app.getPath("userData"));
     autoInstallSkills();
     configureUpdater();

@@ -2,15 +2,17 @@ import { useCallback, useEffect, useState } from "react";
 import { Check, Download, RefreshCw, Sparkles, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import type { ClaudePluginStatus, SkillStatus, VaultSummary } from "@/types";
+import type { AgentSkillProviderId, ClaudePluginStatus, SkillStatus, VaultSummary } from "@/types";
 import { canonicalVaultSignature } from "./agent-skills-signature";
 
 function headline(status: SkillStatus): string {
   switch (status.state) {
     case "current":
       return "Agent skills are up to date";
-    case "outdated":
+    case "needs-install":
       return "Agent skills need updating";
+    case "error":
+      return "Agent skills need attention";
     default:
       return "Set up agent skills";
   }
@@ -19,20 +21,22 @@ function headline(status: SkillStatus): string {
 function detail(status: SkillStatus): string {
   switch (status.state) {
     case "current":
-      return `Claude and Codex can read, edit, and review your ${status.vaultCount} vault${status.vaultCount === 1 ? "" : "s"}.`;
-    case "outdated":
-      return "Your vault list changed. Re-install so Claude and Codex see the latest vaults.";
+      return `Your selected providers can read, edit, and review your ${status.vaultCount} vault${status.vaultCount === 1 ? "" : "s"}.`;
+    case "needs-install":
+      return "Your vault list changed or a selected provider needs installation.";
+    case "error":
+      return "One or more selected providers could not install their skills. Try again to retry.";
     default:
-      return "Teach Claude and Codex how to read, edit, and review your vaults, with the current vault list.";
+      return "Choose where to install skills before Data Vault writes to a provider.";
   }
 }
 
 function actionLabel(status: SkillStatus, busy: boolean): string {
   if (busy) return "Installing...";
   switch (status.state) {
-    case "not-installed":
+    case "not-configured":
       return "Install skills";
-    case "outdated":
+    case "needs-install":
       return "Update skills";
     default:
       return "Re-install skills";
@@ -70,6 +74,10 @@ export function AgentSkillsPanel({ vaults }: { vaults: VaultSummary[] }) {
   const [exportMessage, setExportMessage] = useState<string | null>(null);
   const [pluginStatus, setPluginStatus] = useState<ClaudePluginStatus | null>(null);
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const [selection, setSelection] = useState<AgentSkillProviderId[]>([]);
+  const [selectionLoaded, setSelectionLoaded] = useState(false);
+  const [selectionBusy, setSelectionBusy] = useState(false);
+  const [selectionMessage, setSelectionMessage] = useState<string | null>(null);
 
   const refreshPluginStatus = useCallback(() => {
     window.vaultApi
@@ -88,11 +96,25 @@ export function AgentSkillsPanel({ vaults }: { vaults: VaultSummary[] }) {
       .catch(() => setStatusError(true));
   }, []);
 
+  const refreshSelection = useCallback(() => {
+    window.vaultApi
+      .skillProviderSelection()
+      .then((providers) => {
+        setSelection(providers);
+        setSelectionLoaded(true);
+      })
+      .catch(() => {
+        setSelectionLoaded(true);
+        setSelectionMessage("Could not load provider selection. Try reopening this panel.");
+      });
+  }, []);
+
   // Re-check whenever the registered vaults change so the stale indicator
   // appears after a vault is added, removed, or renamed.
   const signature = canonicalVaultSignature(vaults);
   useEffect(() => {
     refreshStatus();
+    refreshSelection();
     refreshPluginStatus();
     const refresh = () => {
       refreshStatus();
@@ -100,7 +122,7 @@ export function AgentSkillsPanel({ vaults }: { vaults: VaultSummary[] }) {
     };
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);
-  }, [signature, refreshPluginStatus, refreshStatus]);
+  }, [signature, refreshPluginStatus, refreshSelection, refreshStatus]);
 
   const stale = statusError || (status !== null && status.state !== "current");
 
@@ -114,6 +136,27 @@ export function AgentSkillsPanel({ vaults }: { vaults: VaultSummary[] }) {
       // Leave the previous status; the button stays available to retry.
     } finally {
       setBusy(false);
+    }
+  };
+
+  const toggleProvider = (provider: AgentSkillProviderId) => {
+    setSelection((selected) =>
+      selected.includes(provider) ? selected.filter((candidate) => candidate !== provider) : [...selected, provider],
+    );
+  };
+
+  const saveSelection = async () => {
+    setSelectionBusy(true);
+    setSelectionMessage(null);
+    try {
+      setStatus(await window.vaultApi.saveSkillProviderSelection(selection));
+      setStatusError(false);
+      setSelectionMessage("Provider selection saved.");
+      refreshPluginStatus();
+    } catch {
+      setSelectionMessage("Could not save provider selection. Your previous selection is still active.");
+    } finally {
+      setSelectionBusy(false);
     }
   };
 
@@ -212,22 +255,74 @@ export function AgentSkillsPanel({ vaults }: { vaults: VaultSummary[] }) {
           </div>
         </div>
 
-        {status?.skills.length ? (
-          <div className="mt-4 divide-y rounded-md border">
-            {status.skills.map((skill) => (
-              <div key={skill.name} className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 p-3 text-xs">
-                <p className="text-sm font-medium">{skill.label}</p>
-                <p className="text-muted-foreground capitalize">{skill.state.replace("-", " ")}</p>
-                <p className="text-muted-foreground">Installed: {installedVersionLabel(skill.installedVersion)}</p>
-                <p className="text-muted-foreground tabular-nums">Latest: v{skill.latestVersion}</p>
-              </div>
+        <fieldset className="mt-4 border-t pt-4" disabled={!selectionLoaded || selectionBusy}>
+          <legend className="text-sm font-medium">Install for</legend>
+          <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+            Select the providers that should receive future skill updates. Deselecting stops future writes and does not
+            remove files already installed outside Data Vault.
+          </p>
+          <div className="mt-3 grid gap-2">
+            {status?.providers.map((provider) => (
+              <label key={provider.id} className="flex cursor-pointer items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={selection.includes(provider.id)}
+                  onChange={() => toggleProvider(provider.id)}
+                />
+                <span>
+                  <span className="font-medium">{provider.label}</span>
+                  <span className="text-muted-foreground block text-xs">{provider.root}</span>
+                </span>
+              </label>
             ))}
           </div>
-        ) : (
-          <p className="text-muted-foreground mt-4 rounded-md border p-3 text-xs">
-            No installed skill details are available yet.
-          </p>
-        )}
+          <Button
+            className="mt-3 w-full"
+            size="sm"
+            onClick={saveSelection}
+            disabled={!selectionLoaded || selectionBusy}
+          >
+            {selectionBusy && <RefreshCw className="animate-spin" />}
+            {selectionBusy ? "Saving..." : "Save providers"}
+          </Button>
+          {selectionMessage && (
+            <p
+              className="text-muted-foreground mt-2 text-xs"
+              role={selectionMessage.startsWith("Could not") ? "alert" : "status"}
+              aria-live={selectionMessage.startsWith("Could not") ? "assertive" : "polite"}
+            >
+              {selectionMessage}
+            </p>
+          )}
+        </fieldset>
+
+        {status?.providers.filter((provider) => provider.enabled).length ? (
+          <div className="mt-4 grid gap-2">
+            {status.providers
+              .filter((provider) => provider.enabled)
+              .map((provider) => (
+                <div key={provider.id} className="rounded-md border p-3 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium">{provider.label}</p>
+                    <p className="text-muted-foreground capitalize">{provider.state.replace("-", " ")}</p>
+                  </div>
+                  {provider.error && (
+                    <p className="mt-2" role="alert">
+                      Could not install {provider.label}: {provider.error} Select Re-install skills to retry.
+                    </p>
+                  )}
+                  {provider.skills.map((skill) => (
+                    <p key={skill.name} className="text-muted-foreground mt-1 flex justify-between gap-2">
+                      <span>
+                        {skill.label}: {skill.state.replace("-", " ")}
+                      </span>
+                      <span>Installed: {installedVersionLabel(skill.installedVersion)}</span>
+                    </p>
+                  ))}
+                </div>
+              ))}
+          </div>
+        ) : null}
 
         {(statusError || status?.state !== "current") && (
           <div className="mt-4 grid gap-2">
@@ -251,8 +346,8 @@ export function AgentSkillsPanel({ vaults }: { vaults: VaultSummary[] }) {
             vaults, remove the old plugin, export again, and upload the new snapshot.
           </p>
           <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
-            Standalone Claude skills remain installed. Using both may show duplicate capabilities; Data Vault never
-            removes either copy automatically.
+            This plugin is independent of your standalone Claude provider selection. Using both may show duplicate
+            capabilities; Data Vault never removes either copy automatically.
           </p>
           <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
             The snapshot includes vault names, local repository paths, configured remote URLs, language, and structure
@@ -275,7 +370,9 @@ export function AgentSkillsPanel({ vaults }: { vaults: VaultSummary[] }) {
             <p className="text-muted-foreground mt-2 text-xs">No Claude plugin export has been recorded yet.</p>
           )}
           {pluginStatus?.state === "current" && (
-            <p className="text-muted-foreground mt-2 text-xs">The last exported plugin matches your Claude skills.</p>
+            <p className="text-muted-foreground mt-2 text-xs">
+              The last exported plugin matches the current generated skills.
+            </p>
           )}
           {pluginStatus?.state === "stale" && pluginStatus.updatePrompt && (
             <div className="mt-3 rounded-md border p-3">
@@ -293,6 +390,11 @@ export function AgentSkillsPanel({ vaults }: { vaults: VaultSummary[] }) {
                 </p>
               )}
             </div>
+          )}
+          {pluginStatus?.state === "stale" && pluginStatus.updateUnavailableReason && !pluginStatus.updatePrompt && (
+            <p className="text-muted-foreground mt-2 text-xs" role="status" aria-live="polite">
+              Cowork update action is unavailable: {pluginStatus.updateUnavailableReason}
+            </p>
           )}
         </details>
       </PopoverContent>

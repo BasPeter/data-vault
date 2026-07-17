@@ -43,6 +43,8 @@ const api: VaultApi = {
     return () => ipcRenderer.removeListener("app:open-document", handler);
   },
   skillStatus: () => ipcRenderer.invoke("skill:status"),
+  skillProviderSelection: () => ipcRenderer.invoke("skill:provider-selection"),
+  saveSkillProviderSelection: (providers) => ipcRenderer.invoke("skill:save-provider-selection", providers),
   installSkills: () => ipcRenderer.invoke("skill:install"),
   exportClaudePlugin: () => ipcRenderer.invoke("skill:export-claude-plugin"),
   claudePluginStatus: () => ipcRenderer.invoke("skill:claude-plugin-status"),

@@ -132,17 +132,75 @@ server.
 
 ### Requirement: Agent-Skill Installer Constraints
 
-The agent-skill installer SHALL write only to the fixed paths
-`~/.claude/skills/<skill>` and `~/.codex/skills/<skill>` for the generated
-`vault-guide` and `document-reviewer` skills.
+The agent-skill installer SHALL write generated `vault-guide` and
+`document-reviewer` skills only beneath the fixed provider roots
+`~/.claude/skills`, `~/.codex/skills`, and
+`~/.config/opencode/skills`. It SHALL write only for providers selected from a
+trusted fixed allowlist.
 
-#### Scenario: Installer runs
+#### Scenario: Selected-provider installer runs
 
-- **WHEN** the installer writes a skill
-- **THEN** it SHALL use no renderer-supplied paths and SHALL NOT embed
-  Data Vault app-repo content
-- **AND** it SHALL install automatically on launch and after the vault
-  list changes, best-effort, and SHALL NOT fail app startup on error
+- **WHEN** the installer writes a skill for a selected provider
+- **THEN** it SHALL derive the target from the provider's fixed root and skill
+  name, use no renderer-supplied paths, and SHALL NOT embed Data Vault app-repo
+  content
+
+#### Scenario: No providers are selected
+
+- **WHEN** no agent-skill provider has been selected
+- **THEN** the installer SHALL NOT write or refresh any global agent-skill file
+
+#### Scenario: Provider is deselected
+
+- **WHEN** a previously selected provider is deselected
+- **THEN** the installer SHALL stop future writes for that provider and SHALL
+  NOT automatically delete files in that provider's global skill directory
+
+#### Scenario: Selected-provider refresh runs
+
+- **WHEN** the app launches or the vault list changes after one or more
+  providers are selected
+- **THEN** it SHALL refresh only selected providers best-effort and SHALL NOT
+  fail application startup on error
+
+### Requirement: Agent extension exporter constraints
+
+The application MAY write a Claude plugin archive only after an explicit user
+export action and native destination selection. Plugin archive structure and
+content SHALL be determined entirely by trusted main-process code.
+
+#### Scenario: Explicit plugin export
+
+- **WHEN** the user confirms a plugin export destination
+- **THEN** trusted main-process code writes only the fixed allowlisted plugin
+  files to a temporary archive and atomically completes the selected output
+- **AND** vault data can influence only sanitized text fields in canonical skill
+  templates
+
+#### Scenario: Untrusted renderer or vault input
+
+- **WHEN** renderer input or vault metadata contains a path, archive entry,
+  manifest fragment, executable instruction, or traversal sequence
+- **THEN** it cannot change the output destination selected by the native dialog
+- **AND** it cannot add or rename archive entries
+- **AND** it cannot cause vault documents, secrets, or arbitrary files to be
+  included
+
+#### Scenario: Failed or cancelled export
+
+- **WHEN** export fails or is cancelled
+- **THEN** partial temporary files are removed where possible
+- **AND** application startup and existing skill installation continue normally
+
+#### Scenario: Cowork update assistance
+
+- **WHEN** a stale export causes the user to copy the update prompt
+- **THEN** trusted code supplies fixed standalone skill paths and instructions
+- **AND** renderer or vault input cannot add paths or prompt content
+- **AND** Cowork operates only in the plugin tree explicitly selected for the
+  task, stops if that target is missing or ambiguous, and does not search the filesystem
+- **AND** the prompt forbids reading vault documents, credentials, tokens,
+  environment values, or unrelated files
 
 ### Requirement: External Input Is Untrusted
 

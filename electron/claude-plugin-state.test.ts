@@ -2,7 +2,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { CLAUDE_COWORK_UPDATE_PROMPT, ClaudePluginStateService } from "./claude-plugin-state";
+import {
+  CLAUDE_COWORK_SOURCE_UNAVAILABLE,
+  CLAUDE_COWORK_UPDATE_PROMPT,
+  ClaudePluginStateService,
+} from "./claude-plugin-state";
 
 const directories: string[] = [];
 function temporaryDirectory(): string {
@@ -19,18 +23,28 @@ describe("ClaudePluginStateService", () => {
   const skillsA = "b".repeat(64);
   const skillsB = "c".repeat(64);
 
-  it("transitions from not-exported to current to stale using fingerprints and installed integrity", () => {
+  it("transitions from not-exported to current to stale using canonical fingerprints only", () => {
     const service = new ClaudePluginStateService(temporaryDirectory());
-    expect(service.status(skillsA, true)).toEqual({ state: "not-exported" });
+    expect(service.status(skillsA, false)).toEqual({ state: "not-exported" });
     service.record(plugin, skillsA);
-    expect(service.status(skillsA, true)).toEqual({ state: "current", pluginFingerprint: plugin });
+    expect(service.status(skillsA, false)).toEqual({ state: "current", pluginFingerprint: plugin });
     expect(service.status(skillsB, true)).toMatchObject({
       state: "stale",
       updatePrompt: CLAUDE_COWORK_UPDATE_PROMPT,
     });
-    expect(service.status(skillsA, false)).toMatchObject({
+    // A matching export remains current even when standalone Claude skills are deselected.
+    expect(service.status(skillsA, false)).toEqual({ state: "current", pluginFingerprint: plugin });
+  });
+
+  it("does not offer the Cowork update action without current trusted Claude sources", () => {
+    const service = new ClaudePluginStateService(temporaryDirectory());
+    service.record(plugin, skillsA);
+
+    expect(service.status(skillsB, false)).toEqual({
       state: "stale",
-      updatePrompt: CLAUDE_COWORK_UPDATE_PROMPT,
+      pluginFingerprint: plugin,
+      updateUnavailableReason: CLAUDE_COWORK_SOURCE_UNAVAILABLE,
+      updatePrompt: undefined,
     });
   });
 
@@ -56,7 +70,7 @@ describe("ClaudePluginStateService", () => {
     ];
     for (const invalid of invalidStates) {
       fs.writeFileSync(file, invalid);
-      expect(service.status(skillsA, true)).toEqual({ state: "not-exported" });
+      expect(service.status(skillsA, false)).toEqual({ state: "not-exported" });
     }
   });
 

@@ -147,11 +147,23 @@ export type AgentSkillVersionStatus = {
   state: "not-installed" | "outdated" | "current";
 };
 
+export type AgentSkillProviderId = "claude" | "codex" | "opencode";
+
+export type AgentSkillProviderStatus = {
+  id: AgentSkillProviderId;
+  label: string;
+  root: string;
+  enabled: boolean;
+  state: "needs-install" | "current" | "error";
+  error?: string;
+  skills: AgentSkillVersionStatus[];
+};
+
 export type SkillStatus = {
-  state: "not-installed" | "outdated" | "current";
+  state: "not-configured" | "needs-install" | "current" | "error";
   version: string;
   vaultCount: number;
-  skills: AgentSkillVersionStatus[];
+  providers: AgentSkillProviderStatus[];
 };
 
 export type ClaudePluginExportResult =
@@ -162,6 +174,7 @@ export type ClaudePluginStatus = {
   state: "not-exported" | "current" | "stale";
   pluginFingerprint?: string;
   updatePrompt?: string;
+  updateUnavailableReason?: string;
 };
 
 export type GitHubAccount = {
@@ -235,6 +248,8 @@ export type VaultApi = {
   onVaultChanged: (listener: (vaultId: string) => void) => () => void;
   onOpenDocument: (listener: (request: DocumentOpenRequest) => void) => () => void;
   skillStatus: () => Promise<SkillStatus>;
+  skillProviderSelection: () => Promise<AgentSkillProviderId[]>;
+  saveSkillProviderSelection: (providers: AgentSkillProviderId[]) => Promise<SkillStatus>;
   installSkills: () => Promise<SkillStatus>;
   exportClaudePlugin: () => Promise<ClaudePluginExportResult>;
   claudePluginStatus: () => Promise<ClaudePluginStatus>;
