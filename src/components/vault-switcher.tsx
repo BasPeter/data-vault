@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useDashboardOverlay } from "@/hooks/use-dashboard-overlay";
 import { Separator } from "@/components/ui/separator";
 import { VaultInitDialog } from "@/components/vault-init-dialog";
 import { VaultStructureEditor, type VaultStructureEditorHandle } from "@/components/vault-structure-editor";
@@ -43,6 +44,9 @@ export function VaultSwitcher({ vaults, vaultId, onSwitch, onLocal, onRefresh }:
   const [settingsVault, setSettingsVault] = useState<VaultSummary | null>(null);
   const [setupVault, setSetupVault] = useState<VaultSummary | null>(null);
   const active = vaults.find((vault) => vault.id === vaultId);
+  // Covers the popover and every dialog it hands off to; otherwise they render
+  // behind a running dashboard's native view.
+  useDashboardOverlay(open || dialog !== null || settingsVault !== null || setupVault !== null);
 
   return (
     <>

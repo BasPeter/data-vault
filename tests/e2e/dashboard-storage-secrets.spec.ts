@@ -165,3 +165,40 @@ test("the trusted secrets panel shows status without ever pre-filling a value", 
   await expect(input).toHaveAttribute("type", "password");
   expect(await panel.textContent()).not.toContain("e2e-secret-value");
 });
+
+// A dashboard runs in a native view composited above the renderer, so a header
+// popover drawn over its rectangle is invisible until the view is detached. This
+// is not observable from the DOM — the popover is present and "visible" to
+// Playwright either way — so the assertion has to be on the attached view count.
+test("header overlays detach the dashboard view so they are not hidden behind it", async ({ appLaunch }) => {
+  const { app, page } = appLaunch;
+  const attachedViews = () =>
+    app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children.length);
+
+  await page.evaluate(
+    (vaultId) =>
+      window.vaultApi.createDashboard(vaultId, {
+        title: "Overlay check",
+        icon: "chart",
+        color: "blue",
+        kind: "blank",
+        location: "vault",
+      }),
+    SEEDED_VAULT_ID,
+  );
+  await page.reload();
+  await page.getByRole("button", { name: "Open Overlay check dashboard" }).click();
+  await expect.poll(attachedViews).toBe(1);
+
+  // The git status panel: the report that prompted this test.
+  await page.getByRole("button", { name: /uncommitted change|No uncommitted changes|check vault changes/ }).click();
+  await expect.poll(attachedViews).toBe(0);
+  await page.keyboard.press("Escape");
+  await expect.poll(attachedViews).toBe(1);
+
+  // The vault switcher shares the defect and the fix.
+  await page.getByTestId("vault-switcher").click();
+  await expect.poll(attachedViews).toBe(0);
+  await page.keyboard.press("Escape");
+  await expect.poll(attachedViews).toBe(1);
+});

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ClipboardCopy, GitCompareArrows, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useDashboardOverlay } from "@/hooks/use-dashboard-overlay";
 import type { VaultChange, VaultChangeStatus } from "@/types";
 
 const EMPTY_STATUS: VaultChangeStatus = { changed: false, changes: [] };
@@ -64,6 +65,8 @@ export function VaultChangesIndicator({
 }) {
   const [status, setStatus] = useState<VaultChangeStatus>(EMPTY_STATUS);
   const [open, setOpen] = useState(false);
+  // Without this the panel renders behind a running dashboard's native view.
+  useDashboardOverlay(open);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
