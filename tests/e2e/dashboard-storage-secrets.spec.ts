@@ -193,8 +193,12 @@ test("header overlays detach the dashboard view so they are not hidden behind it
   // The git status panel: the report that prompted this test.
   await page.getByRole("button", { name: /uncommitted change|No uncommitted changes|check vault changes/ }).click();
   await expect.poll(attachedViews).toBe(0);
+  // A detached view paints nothing, so the host must show a still in its place
+  // or the user sees a black hole where the dashboard was.
+  await expect(page.getByTestId("dashboard-snapshot")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect.poll(attachedViews).toBe(1);
+  await expect(page.getByTestId("dashboard-snapshot")).toHaveCount(0);
 
   // The vault switcher shares the defect and the fix.
   await page.getByTestId("vault-switcher").click();

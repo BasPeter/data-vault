@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Copy, RefreshCw, Shield, Square } from "lucide-react";
 import type { DashboardManifest, DashboardRuntimeHostStatus } from "@/dashboard-contracts";
 import { Button } from "@/components/ui/button";
+import { DASHBOARD_RESUME_EVENT, DASHBOARD_SUSPEND_EVENT } from "@/hooks/use-dashboard-overlay";
 
 type Props = {
   vaultId: string;
@@ -15,6 +16,9 @@ export function DashboardHost({ vaultId, dashboard, version, onManageAccess }: P
   const [status, setStatus] = useState<DashboardRuntimeHostStatus>(null);
   const [error, setError] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">("idle");
+  // A still of the dashboard held while its native view is detached for an
+  // overlay, so the region does not go black.
+  const [snapshot, setSnapshot] = useState<string | null>(null);
 
   const reportBounds = useCallback(() => {
     const rect = hostRef.current?.getBoundingClientRect();
@@ -48,12 +52,18 @@ export function DashboardHost({ vaultId, dashboard, version, onManageAccess }: P
           );
       });
     }, 300);
-    const resume = () => reportBounds();
-    window.addEventListener("dashboard-host-resume", resume);
+    const resume = () => {
+      setSnapshot(null);
+      reportBounds();
+    };
+    const suspend = (event: Event) => setSnapshot((event as CustomEvent<string | null>).detail ?? null);
+    window.addEventListener(DASHBOARD_RESUME_EVENT, resume);
+    window.addEventListener(DASHBOARD_SUSPEND_EVENT, suspend);
     return () => {
       current = false;
       window.clearInterval(interval);
-      window.removeEventListener("dashboard-host-resume", resume);
+      window.removeEventListener(DASHBOARD_RESUME_EVENT, resume);
+      window.removeEventListener(DASHBOARD_SUSPEND_EVENT, suspend);
       void window.vaultApi.stopDashboard();
     };
   }, [open, reportBounds]);
@@ -112,7 +122,18 @@ export function DashboardHost({ vaultId, dashboard, version, onManageAccess }: P
           </Button>
         </div>
       </div>
-      <div ref={hostRef} data-testid="dashboard-host" className="absolute inset-x-0 bottom-0 top-11" />
+      {/* bg-background is the floor: the native view paints this region itself,
+          so without it a detached view leaves the window's bare background. */}
+      <div ref={hostRef} data-testid="dashboard-host" className="bg-background absolute inset-x-0 bottom-0 top-11" />
+      {snapshot && (
+        <img
+          src={snapshot}
+          alt=""
+          aria-hidden
+          data-testid="dashboard-snapshot"
+          className="pointer-events-none absolute inset-x-0 bottom-0 top-11 size-full object-cover object-top opacity-70"
+        />
+      )}
       {unavailable && (
         <div className="bg-background absolute inset-x-0 bottom-0 top-11 z-10 grid place-items-center p-8 text-center">
           <div>

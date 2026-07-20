@@ -259,6 +259,7 @@ export type VaultApi = {
   setDashboardBounds: (bounds: { x: number; y: number; width: number; height: number }) => Promise<void>;
   setDashboardContentBounds: (bounds: { x: number; y: number; width: number; height: number }) => Promise<void>;
   stopDashboard: () => Promise<void>;
+  captureDashboard: () => Promise<string | null>;
   suspendDashboard: () => Promise<string | null>;
   resumeDashboard: (runtimeId: string) => Promise<void>;
   dashboardRuntimeStatus: () => Promise<DashboardRuntimeHostStatus>;

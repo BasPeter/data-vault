@@ -563,6 +563,10 @@ function registerIpc(): void {
     assertTrusted(event);
     dashboardRuntime?.stop();
   });
+  ipcMain.handle("dashboard-runtime:capture", (event) => {
+    assertTrusted(event);
+    return dashboardRuntime?.capture() ?? null;
+  });
   ipcMain.handle("dashboard-runtime:suspend", (event) => {
     assertTrusted(event);
     return dashboardRuntime?.suspend() ?? null;

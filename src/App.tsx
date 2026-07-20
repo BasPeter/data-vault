@@ -31,6 +31,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
+import { resumeDashboardForOverlay, suspendDashboardForOverlay } from "@/hooks/use-dashboard-overlay";
 import { useTheme } from "@/hooks/use-theme";
 import { cn } from "@/lib/utils";
 import { parseStoredAppView, safeAppView, type AppView } from "@/app-view";
@@ -403,19 +404,14 @@ export default function App() {
   );
 
   const beginTrustedFlow = useCallback(async () => {
-    trustedFlowRuntimeRef.current = view.kind === "dashboard" ? await window.vaultApi.suspendDashboard() : null;
+    trustedFlowRuntimeRef.current = view.kind === "dashboard" ? await suspendDashboardForOverlay() : null;
   }, [view.kind]);
 
   const endTrustedFlow = useCallback(async () => {
     const runtimeId = trustedFlowRuntimeRef.current;
     trustedFlowRuntimeRef.current = null;
     if (!runtimeId) return;
-    try {
-      await window.vaultApi.resumeDashboard(runtimeId);
-      window.dispatchEvent(new Event("dashboard-host-resume"));
-    } catch {
-      // Switching, removing, or reloading a dashboard deliberately invalidates the old generation.
-    }
+    await resumeDashboardForOverlay(runtimeId);
   }, []);
 
   const reloadDashboards = useCallback(async () => {

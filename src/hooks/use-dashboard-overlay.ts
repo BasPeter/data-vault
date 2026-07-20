@@ -1,5 +1,34 @@
 import { useEffect, useRef } from "react";
 
+export const DASHBOARD_SUSPEND_EVENT = "dashboard-host-suspend";
+export const DASHBOARD_RESUME_EVENT = "dashboard-host-resume";
+
+/**
+ * Detaches the dashboard's native view, handing the host a still of it first.
+ *
+ * The still matters: the view paints the dashboard region itself, so once it is
+ * detached nothing draws there and the user sees a black hole. Capturing before
+ * detaching lets trusted UI keep a frozen frame in its place, so an overlay looks
+ * like it opened over the dashboard rather than replacing it.
+ */
+export async function suspendDashboardForOverlay(): Promise<string | null> {
+  const snapshot = await window.vaultApi.captureDashboard().catch(() => null);
+  window.dispatchEvent(new CustomEvent(DASHBOARD_SUSPEND_EVENT, { detail: snapshot }));
+  return window.vaultApi.suspendDashboard();
+}
+
+export async function resumeDashboardForOverlay(runtimeId: string): Promise<void> {
+  try {
+    await window.vaultApi.resumeDashboard(runtimeId);
+  } catch {
+    // Switching, removing, or reloading a dashboard deliberately invalidates the
+    // old runtime generation.
+  }
+  // Fires either way: the host must drop the stale still and re-report bounds
+  // even when the runtime it belonged to is gone.
+  window.dispatchEvent(new Event(DASHBOARD_RESUME_EVENT));
+}
+
 /**
  * A running dashboard is an Electron `WebContentsView` composited above the whole
  * renderer DOM, so anything drawn over its rectangle — a header popover dropping
@@ -28,7 +57,7 @@ export function useDashboardOverlay(open: boolean): void {
     if (open) {
       queue(async () => {
         if (runtimeId.current) return;
-        runtimeId.current = await window.vaultApi.suspendDashboard();
+        runtimeId.current = await suspendDashboardForOverlay();
       });
       return;
     }
@@ -37,13 +66,7 @@ export function useDashboardOverlay(open: boolean): void {
       const current = runtimeId.current;
       runtimeId.current = null;
       if (!current) return;
-      try {
-        await window.vaultApi.resumeDashboard(current);
-        window.dispatchEvent(new Event("dashboard-host-resume"));
-      } catch {
-        // Switching, removing, or reloading a dashboard deliberately invalidates
-        // the old runtime generation.
-      }
+      await resumeDashboardForOverlay(current);
     });
   }, [open]);
 
@@ -55,10 +78,9 @@ export function useDashboardOverlay(open: boolean): void {
       runtimeId.current = null;
       if (!current) return;
       pending.current = pending.current.then(
-        () => window.vaultApi.resumeDashboard(current).catch(() => undefined),
-        () => undefined,
+        () => resumeDashboardForOverlay(current),
+        () => resumeDashboardForOverlay(current),
       );
-      window.dispatchEvent(new Event("dashboard-host-resume"));
     },
     [],
   );

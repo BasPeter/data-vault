@@ -37,6 +37,7 @@ import {
 const TRUSTED_HEADER_HEIGHT = 56;
 const SAFE_UNREGISTERED_SIDEBAR_WIDTH = 512;
 export const DASHBOARD_EXPENSIVE_READ_MAX_PER_MINUTE = 30;
+const DASHBOARD_SNAPSHOT_QUALITY = 80;
 
 export type DashboardRuntimeSource = Readonly<{
   vaultId: string;
@@ -251,6 +252,29 @@ export class DashboardRuntimeController {
       if (!this.window.isDestroyed() && !this.window.webContents.isDestroyed()) this.window.webContents.focus();
     } catch {
       // The host may be destroyed between the checks and the native focus call.
+    }
+  }
+
+  /**
+   * A still of the dashboard, taken before it is detached so trusted UI can show
+   * it in place of the native view. Without it the region paints nothing while an
+   * overlay is open and the user sees a black hole where the dashboard was.
+   *
+   * The result is a bitmap of untrusted content, but it only ever replaces the
+   * same rectangle that content already occupied, and carries no script.
+   */
+  async capture(): Promise<string | null> {
+    const runtime = this.runtime;
+    if (!runtime?.active || runtime.suspended || runtime.contents.isDestroyed()) return null;
+    try {
+      const image = await runtime.contents.capturePage();
+      if (image.isEmpty()) return null;
+      // JPEG rather than PNG: this crosses IPC on every overlay open, and the
+      // still is dimmed behind a panel, so fidelity matters less than size.
+      return `data:image/jpeg;base64,${image.toJPEG(DASHBOARD_SNAPSHOT_QUALITY).toString("base64")}`;
+    } catch {
+      // Capture races teardown, occlusion, and GPU loss; a missing still is fine.
+      return null;
     }
   }
 

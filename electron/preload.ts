@@ -26,6 +26,7 @@ const api: VaultApi = {
   setDashboardBounds: (bounds) => ipcRenderer.invoke("dashboard-runtime:set-bounds", bounds),
   setDashboardContentBounds: (bounds) => ipcRenderer.invoke("dashboard-runtime:set-content-bounds", bounds),
   stopDashboard: () => ipcRenderer.invoke("dashboard-runtime:stop"),
+  captureDashboard: () => ipcRenderer.invoke("dashboard-runtime:capture"),
   suspendDashboard: () => ipcRenderer.invoke("dashboard-runtime:suspend"),
   resumeDashboard: (runtimeId) => ipcRenderer.invoke("dashboard-runtime:resume", runtimeId),
   dashboardRuntimeStatus: () => ipcRenderer.invoke("dashboard-runtime:status"),
