@@ -19,6 +19,8 @@ import { ClaudePluginStateService } from "./claude-plugin-state";
 import { createDashboardStorageHandlers } from "./dashboard-storage-ipc";
 import { DashboardRuntimeController, dashboardPreloadPath } from "./dashboard-runtime";
 import { DashboardPermissionStore, canonicalDashboardCapabilityRequest } from "./dashboard-permissions";
+import { DashboardSecretStore } from "./dashboard-secrets";
+import { performDashboardSecureFetch } from "./dashboard-secure-fetch";
 import { DASHBOARD_SCHEME, DASHBOARD_SCHEME_PRIVILEGES } from "./dashboard-runtime-assets";
 import { GitHubService } from "./github";
 import {
@@ -30,7 +32,17 @@ import {
   updateStatus,
 } from "./updater";
 import type { DocumentOpenRequest, VaultFormat, VaultStructure, VaultUpdate } from "../src/types";
-import type { DashboardCapabilityId } from "../src/dashboard-contracts";
+import {
+  DASHBOARD_SCHEMA_VERSION,
+  DASHBOARD_SECRET_NAME_PATTERN,
+  DASHBOARD_SECRET_VALUE_MAX_LENGTH,
+  DASHBOARD_STORAGE_LOCATIONS,
+  type DashboardCapabilityId,
+  type DashboardListSecretsResult,
+  type DashboardManifest,
+  type DashboardSecretsOverview,
+  type DashboardStorageLocation,
+} from "../src/dashboard-contracts";
 
 // Bounds for the optional vault.json `structure` tree, mirrored from
 // electron/vault.ts. The renderer is trusted but validated defensively.
@@ -52,10 +64,74 @@ let vaultChangePoll: NodeJS.Timeout | null = null;
 let mainWindow: BrowserWindow | null = null;
 let dashboardRuntime: DashboardRuntimeController | null = null;
 let dashboardPermissions: DashboardPermissionStore;
+let dashboardSecrets: DashboardSecretStore;
 let pendingOpenRequest: DocumentOpenRequest | null = null;
 const deferredOpenArgs: string[][] = [];
 const watchedVaults = new Map<string, string>();
 const singleInstanceLock = app.requestSingleInstanceLock();
+
+function dashboardSecretStatus(manifest: DashboardManifest): DashboardListSecretsResult {
+  const available = dashboardSecrets.isAvailable();
+  return {
+    schemaVersion: DASHBOARD_SCHEMA_VERSION,
+    available,
+    // Only this dashboard's own declarations, and status only — never a value,
+    // never another dashboard's declaration, never an undeclared stored name.
+    secrets: (manifest.secrets ?? []).map((declaration) => ({
+      name: declaration.name,
+      set: available && dashboardSecrets.has(declaration.name),
+    })),
+  };
+}
+
+// Trusted-UI view of every secret any installed dashboard requires, plus stored
+// names nothing declares any more so the user can clean them up. Status only —
+// this never reads a stored value.
+function dashboardSecretsOverview(): DashboardSecretsOverview {
+  const available = dashboardSecrets.isAvailable();
+  const byName = new Map<string, { origins: Set<string>; requiredBy: Array<{ dashboardId: string; title: string }> }>();
+
+  for (const vault of service.list()) {
+    let entries;
+    try {
+      entries = service.dashboards(vault.id);
+    } catch {
+      // One unreadable vault must not hide every other vault's requirements.
+      continue;
+    }
+    for (const entry of entries) {
+      for (const declaration of entry.secrets ?? []) {
+        const record = byName.get(declaration.name) ?? { origins: new Set<string>(), requiredBy: [] };
+        for (const origin of declaration.origins) record.origins.add(origin);
+        record.requiredBy.push({ dashboardId: entry.id, title: entry.title });
+        byName.set(declaration.name, record);
+      }
+    }
+  }
+  for (const name of dashboardSecrets.listStoredNames()) {
+    if (!byName.has(name)) byName.set(name, { origins: new Set<string>(), requiredBy: [] });
+  }
+
+  return {
+    schemaVersion: DASHBOARD_SCHEMA_VERSION,
+    available,
+    secrets: [...byName.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([name, record]) => ({
+        name,
+        set: available && dashboardSecrets.has(name),
+        origins: [...record.origins].sort(),
+        requiredBy: record.requiredBy,
+      })),
+  };
+}
+
+function secretNameArgument(value: unknown): string {
+  if (typeof value !== "string" || !DASHBOARD_SECRET_NAME_PATTERN.test(value)) {
+    throw new Error("Invalid dashboard secret name.");
+  }
+  return value;
+}
 
 function applicationIconPath(): string {
   const iconName = process.platform === "win32" ? "icon.win.png" : "icon.png";
@@ -153,6 +229,15 @@ function stringArgument(value: unknown, name: string): string {
   // laden text to vault.json in the first place.
   // eslint-disable-next-line no-control-regex -- control chars are the target of this sanitizer
   return value.replace(/[\x00-\x1F\x7F]+/g, " ");
+}
+
+// A trusted-boundary argument selecting which dashboard storage namespace to
+// use; anything other than exactly "vault" or "local" is rejected.
+function locationArgument(value: unknown): DashboardStorageLocation {
+  if (typeof value !== "string" || !DASHBOARD_STORAGE_LOCATIONS.includes(value as DashboardStorageLocation)) {
+    throw new Error("Invalid dashboard storage location.");
+  }
+  return value as DashboardStorageLocation;
 }
 
 function optionalText(value: unknown, name: string): string {
@@ -451,6 +536,15 @@ function registerIpc(): void {
     dashboardRuntime?.stopForDashboard(trustedVaultId, trustedDashboardId);
     return service.removeDashboard(trustedVaultId, trustedDashboardId);
   });
+  ipcMain.handle("dashboard:move", (event, vaultId, dashboardId, location) => {
+    assertTrusted(event);
+    const trustedVaultId = stringArgument(vaultId, "vault ID");
+    const trustedDashboardId = stringArgument(dashboardId, "dashboard ID");
+    const trustedLocation = locationArgument(location);
+    // Authority must be gone before the bundle can relocate to another storage.
+    dashboardRuntime?.stopForDashboard(trustedVaultId, trustedDashboardId);
+    return service.moveDashboard(trustedVaultId, trustedDashboardId, trustedLocation);
+  });
   ipcMain.handle("dashboard:agent-handoff", dashboardHandlers.agentHandoff);
   ipcMain.handle("dashboard-runtime:open", async (event, vaultId, dashboardId) => {
     assertTrusted(event);
@@ -523,6 +617,28 @@ function registerIpc(): void {
   ipcMain.handle("dashboard-api:read-vault-index", (event) => runtime().handleApiCall(event, "read-vault-index"));
   ipcMain.handle("dashboard-api:read-documents", (event, request) =>
     runtime().handleApiCall(event, "read-documents", request),
+  );
+  ipcMain.handle("dashboard-secrets:overview", (event) => {
+    assertTrusted(event);
+    return dashboardSecretsOverview();
+  });
+  ipcMain.handle("dashboard-secrets:set", (event, name, value) => {
+    assertTrusted(event);
+    const validName = secretNameArgument(name);
+    if (typeof value !== "string" || value.length === 0 || value.length > DASHBOARD_SECRET_VALUE_MAX_LENGTH) {
+      throw new Error("Invalid dashboard secret value.");
+    }
+    dashboardSecrets.set(validName, value);
+    return dashboardSecretsOverview();
+  });
+  ipcMain.handle("dashboard-secrets:delete", (event, name) => {
+    assertTrusted(event);
+    dashboardSecrets.delete(secretNameArgument(name));
+    return dashboardSecretsOverview();
+  });
+  ipcMain.handle("dashboard-api:list-secrets", (event) => runtime().handleApiCall(event, "list-secrets"));
+  ipcMain.handle("dashboard-api:secure-fetch", (event, request) =>
+    runtime().handleApiCall(event, "secure-fetch", request),
   );
   ipcMain.handle("app:update-status", (event) => {
     assertTrusted(event);
@@ -743,6 +859,7 @@ function createWindow(): void {
           repositoryPath: source.repositoryPath,
           dashboardId: source.manifest.id,
           requestedCapabilities: source.manifest.requestedCapabilities,
+          requestedSecrets: source.manifest.secrets ?? [],
           bundleDigest: digest,
         }),
       grant: (source, digest, capabilities, selectedDocumentIds) =>
@@ -751,6 +868,7 @@ function createWindow(): void {
             repositoryPath: source.repositoryPath,
             dashboardId: source.manifest.id,
             requestedCapabilities: source.manifest.requestedCapabilities,
+            requestedSecrets: source.manifest.secrets ?? [],
             bundleDigest: digest,
           },
           capabilities,
@@ -761,6 +879,7 @@ function createWindow(): void {
           repositoryPath: source.repositoryPath,
           dashboardId: source.manifest.id,
           requestedCapabilities: source.manifest.requestedCapabilities,
+          requestedSecrets: source.manifest.secrets ?? [],
           bundleDigest: digest,
         }),
       documentsForSelection: (vaultId) => service.dashboardSelectionDocuments(vaultId),
@@ -771,6 +890,11 @@ function createWindow(): void {
       readVaultIndex: (vaultId, permissions) => service.dashboardVaultIndex(vaultId, permissions),
       readDocuments: (vaultId, permissions, documentIds) =>
         service.dashboardDocuments(vaultId, permissions, documentIds),
+      listSecrets: (manifest) => dashboardSecretStatus(manifest),
+      secureFetch: (manifest, request) =>
+        performDashboardSecureFetch(manifest, request, {
+          resolveSecret: (name) => dashboardSecrets.resolve(name),
+        }),
     },
   );
 
@@ -815,6 +939,7 @@ if (!singleInstanceLock) {
     github = new GitHubService(app.getPath("userData"));
     service = new VaultService(app.getPath("userData"), (account, owner) => github.authHeaderValue(account, owner));
     dashboardPermissions = new DashboardPermissionStore(app.getPath("userData"));
+    dashboardSecrets = new DashboardSecretStore(app.getPath("userData"));
     // E2E runs launch against a throwaway `--user-data-dir`, but skills install to
     // the home directory, which the Chromium switch does not isolate. Redirect the
     // skills home into that same throwaway dir under test so automated runs never

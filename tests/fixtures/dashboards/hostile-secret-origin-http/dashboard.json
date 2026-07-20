@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "hostile-secret-origin-http",
+  "title": "Hostile secret origin http",
+  "icon": "lightbulb",
+  "color": "orange",
+  "kind": "blank",
+  "entrypoint": "index.html",
+  "requestedCapabilities": ["secrets:use"],
+  "secrets": [{ "name": "EXAMPLE_TOKEN", "origins": ["http://api.example.com"] }]
+}

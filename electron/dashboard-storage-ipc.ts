@@ -1,4 +1,8 @@
-import type { DashboardCreateInput } from "../src/dashboard-contracts";
+import {
+  DASHBOARD_STORAGE_LOCATIONS,
+  type DashboardCreateInput,
+  type DashboardStorageLocation,
+} from "../src/dashboard-contracts";
 import type { VaultService } from "./vault";
 
 type DashboardVaultService = Pick<
@@ -8,6 +12,7 @@ type DashboardVaultService = Pick<
   | "renameDashboard"
   | "reorderDashboards"
   | "removeDashboard"
+  | "moveDashboard"
   | "dashboardAgentHandoff"
 >;
 
@@ -20,13 +25,23 @@ function stringArgument(value: unknown, name: string, maximum = 4096): string {
   return value;
 }
 
+// Storage location is a trusted-boundary argument: it selects which of two
+// filesystem namespaces a dashboard is created in or moved to, so anything
+// other than exactly "vault" or "local" is rejected rather than coerced.
+function locationArgument(value: unknown): DashboardStorageLocation {
+  if (typeof value !== "string" || !DASHBOARD_STORAGE_LOCATIONS.includes(value as DashboardStorageLocation)) {
+    throw new Error("Invalid dashboard storage location.");
+  }
+  return value as DashboardStorageLocation;
+}
+
 function createArgument(value: unknown): DashboardCreateInput {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("Invalid dashboard details.");
   }
   const record = value as Record<string, unknown>;
   if (
-    Object.keys(record).length !== 4 ||
+    Object.keys(record).length !== 5 ||
     typeof record.title !== "string" ||
     typeof record.icon !== "string" ||
     typeof record.color !== "string" ||
@@ -39,6 +54,7 @@ function createArgument(value: unknown): DashboardCreateInput {
     icon: record.icon as DashboardCreateInput["icon"],
     color: record.color as DashboardCreateInput["color"],
     kind: record.kind as DashboardCreateInput["kind"],
+    location: locationArgument(record.location),
   };
 }
 
@@ -77,6 +93,14 @@ export function createDashboardStorageHandlers<Event>(
       return service().removeDashboard(
         stringArgument(vaultId, "vault ID"),
         stringArgument(dashboardId, "dashboard ID", 64),
+      );
+    },
+    move(event: Event, vaultId: unknown, dashboardId: unknown, location: unknown) {
+      assertTrusted(event);
+      return service().moveDashboard(
+        stringArgument(vaultId, "vault ID"),
+        stringArgument(dashboardId, "dashboard ID", 64),
+        locationArgument(location),
       );
     },
     agentHandoff(event: Event, vaultId: unknown, dashboardId: unknown) {

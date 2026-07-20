@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "hostile-secret-overcount",
+  "title": "Hostile secret overcount",
+  "icon": "lightbulb",
+  "color": "orange",
+  "kind": "blank",
+  "entrypoint": "index.html",
+  "requestedCapabilities": ["secrets:use"],
+  "secrets": [
+    { "name": "EXAMPLE_TOKEN_1", "origins": ["https://api.example.com"] },
+    { "name": "EXAMPLE_TOKEN_2", "origins": ["https://api.example.com"] },
+    { "name": "EXAMPLE_TOKEN_3", "origins": ["https://api.example.com"] },
+    { "name": "EXAMPLE_TOKEN_4", "origins": ["https://api.example.com"] },
+    { "name": "EXAMPLE_TOKEN_5", "origins": ["https://api.example.com"] },
+    { "name": "EXAMPLE_TOKEN_6", "origins": ["https://api.example.com"] },
+    { "name": "EXAMPLE_TOKEN_7", "origins": ["https://api.example.com"] },
+    { "name": "EXAMPLE_TOKEN_8", "origins": ["https://api.example.com"] },
+    { "name": "EXAMPLE_TOKEN_9", "origins": ["https://api.example.com"] },
+    { "name": "EXAMPLE_TOKEN_10", "origins": ["https://api.example.com"] },
+    { "name": "EXAMPLE_TOKEN_11", "origins": ["https://api.example.com"] }
+  ]
+}

@@ -34,7 +34,7 @@ import {
   SidebarMenuSub,
   SidebarRail,
 } from "@/components/ui/sidebar";
-import type { DashboardManifest } from "@/dashboard-contracts";
+import type { DashboardListEntry, DashboardManifest } from "@/dashboard-contracts";
 import type { TreeNode, VaultSummary } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -45,13 +45,15 @@ type Props = {
   onCopyPath: (id: string) => void;
   vaultName: string;
   vaults: VaultSummary[];
-  dashboards: DashboardManifest[];
+  dashboards: DashboardListEntry[];
   activeDashboardId: string | null;
   onSelectDashboard: (id: string) => void;
   onCreateDashboard: () => void;
   onRenameDashboard: (dashboard: DashboardManifest) => void;
   onMoveDashboard: (dashboardId: string, direction: -1 | 1) => void;
   onRemoveDashboard: (dashboard: DashboardManifest) => void;
+  onRelocateDashboard: (dashboard: DashboardListEntry) => void;
+  onManageSecrets: () => void;
 };
 
 const dashboardIcons = {
@@ -137,6 +139,8 @@ export function AppSidebar({
   onRenameDashboard,
   onMoveDashboard,
   onRemoveDashboard,
+  onRelocateDashboard,
+  onManageSecrets,
 }: Props) {
   return (
     <Sidebar>
@@ -189,6 +193,12 @@ export function AppSidebar({
                     disabled: index === dashboards.length - 1,
                     onSelect: () => onMoveDashboard(dashboard.id, 1),
                   },
+                  {
+                    label:
+                      dashboard.location === "vault" ? "Move to this computer only" : "Move to shared vault storage",
+                    onSelect: () => onRelocateDashboard(dashboard),
+                  },
+                  { label: "Manage secrets…", onSelect: () => onManageSecrets() },
                   { label: "Remove…", destructive: true, onSelect: () => onRemoveDashboard(dashboard) },
                 ];
                 return (

@@ -19,6 +19,8 @@ const api: VaultApi = {
   renameDashboard: (vaultId, dashboardId, title) => ipcRenderer.invoke("dashboard:rename", vaultId, dashboardId, title),
   reorderDashboards: (vaultId, dashboardIds) => ipcRenderer.invoke("dashboard:reorder", vaultId, dashboardIds),
   removeDashboard: (vaultId, dashboardId) => ipcRenderer.invoke("dashboard:remove", vaultId, dashboardId),
+  moveDashboard: (vaultId, dashboardId, location) =>
+    ipcRenderer.invoke("dashboard:move", vaultId, dashboardId, location),
   dashboardAgentHandoff: (vaultId, dashboardId) => ipcRenderer.invoke("dashboard:agent-handoff", vaultId, dashboardId),
   openDashboard: (vaultId, dashboardId) => ipcRenderer.invoke("dashboard-runtime:open", vaultId, dashboardId),
   setDashboardBounds: (bounds) => ipcRenderer.invoke("dashboard-runtime:set-bounds", bounds),
@@ -34,6 +36,9 @@ const api: VaultApi = {
     ipcRenderer.invoke("dashboard-permissions:grant", vaultId, dashboardId, capabilities, selectedDocumentIds),
   revokeDashboardPermissions: (vaultId, dashboardId) =>
     ipcRenderer.invoke("dashboard-permissions:revoke", vaultId, dashboardId),
+  dashboardSecrets: () => ipcRenderer.invoke("dashboard-secrets:overview"),
+  setDashboardSecret: (name, value) => ipcRenderer.invoke("dashboard-secrets:set", name, value),
+  deleteDashboardSecret: (name) => ipcRenderer.invoke("dashboard-secrets:delete", name),
   blame: (vaultId, documentId) => ipcRenderer.invoke("vault:blame", vaultId, documentId),
   quickNotes: (vaultId) => ipcRenderer.invoke("vault:quick-notes", vaultId),
   saveQuickNotes: (vaultId, html) => ipcRenderer.invoke("vault:save-quick-notes", vaultId, html),

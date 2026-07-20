@@ -22,6 +22,7 @@ test("contains a hostile fixture inside one bounded disposable runtime", async (
         icon: "lightbulb",
         color: "orange",
         kind: "blank",
+        location: "vault",
       }),
     vaultId,
   );
@@ -156,7 +157,16 @@ test("contains a hostile fixture inside one bounded disposable runtime", async (
       electron: "undefined",
       rawIpc: "undefined",
       vaultApi: "undefined",
-      dashboardApiKeys: ["getInfo", "readDocuments", "readState", "readVaultIndex", "writeState"],
+      // Pins the exact exposed surface: a new method must be a deliberate change.
+      dashboardApiKeys: [
+        "getInfo",
+        "listSecrets",
+        "readDocuments",
+        "readState",
+        "readVaultIndex",
+        "secureFetch",
+        "writeState",
+      ],
       dashboardApiFrozen: true,
       applicationDom: null,
       applicationStorage: null,
@@ -294,6 +304,7 @@ test("contains a hostile fixture inside one bounded disposable runtime", async (
         icon: "target",
         color: "blue",
         kind: "blank",
+        location: "vault",
       }),
     vaultId,
   );
@@ -352,6 +363,7 @@ test("contains unresponsive, crash, reload, and stop lifecycle events", async ({
         icon: "target",
         color: "slate",
         kind: "blank",
+        location: "vault",
       }),
     vaultId,
   );

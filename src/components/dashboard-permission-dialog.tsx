@@ -24,6 +24,7 @@ export function DashboardPermissionDialog({
   const [details, setDetails] = useState<DashboardPermissionDetails | null>(null);
   const [index, setIndex] = useState(false);
   const [documents, setDocuments] = useState(false);
+  const [secrets, setSecrets] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -36,6 +37,7 @@ export function DashboardPermissionDialog({
         setDetails(next);
         setIndex(next.effectivePermissions.capabilities.includes("vault:index:read"));
         setDocuments(next.effectivePermissions.capabilities.includes("vault:documents:read"));
+        setSecrets(next.effectivePermissions.capabilities.includes("secrets:use"));
         setSelected(new Set(next.effectivePermissions.selectedDocumentIds));
       })
       .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
@@ -45,6 +47,7 @@ export function DashboardPermissionDialog({
     const capabilities: DashboardCapabilityId[] = [];
     if (index) capabilities.push("vault:index:read");
     if (documents) capabilities.push("vault:documents:read");
+    if (secrets) capabilities.push("secrets:use");
     try {
       await window.vaultApi.grantDashboardPermissions(
         vaultId,
@@ -96,6 +99,35 @@ export function DashboardPermissionDialog({
                   <strong>Selected documents</strong>
                   <br />
                   <span className="text-muted-foreground">Read only the documents you select below.</span>
+                </span>
+              </label>
+            )}
+            {details.requestedCapabilities.includes("secrets:use") && (
+              <label className="flex gap-2">
+                <input type="checkbox" checked={secrets} onChange={(event) => setSecrets(event.target.checked)} />
+                <span>
+                  <strong>Use saved secrets</strong>
+                  <br />
+                  <span className="text-muted-foreground">
+                    Data Vault sends the secret with requests to the listed sites on this dashboard&rsquo;s behalf. The
+                    dashboard never sees the secret value.
+                  </span>
+                  <ul className="mt-1 grid gap-0.5">
+                    {details.secrets.map((secret) => (
+                      <li key={secret.name} className="text-muted-foreground">
+                        <code>{secret.name}</code> &rarr; {secret.origins.join(", ")}
+                        {secret.set && (
+                          <>
+                            {" "}
+                            <span className="text-destructive">
+                              You already saved a value for this name. Approving lets this dashboard send it to the
+                              sites above.
+                            </span>
+                          </>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
                 </span>
               </label>
             )}

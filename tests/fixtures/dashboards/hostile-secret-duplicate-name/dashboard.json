@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "hostile-secret-duplicate-name",
+  "title": "Hostile secret duplicate name",
+  "icon": "lightbulb",
+  "color": "orange",
+  "kind": "blank",
+  "entrypoint": "index.html",
+  "requestedCapabilities": ["secrets:use"],
+  "secrets": [
+    { "name": "EXAMPLE_TOKEN", "origins": ["https://api.example.com"] },
+    { "name": "EXAMPLE_TOKEN", "origins": ["https://sync.example.org"] }
+  ]
+}

@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { DashboardStorage } from "./dashboard-storage";
 import { DashboardStateService } from "./dashboard-state";
+import { DashboardPermissionStore } from "./dashboard-permissions";
 import {
   DASHBOARD_DOCUMENT_ID_MAX_LENGTH,
   DASHBOARD_DOCUMENT_MAX_BYTES,
@@ -16,13 +17,16 @@ import {
   DASHBOARD_INDEX_RESPONSE_MAX_BYTES,
   DASHBOARD_NAMESPACE_DIRECTORY,
   DASHBOARD_SCHEMA_VERSION,
+  DASHBOARD_STORAGE_LOCATIONS,
   type DashboardCreateInput,
   type DashboardDocumentSnapshot,
   type DashboardDocumentsSnapshot,
   type DashboardEffectivePermissions,
+  type DashboardListEntry,
   type DashboardManifest,
   type DashboardRemoval,
   type DashboardState,
+  type DashboardStorageLocation,
   type DashboardVaultIndexSnapshot,
 } from "../src/dashboard-contracts";
 import type {
@@ -540,7 +544,13 @@ function sanitizeStructure(value: unknown): VaultStructure | undefined {
 export class VaultService {
   private readonly registryFile: string;
   private readonly repositoriesDirectory: string;
+  private readonly appLocalDashboardsRoot: string;
   private readonly dashboardState = new DashboardStateService();
+  // Derives the same HMAC vaultKey DashboardPermissionStore already uses to
+  // key permission grants, so an app-local dashboard's on-disk namespace and
+  // its grants are always scoped to the same vault (see design D1 in
+  // openspec/changes/dashboard-storage-and-secrets/design.md).
+  private readonly dashboardVaultKeys: DashboardPermissionStore;
 
   constructor(
     private readonly userDataDirectory: string,
@@ -553,6 +563,9 @@ export class VaultService {
     this.registryFile = path.join(userDataDirectory, "vaults.json");
     this.repositoriesDirectory = path.join(userDataDirectory, "repositories");
     fs.mkdirSync(this.repositoriesDirectory, { recursive: true });
+    this.appLocalDashboardsRoot = path.join(userDataDirectory, "dashboards");
+    fs.mkdirSync(this.appLocalDashboardsRoot, { recursive: true });
+    this.dashboardVaultKeys = new DashboardPermissionStore(userDataDirectory);
   }
 
   // Feed the GitHub token to git for github.com remotes without persisting it in
@@ -820,28 +833,109 @@ export class VaultService {
     return { tree: this.walk(root, root, sanitizeStructure(config.structure), format, dashboardRoot) };
   }
 
-  dashboards(vaultId: string): DashboardManifest[] {
-    return this.dashboardStorage(vaultId).discover();
+  // Merges both storage locations: vault dashboards first in their registry
+  // order, then app-local in theirs (custom-dashboards spec, "Sidebar lists
+  // dashboards from both locations"). `location` is always derived from the
+  // owning storage, never from manifest content (design D2).
+  dashboards(vaultId: string): DashboardListEntry[] {
+    const { vault, local } = this.dashboardStorages(vaultId);
+    const vaultEntries = vault.discover().map((manifest) => ({ ...manifest, location: vault.location }));
+    const vaultIds = new Set(vaultEntries.map((entry) => entry.id));
+    const localEntries: DashboardListEntry[] = [];
+    // A damaged app-local namespace must not take the vault's dashboards down
+    // with it: the app-local store is opaque to the user, while vault dashboards
+    // are visible and fixable in the repository.
+    let localManifests: DashboardManifest[] = [];
+    try {
+      localManifests = local.discover();
+    } catch (cause) {
+      console.error(`App-local dashboards for vault "${vaultId}" could not be read:`, cause);
+    }
+    for (const manifest of localManifests) {
+      if (vaultIds.has(manifest.id)) {
+        // Vault wins a collision; the app-local duplicate is reported but
+        // never adopted, modified, or deleted (custom-dashboards spec,
+        // "Dashboard IDs collide across locations").
+        console.error(
+          `Dashboard "${manifest.id}" exists in both vault and app-local storage for vault "${vaultId}"; the app-local copy is hidden until the collision is resolved.`,
+        );
+        continue;
+      }
+      localEntries.push({ ...manifest, location: local.location });
+    }
+    return [...vaultEntries, ...localEntries];
   }
 
   createDashboard(vaultId: string, input: DashboardCreateInput): DashboardManifest {
-    return this.dashboardStorage(vaultId).create(input);
+    const { vault, local } = this.dashboardStorages(vaultId);
+    return (input.location === "local" ? local : vault).create(input);
   }
 
   renameDashboard(vaultId: string, dashboardId: string, title: string): DashboardManifest {
-    return this.dashboardStorage(vaultId).rename(dashboardId, title);
+    return this.ownerStorage(vaultId, dashboardId).rename(dashboardId, title);
   }
 
-  reorderDashboards(vaultId: string, dashboardIds: string[]): DashboardManifest[] {
-    return this.dashboardStorage(vaultId).reorder(dashboardIds);
+  // A caller-supplied order may span both locations; each storage can only
+  // ever accept an order that exactly covers its own registered dashboards
+  // (DashboardStorage.reorder), so the combined list is partitioned by owning
+  // storage first. A location whose full registered set isn't representable
+  // from the input (only possible when an ID collision hides an app-local
+  // duplicate from `dashboards()`) is left with its existing order rather
+  // than rejecting the whole request over an entry the caller cannot see.
+  reorderDashboards(vaultId: string, dashboardIds: string[]): DashboardListEntry[] {
+    if (!Array.isArray(dashboardIds)) throw new Error("Invalid dashboard order.");
+    const { vault, local } = this.dashboardStorages(vaultId);
+    const vaultRegisteredIds = vault.discover().map((entry) => entry.id);
+    // Unlike `dashboards()`, a discovery failure here is deliberately NOT caught:
+    // listing degrades to showing fewer dashboards, but reordering against a
+    // namespace we cannot read would write a registry omitting entries that exist.
+    const localRegisteredIds = local.discover().map((entry) => entry.id);
+    const vaultRegisteredSet = new Set(vaultRegisteredIds);
+    vault.reorder(dashboardIds.filter((id) => vaultRegisteredSet.has(id)));
+    const collision = localRegisteredIds.some((id) => vaultRegisteredSet.has(id));
+    if (!collision) local.reorder(dashboardIds.filter((id) => localRegisteredIds.includes(id)));
+    return this.dashboards(vaultId);
   }
 
   removeDashboard(vaultId: string, dashboardId: string): DashboardRemoval {
-    return this.dashboardStorage(vaultId).remove(dashboardId);
+    return this.ownerStorage(vaultId, dashboardId).remove(dashboardId);
   }
 
   dashboardAgentHandoff(vaultId: string, dashboardId: string): string {
-    return this.dashboardStorage(vaultId).agentHandoff(dashboardId);
+    return this.ownerStorage(vaultId, dashboardId).agentHandoff(dashboardId);
+  }
+
+  // Copies the bundle to the destination, registers it there, then
+  // unregisters and deletes it from the source (design D3). ID, bundle
+  // digest, and vaultKey are unchanged by a move, so existing permission
+  // grants remain valid and a move alone never triggers re-approval.
+  moveDashboard(vaultId: string, dashboardId: string, destination: DashboardStorageLocation): DashboardListEntry {
+    if (!DASHBOARD_STORAGE_LOCATIONS.includes(destination)) throw new Error("Invalid dashboard storage location.");
+    const { vault, local } = this.dashboardStorages(vaultId);
+    const target = destination === "vault" ? vault : local;
+    const source = destination === "vault" ? local : vault;
+    // Resolved against this call's own `vault`/`local` instances (not a fresh
+    // `ownerStorage` lookup, which would construct different objects and
+    // never compare equal to `source` below).
+    if (this.resolveOwner(vault, local, dashboardId) !== source) {
+      throw new Error(`Dashboard is not stored ${destination === "vault" ? "app-locally" : "in the vault"}.`);
+    }
+    const { bundleDirectory } = source.runtimeSource(dashboardId);
+    const manifest = target.adopt(bundleDirectory, dashboardId);
+    try {
+      source.remove(dashboardId);
+    } catch (cause) {
+      // Leaving the bundle registered in both namespaces would strand it: the
+      // vault-first owner rule hides the new copy, and every later move is
+      // refused because the destination already exists. Undo the adopt instead.
+      try {
+        target.remove(dashboardId);
+      } catch {
+        // Nothing better is available; report the original failure.
+      }
+      throw cause;
+    }
+    return { ...manifest, location: target.location };
   }
 
   dashboardRuntimeSource(
@@ -856,17 +950,20 @@ export class VaultService {
     const vault = this.vault(vaultId);
     return {
       vaultId,
+      // Always the vault repository, regardless of the dashboard's storage
+      // location: permission grants are scoped per-vault, not per-storage
+      // (design D1), so this must stay stable across a move.
       repositoryPath: vault.repositoryPath,
-      ...this.dashboardStorage(vaultId).runtimeSource(dashboardId),
+      ...this.ownerStorage(vaultId, dashboardId).runtimeSource(dashboardId),
     };
   }
 
   dashboardReadState(vaultId: string, dashboardId: string): DashboardState {
-    return this.dashboardState.read(this.dashboardStorage(vaultId), dashboardId);
+    return this.dashboardState.read(this.ownerStorage(vaultId, dashboardId), dashboardId);
   }
 
   dashboardWriteState(vaultId: string, dashboardId: string, runtimeId: string, state: unknown): void {
-    this.dashboardState.write(this.dashboardStorage(vaultId), dashboardId, runtimeId, state);
+    this.dashboardState.write(this.ownerStorage(vaultId, dashboardId), dashboardId, runtimeId, state);
   }
 
   releaseDashboardRuntime(runtimeId: string): void {
@@ -1283,8 +1380,36 @@ export class VaultService {
     return this.resolveDocumentsRoot(vault.repositoryPath, this.config(vault.repositoryPath), true);
   }
 
-  private dashboardStorage(vaultId: string): DashboardStorage {
-    return new DashboardStorage(this.vault(vaultId).repositoryPath);
+  // Composes the two storages a vault's dashboards can live in (design D2).
+  // The app-local instance is keyed by the same HMAC vaultKey the permission
+  // store uses, derived from the vault's repository path, so its namespace
+  // survives independent of where the vault repository itself is cloned.
+  private dashboardStorages(vaultId: string): { vault: DashboardStorage; local: DashboardStorage } {
+    const repositoryPath = this.vault(vaultId).repositoryPath;
+    return {
+      vault: new DashboardStorage(repositoryPath),
+      local: new DashboardStorage({
+        appLocalRoot: this.appLocalDashboardsRoot,
+        vaultKey: this.dashboardVaultKeys.vaultKeyFor(repositoryPath),
+      }),
+    };
+  }
+
+  // Resolves which storage owns a dashboard ID, vault-first (vault wins a
+  // collision, see `dashboards`).
+  private ownerStorage(vaultId: string, dashboardId: string): DashboardStorage {
+    const { vault, local } = this.dashboardStorages(vaultId);
+    return this.resolveOwner(vault, local, dashboardId);
+  }
+
+  // Shared by `ownerStorage` and `moveDashboard`: callers that already hold a
+  // `{ vault, local }` pair must resolve ownership against those same
+  // instances rather than through a fresh `dashboardStorages` call, whose
+  // freshly constructed objects would never compare equal to either one.
+  private resolveOwner(vault: DashboardStorage, local: DashboardStorage, dashboardId: string): DashboardStorage {
+    if (vault.discover().some((entry) => entry.id === dashboardId)) return vault;
+    if (local.discover().some((entry) => entry.id === dashboardId)) return local;
+    throw new Error("Dashboard not found.");
   }
 
   private dashboardRoot(repositoryPath: string, config: VaultConfig): string | null {

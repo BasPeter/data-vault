@@ -1,14 +1,26 @@
 import type { Rectangle } from "electron";
 import { DASHBOARD_DOCUMENT_REQUEST_MAX_COUNT } from "../src/dashboard-contracts";
 
-export type DashboardApiOperation = "get-info" | "read-state" | "write-state" | "read-vault-index" | "read-documents";
+export type DashboardApiOperation =
+  | "get-info"
+  | "read-state"
+  | "write-state"
+  | "read-vault-index"
+  | "read-documents"
+  | "list-secrets"
+  | "secure-fetch";
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export function validateDashboardApiArgument(operation: DashboardApiOperation, value: unknown): void {
-  if (operation === "get-info" || operation === "read-state" || operation === "read-vault-index") {
+  if (
+    operation === "get-info" ||
+    operation === "read-state" ||
+    operation === "read-vault-index" ||
+    operation === "list-secrets"
+  ) {
     if (value !== undefined) throw new Error("Invalid dashboard API request.");
     return;
   }
@@ -17,6 +29,13 @@ export function validateDashboardApiArgument(operation: DashboardApiOperation, v
     if (Object.keys(value).length !== 1 || !("state" in value)) throw new Error("Invalid dashboard API request.");
     return;
   }
+  if (operation === "secure-fetch") {
+    // Shape only; the request body is validated in full and authorized against
+    // declared secrets and origins where the call is performed.
+    if (Object.keys(value).length !== 1 || !record(value.request)) throw new Error("Invalid dashboard API request.");
+    return;
+  }
+  if (operation !== "read-documents") throw new Error("Invalid dashboard API request.");
   if (Object.keys(value).length !== 1 || !Array.isArray(value.documentIds))
     throw new Error("Invalid dashboard API request.");
   if (value.documentIds.length > DASHBOARD_DOCUMENT_REQUEST_MAX_COUNT)

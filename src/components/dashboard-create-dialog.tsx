@@ -1,5 +1,11 @@
 import { useState } from "react";
-import type { DashboardColorId, DashboardCreateInput, DashboardIconId, DashboardKind } from "@/dashboard-contracts";
+import type {
+  DashboardColorId,
+  DashboardCreateInput,
+  DashboardIconId,
+  DashboardKind,
+  DashboardStorageLocation,
+} from "@/dashboard-contracts";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,6 +30,7 @@ export function DashboardCreateDialog({
   const [kind, setKind] = useState<DashboardKind>("personal-progress");
   const [icon, setIcon] = useState<DashboardIconId>("target");
   const [color, setColor] = useState<DashboardColorId>("green");
+  const [location, setLocation] = useState<DashboardStorageLocation>("vault");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const submit = async () => {
@@ -35,6 +42,7 @@ export function DashboardCreateDialog({
         kind,
         icon,
         color,
+        location,
       });
       setTitle("");
       onOpenChange(false);
@@ -101,6 +109,23 @@ export function DashboardCreateDialog({
             <option value="vault-intelligence">Vault intelligence</option>
             <option value="blank">Blank</option>
           </select>
+        </label>
+        <label className="grid gap-1 text-sm">
+          Where to keep it
+          <select
+            aria-label="Dashboard storage location"
+            className="border-input bg-background h-9 rounded-md border px-3"
+            value={location}
+            onChange={(event) => setLocation(event.target.value as DashboardStorageLocation)}
+          >
+            <option value="vault">Shared with this vault</option>
+            <option value="local">Only on this computer</option>
+          </select>
+          <span className="text-muted-foreground">
+            {location === "vault"
+              ? "Saved in the vault, so it syncs to anyone with the repository."
+              : "Kept on this computer only and never added to the vault."}
+          </span>
         </label>
         {error && (
           <p role="alert" className="text-destructive text-sm">

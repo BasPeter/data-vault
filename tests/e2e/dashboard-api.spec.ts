@@ -37,6 +37,7 @@ test("personal dashboard state survives a full application restart", async () =>
           icon: "target",
           color: "green",
           kind: "personal-progress",
+          location: "vault",
         }),
       SEEDED_VAULT_ID,
     );
@@ -98,6 +99,7 @@ test("removal invalidates active authority before moving the bundle", async ({ a
         icon: "check",
         color: "slate",
         kind: "blank",
+        location: "vault",
       }),
     SEEDED_VAULT_ID,
   );
@@ -128,6 +130,7 @@ test("a main-frame load failure remains visible in trusted recovery UI", async (
         icon: "lightbulb",
         color: "orange",
         kind: "blank",
+        location: "vault",
       }),
     SEEDED_VAULT_ID,
   );
@@ -159,6 +162,7 @@ test("vault intelligence returns the approved index and document while denying u
         icon: "chart",
         color: "blue",
         kind: "vault-intelligence",
+        location: "vault",
       }),
     SEEDED_VAULT_ID,
   );

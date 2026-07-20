@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "hostile-secret-extra-key",
+  "title": "Hostile secret extra key",
+  "icon": "lightbulb",
+  "color": "orange",
+  "kind": "blank",
+  "entrypoint": "index.html",
+  "requestedCapabilities": ["secrets:use"],
+  "secrets": [{ "name": "EXAMPLE_TOKEN", "origins": ["https://api.example.com"], "scope": "read" }]
+}

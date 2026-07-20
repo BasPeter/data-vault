@@ -15,6 +15,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { DashboardCreateDialog } from "@/components/dashboard-create-dialog";
 import { DashboardHost } from "@/components/dashboard-host";
 import { DashboardPermissionDialog } from "@/components/dashboard-permission-dialog";
+import { DashboardSecretsDialog } from "@/components/dashboard-secrets-dialog";
 import { DocumentPicker } from "@/components/document-picker";
 import { DocumentTabs } from "@/components/document-tabs";
 import { DocumentView } from "@/components/document-view";
@@ -33,7 +34,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from "@/com
 import { useTheme } from "@/hooks/use-theme";
 import { cn } from "@/lib/utils";
 import { parseStoredAppView, safeAppView, type AppView } from "@/app-view";
-import type { DashboardCreateInput, DashboardManifest } from "@/dashboard-contracts";
+import type { DashboardCreateInput, DashboardListEntry, DashboardManifest } from "@/dashboard-contracts";
 import type { DocumentOpenRequest, Manifest, TreeNode, VaultFormat, VaultSummary } from "@/types";
 
 function firstDocument(nodes: TreeNode[]): string | null {
@@ -93,8 +94,10 @@ export default function App() {
   const tabsRef = useRef<DocumentTab[]>([]);
   const tabsInitializedRef = useRef(false);
   const [view, setView] = useState<AppView>({ kind: "document" });
-  const [dashboards, setDashboards] = useState<DashboardManifest[]>([]);
+  const [dashboards, setDashboards] = useState<DashboardListEntry[]>([]);
   const [createDashboardOpen, setCreateDashboardOpen] = useState(false);
+  const [secretsOpen, setSecretsOpen] = useState(false);
+  const [missingSecrets, setMissingSecrets] = useState<string[]>([]);
   const [permissionDashboard, setPermissionDashboard] = useState<DashboardManifest | null>(null);
   const trustedFlowRuntimeRef = useRef<string | null>(null);
   const viewInitializedVaultRef = useRef<string | null>(null);
@@ -434,6 +437,53 @@ export default function App() {
     [reloadDashboards, vaultId],
   );
 
+  const relocateDashboard = useCallback(
+    async (dashboard: DashboardListEntry) => {
+      if (!vaultId) return;
+      const destination = dashboard.location === "vault" ? "local" : "vault";
+      try {
+        await window.vaultApi.moveDashboard(vaultId, dashboard.id, destination);
+        await reloadDashboards();
+        setError(
+          destination === "local"
+            ? `“${dashboard.title}” is now stored on this computer only.`
+            : `“${dashboard.title}” is now stored in the vault and will sync.`,
+        );
+      } catch (cause) {
+        // Reload regardless so the menu never keeps offering a stale location.
+        await reloadDashboards();
+        setError(cause instanceof Error ? cause.message : String(cause));
+      }
+    },
+    [reloadDashboards, vaultId],
+  );
+
+  // Host-owned: derived in the trusted renderer from the manifest's declared
+  // secrets, so a dashboard cannot raise, suppress, or restyle this prompt.
+  const refreshMissingSecrets = useCallback(async () => {
+    if (view.kind !== "dashboard") {
+      setMissingSecrets([]);
+      return;
+    }
+    const dashboard = dashboards.find(({ id }) => id === view.dashboardId);
+    const declared = (dashboard?.secrets ?? []).map(({ name }) => name);
+    if (declared.length === 0) {
+      setMissingSecrets([]);
+      return;
+    }
+    try {
+      const overview = await window.vaultApi.dashboardSecrets();
+      const stored = new Set(overview.secrets.filter(({ set }) => set).map(({ name }) => name));
+      setMissingSecrets(declared.filter((name) => !stored.has(name)));
+    } catch {
+      setMissingSecrets([]);
+    }
+  }, [dashboards, view]);
+
+  useEffect(() => {
+    void refreshMissingSecrets();
+  }, [refreshMissingSecrets]);
+
   const renameDashboard = useCallback(
     async (dashboard: DashboardManifest) => {
       if (!vaultId) return;
@@ -462,12 +512,15 @@ export default function App() {
       const order = dashboards.map(({ id }) => id);
       [order[index], order[target]] = [order[target], order[index]];
       try {
-        setDashboards(await window.vaultApi.reorderDashboards(vaultId, order));
+        await window.vaultApi.reorderDashboards(vaultId, order);
+        // Reload rather than using the reorder result: only discovery knows each
+        // dashboard's storage location.
+        await reloadDashboards();
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
       }
     },
-    [dashboards, vaultId],
+    [dashboards, reloadDashboards, vaultId],
   );
 
   const removeDashboard = useCallback(
@@ -535,6 +588,12 @@ export default function App() {
         }}
         onRemoveDashboard={(dashboard) => {
           void removeDashboard(dashboard);
+        }}
+        onRelocateDashboard={(dashboard) => {
+          void relocateDashboard(dashboard);
+        }}
+        onManageSecrets={() => {
+          void beginTrustedFlow().then(() => setSecretsOpen(true));
         }}
       />
       <SidebarInset>
@@ -621,6 +680,22 @@ export default function App() {
             {error}
           </div>
         )}
+        {missingSecrets.length > 0 && (
+          <div className="bg-muted flex items-center gap-3 border-b px-4 py-2 text-sm">
+            <span className="min-w-0 flex-1">
+              This dashboard needs {missingSecrets.length === 1 ? "a secret" : "secrets"} you have not set yet:{" "}
+              {missingSecrets.join(", ")}.
+            </span>
+            <Button
+              size="sm"
+              onClick={() => {
+                void beginTrustedFlow().then(() => setSecretsOpen(true));
+              }}
+            >
+              Set {missingSecrets.length === 1 ? "it" : "them"}
+            </Button>
+          </div>
+        )}
         <main className="min-h-0 flex-1">
           {view.kind === "graph" ? (
             <GraphView vaultId={vaultId} activeId={activeId} onSelect={openDocument} version={version} />
@@ -695,6 +770,16 @@ export default function App() {
             if (!open) {
               setPermissionDashboard(null);
               void endTrustedFlow();
+            }
+          }}
+        />
+        <DashboardSecretsDialog
+          open={secretsOpen}
+          onOpenChange={(open) => {
+            setSecretsOpen(open);
+            if (!open) {
+              void endTrustedFlow();
+              void refreshMissingSecrets();
             }
           }}
         />

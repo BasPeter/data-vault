@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "valid-secrets",
+  "title": "Valid secrets",
+  "icon": "compass",
+  "color": "purple",
+  "kind": "blank",
+  "entrypoint": "index.html",
+  "requestedCapabilities": ["secrets:use"],
+  "secrets": [{ "name": "EXAMPLE_TOKEN", "origins": ["https://api.example.com", "https://sync.example.org"] }]
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "hostile-secret-origin-wildcard",
+  "title": "Hostile secret origin wildcard",
+  "icon": "lightbulb",
+  "color": "orange",
+  "kind": "blank",
+  "entrypoint": "index.html",
+  "requestedCapabilities": ["secrets:use"],
+  "secrets": [{ "name": "EXAMPLE_TOKEN", "origins": ["https://*.example.com"] }]
+}

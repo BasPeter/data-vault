@@ -6,6 +6,7 @@ export const DASHBOARD_CAPABILITY_IDS = [
   "state:write",
   "vault:index:read",
   "vault:documents:read",
+  "secrets:use",
 ] as const;
 
 export type DashboardCapabilityId = (typeof DASHBOARD_CAPABILITY_IDS)[number];
@@ -18,7 +19,11 @@ export const DASHBOARD_LOCAL_CAPABILITY_IDS = [
 export const DASHBOARD_PRIVILEGED_CAPABILITY_IDS = [
   "vault:index:read",
   "vault:documents:read",
+  "secrets:use",
 ] as const satisfies readonly DashboardCapabilityId[];
+
+export const DASHBOARD_STORAGE_LOCATIONS = ["vault", "local"] as const;
+export type DashboardStorageLocation = (typeof DASHBOARD_STORAGE_LOCATIONS)[number];
 
 export const DASHBOARD_KINDS = ["personal-progress", "vault-intelligence", "blank"] as const;
 export type DashboardKind = (typeof DASHBOARD_KINDS)[number];
@@ -43,6 +48,23 @@ export type DashboardRegistry = {
   dashboards: DashboardRegistryRecord[];
 };
 
+export const DASHBOARD_SECRET_NAME_PATTERN = /^[A-Z0-9_]{1,64}$/;
+export const DASHBOARD_SECRET_MAX_COUNT = 10;
+export const DASHBOARD_SECRET_ORIGIN_MAX_COUNT = 5;
+export const DASHBOARD_SECRET_ORIGIN_MAX_LENGTH = 253;
+export const DASHBOARD_SECRET_VALUE_MIN_LENGTH = 8;
+export const DASHBOARD_SECRET_VALUE_MAX_LENGTH = 4096;
+
+/**
+ * A dashboard's declared need for a named secret, bound to the exact origins the
+ * secret may be sent to. Declared in the manifest and covered by the capability
+ * request digest, so changing it invalidates existing grants.
+ */
+export type DashboardSecretDeclaration = {
+  name: string;
+  origins: string[];
+};
+
 export type DashboardManifest = {
   schemaVersion: typeof DASHBOARD_SCHEMA_VERSION;
   id: string;
@@ -52,6 +74,15 @@ export type DashboardManifest = {
   kind: DashboardKind;
   entrypoint: string;
   requestedCapabilities: DashboardCapabilityId[];
+  secrets?: DashboardSecretDeclaration[];
+};
+
+/**
+ * A discovered dashboard as presented to trusted UI. `location` is derived from
+ * the storage that owns the bundle and is never read from repository content.
+ */
+export type DashboardListEntry = DashboardManifest & {
+  location: DashboardStorageLocation;
 };
 
 export type DashboardCreateInput = {
@@ -59,6 +90,7 @@ export type DashboardCreateInput = {
   icon: DashboardIconId;
   color: DashboardColorId;
   kind: DashboardKind;
+  location: DashboardStorageLocation;
 };
 
 export type DashboardRemoval = { dashboardId: string; trashPath: string };
@@ -73,6 +105,24 @@ export type DashboardPermissionDetails = {
   requestedCapabilities: DashboardCapabilityId[];
   effectivePermissions: DashboardEffectivePermissions;
   documents: Array<{ id: string; title: string }>;
+  secrets: Array<DashboardSecretDeclaration & { set: boolean }>;
+};
+
+/**
+ * Trusted-UI view of one secret. Carries status only; a stored value is never
+ * returned to the renderer.
+ */
+export type DashboardSecretRequirement = {
+  name: string;
+  set: boolean;
+  origins: string[];
+  requiredBy: Array<{ dashboardId: string; title: string }>;
+};
+
+export type DashboardSecretsOverview = {
+  schemaVersion: typeof DASHBOARD_SCHEMA_VERSION;
+  available: boolean;
+  secrets: DashboardSecretRequirement[];
 };
 
 export type DashboardRuntimeHostStatus = {
@@ -95,6 +145,15 @@ export const DASHBOARD_INDEX_MAX_DOCUMENTS = 2_000;
 export const DASHBOARD_INDEX_MAX_LINKS_PER_DOCUMENT = 100;
 export const DASHBOARD_INDEX_MAX_TAGS_PER_DOCUMENT = 50;
 export const DASHBOARD_INDEX_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
+export const DASHBOARD_SECURE_FETCH_URL_MAX_LENGTH = 2048;
+export const DASHBOARD_SECURE_FETCH_REQUEST_MAX_BYTES = 256 * 1024;
+export const DASHBOARD_SECURE_FETCH_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
+export const DASHBOARD_SECURE_FETCH_TIMEOUT_MS = 15_000;
+// Secure fetches share the runtime's expensive-read budget rather than having a
+// dedicated one, so a dashboard cannot use them to bypass that limit.
+export const DASHBOARD_SECURE_FETCH_REQUEST_HEADER_MAX_COUNT = 16;
+export const DASHBOARD_SECURE_FETCH_RESPONSE_HEADER_MAX_COUNT = 32;
+export const DASHBOARD_SECURE_FETCH_HEADER_VALUE_MAX_LENGTH = 1024;
 
 export type DashboardInfo = {
   schemaVersion: typeof DASHBOARD_SCHEMA_VERSION;
@@ -148,6 +207,45 @@ export type DashboardDocumentsSnapshot = {
   };
 };
 
+export const DASHBOARD_SECURE_FETCH_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
+export type DashboardSecureFetchMethod = (typeof DASHBOARD_SECURE_FETCH_METHODS)[number];
+
+/**
+ * Where the main process places the resolved secret value. Dashboard code chooses
+ * the injection point but never supplies or observes the value itself.
+ */
+export type DashboardSecretInjection =
+  | { kind: "authorization-bearer" }
+  | { kind: "header"; header: string }
+  | { kind: "query-param"; param: string };
+
+export type DashboardSecretStatus = {
+  name: string;
+  set: boolean;
+};
+
+export type DashboardSecureFetchInput = {
+  url: string;
+  method: DashboardSecureFetchMethod;
+  headers?: Record<string, string>;
+  body?: string;
+  secret: { name: string; inject: DashboardSecretInjection };
+};
+
+export type DashboardSecureFetchResult = {
+  schemaVersion: typeof DASHBOARD_SCHEMA_VERSION;
+  status: number;
+  headers: Record<string, string>;
+  body: string;
+  truncated: boolean;
+};
+
+export type DashboardListSecretsResult = {
+  schemaVersion: typeof DASHBOARD_SCHEMA_VERSION;
+  available: boolean;
+  secrets: DashboardSecretStatus[];
+};
+
 export type DashboardGetInfoRequest = undefined;
 export type DashboardGetInfoResponse = DashboardInfo;
 export type DashboardReadStateRequest = undefined;
@@ -158,6 +256,10 @@ export type DashboardReadVaultIndexRequest = undefined;
 export type DashboardReadVaultIndexResponse = DashboardVaultIndexSnapshot;
 export type DashboardReadDocumentsRequest = { documentIds: string[] };
 export type DashboardReadDocumentsResponse = DashboardDocumentsSnapshot;
+export type DashboardListSecretsRequest = undefined;
+export type DashboardListSecretsResponse = DashboardListSecretsResult;
+export type DashboardSecureFetchRequest = { request: DashboardSecureFetchInput };
+export type DashboardSecureFetchResponse = DashboardSecureFetchResult;
 
 export type DashboardApi = {
   getInfo: () => Promise<DashboardGetInfoResponse>;
@@ -165,6 +267,8 @@ export type DashboardApi = {
   writeState: (state: DashboardState) => Promise<DashboardWriteStateResponse>;
   readVaultIndex: () => Promise<DashboardReadVaultIndexResponse>;
   readDocuments: (documentIds: string[]) => Promise<DashboardReadDocumentsResponse>;
+  listSecrets: () => Promise<DashboardListSecretsResponse>;
+  secureFetch: (request: DashboardSecureFetchInput) => Promise<DashboardSecureFetchResponse>;
 };
 
 export type DashboardApiRequestMap = {
@@ -173,6 +277,8 @@ export type DashboardApiRequestMap = {
   writeState: DashboardWriteStateRequest;
   readVaultIndex: DashboardReadVaultIndexRequest;
   readDocuments: DashboardReadDocumentsRequest;
+  listSecrets: DashboardListSecretsRequest;
+  secureFetch: DashboardSecureFetchRequest;
 };
 
 export type DashboardApiResponseMap = {
@@ -181,6 +287,8 @@ export type DashboardApiResponseMap = {
   writeState: DashboardWriteStateResponse;
   readVaultIndex: DashboardReadVaultIndexResponse;
   readDocuments: DashboardReadDocumentsResponse;
+  listSecrets: DashboardListSecretsResponse;
+  secureFetch: DashboardSecureFetchResponse;
 };
 
 export type DashboardApiErrorCode =
@@ -188,7 +296,8 @@ export type DashboardApiErrorCode =
   | "permission-denied"
   | "resource-limit"
   | "state-invalid"
-  | "unavailable";
+  | "unavailable"
+  | "secret-unset";
 
 export type DashboardApiError = {
   schemaVersion: typeof DASHBOARD_SCHEMA_VERSION;

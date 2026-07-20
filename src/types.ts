@@ -2,10 +2,13 @@ import type {
   DashboardCapabilityId,
   DashboardCreateInput,
   DashboardEffectivePermissions,
+  DashboardListEntry,
   DashboardManifest,
   DashboardPermissionDetails,
+  DashboardSecretsOverview,
   DashboardRemoval,
   DashboardRuntimeHostStatus,
+  DashboardStorageLocation,
 } from "./dashboard-contracts";
 
 export type DocNode = {
@@ -241,11 +244,16 @@ export type VaultApi = {
   documentPath: (vaultId: string, documentId: string) => Promise<string>;
   saveDocumentPdf: (vaultId: string, documentId: string) => Promise<SavePdfResult>;
   watch: (vaultId: string) => Promise<void>;
-  dashboards: (vaultId: string) => Promise<DashboardManifest[]>;
+  dashboards: (vaultId: string) => Promise<DashboardListEntry[]>;
   createDashboard: (vaultId: string, input: DashboardCreateInput) => Promise<DashboardManifest>;
   renameDashboard: (vaultId: string, dashboardId: string, title: string) => Promise<DashboardManifest>;
   reorderDashboards: (vaultId: string, dashboardIds: string[]) => Promise<DashboardManifest[]>;
   removeDashboard: (vaultId: string, dashboardId: string) => Promise<DashboardRemoval>;
+  moveDashboard: (
+    vaultId: string,
+    dashboardId: string,
+    location: DashboardStorageLocation,
+  ) => Promise<DashboardListEntry>;
   dashboardAgentHandoff: (vaultId: string, dashboardId: string) => Promise<string>;
   openDashboard: (vaultId: string, dashboardId: string) => Promise<void>;
   setDashboardBounds: (bounds: { x: number; y: number; width: number; height: number }) => Promise<void>;
@@ -263,6 +271,9 @@ export type VaultApi = {
     selectedDocumentIds: string[],
   ) => Promise<DashboardEffectivePermissions>;
   revokeDashboardPermissions: (vaultId: string, dashboardId: string) => Promise<void>;
+  dashboardSecrets: () => Promise<DashboardSecretsOverview>;
+  setDashboardSecret: (name: string, value: string) => Promise<DashboardSecretsOverview>;
+  deleteDashboardSecret: (name: string) => Promise<DashboardSecretsOverview>;
   blame: (vaultId: string, documentId: string) => Promise<BlameLine[]>;
   quickNotes: (vaultId: string) => Promise<string>;
   saveQuickNotes: (vaultId: string, html: string) => Promise<void>;

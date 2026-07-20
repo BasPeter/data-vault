@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "hostile-secret-name",
+  "title": "Hostile secret name",
+  "icon": "lightbulb",
+  "color": "orange",
+  "kind": "blank",
+  "entrypoint": "index.html",
+  "requestedCapabilities": ["secrets:use"],
+  "secrets": [{ "name": "example_token", "origins": ["https://api.example.com"] }]
+}

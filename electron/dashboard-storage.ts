@@ -8,6 +8,10 @@ import {
   DASHBOARD_KINDS,
   DASHBOARD_NAMESPACE_DIRECTORY,
   DASHBOARD_SCHEMA_VERSION,
+  DASHBOARD_SECRET_MAX_COUNT,
+  DASHBOARD_SECRET_NAME_PATTERN,
+  DASHBOARD_SECRET_ORIGIN_MAX_COUNT,
+  DASHBOARD_SECRET_ORIGIN_MAX_LENGTH,
   type DashboardCapabilityId,
   type DashboardCreateInput,
   type DashboardKind,
@@ -15,7 +19,26 @@ import {
   type DashboardNamespaceConfig,
   type DashboardRemoval,
   type DashboardRegistry,
+  type DashboardSecretDeclaration,
+  type DashboardStorageLocation,
 } from "../src/dashboard-contracts";
+
+// The app-local namespace has no vault.json to activate it: ownership is the
+// namespace directory itself, one level below the shared app-local dashboards
+// root (`<userData>/dashboards/<vaultKey>`). A vault key is always a 64-char
+// lowercase hex HMAC digest (see dashboard-permissions.ts); validating that
+// shape here keeps a malformed key from ever being joined into a filesystem
+// path.
+const DASHBOARD_VAULT_KEY = /^[a-f0-9]{64}$/;
+
+/**
+ * Selects which namespace a `DashboardStorage` instance owns: the vault
+ * namespace shared through the vault repository, or an app-local namespace
+ * private to this installation. Both namespaces share identical layout,
+ * validation, atomicity, and trash semantics; only activation differs (see
+ * `isConfigured`/`ensureOwnedNamespace`).
+ */
+export type DashboardStorageRoot = { readonly appLocalRoot: string; readonly vaultKey: string };
 
 const DASHBOARD_ID = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
 const ENTRYPOINT = /^(?!.*(?:^|\/)\.\.?\/)[A-Za-z0-9][A-Za-z0-9._/-]*\.html$/;
@@ -42,8 +65,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function exactKeys(value: Record<string, unknown>, keys: readonly string[], label: string): void {
-  if (Object.keys(value).length !== keys.length || keys.some((key) => !(key in value))) {
+function exactKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+  label: string,
+  optionalKeys: readonly string[] = [],
+): void {
+  const allowed = new Set([...keys, ...optionalKeys]);
+  if (Object.keys(value).some((key) => !allowed.has(key)) || keys.some((key) => !(key in value))) {
     throw new Error(`Invalid ${label}.`);
   }
 }
@@ -100,12 +129,74 @@ function parseRegistry(value: unknown): DashboardRegistry {
   return { schemaVersion: DASHBOARD_SCHEMA_VERSION, dashboards };
 }
 
+// A declared secret may only be sent to origins the user approved in the
+// manifest. Without an exact, wildcard-free HTTPS match here, hostile
+// dashboard JS could redirect `secureFetch` to an attacker-chosen origin and
+// exfiltrate the resolved secret value.
+function validateSecretOrigin(value: unknown): string {
+  if (typeof value !== "string" || value.length < 1 || value.length > DASHBOARD_SECRET_ORIGIN_MAX_LENGTH) {
+    throw new Error("Invalid dashboard secret origin.");
+  }
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch (error) {
+    throw new Error("Invalid dashboard secret origin.", { cause: error });
+  }
+  if (
+    url.protocol !== "https:" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.hostname.includes("*") ||
+    (url.pathname !== "/" && url.pathname !== "") ||
+    url.search !== "" ||
+    url.hash !== ""
+  ) {
+    throw new Error("Invalid dashboard secret origin.");
+  }
+  const origin = url.origin;
+  if (origin.length > DASHBOARD_SECRET_ORIGIN_MAX_LENGTH) throw new Error("Invalid dashboard secret origin.");
+  return origin;
+}
+
+function parseSecretDeclaration(value: unknown): DashboardSecretDeclaration {
+  if (!isRecord(value)) throw new Error("Invalid dashboard secret declaration.");
+  exactKeys(value, ["name", "origins"], "dashboard secret declaration");
+  if (typeof value.name !== "string" || !DASHBOARD_SECRET_NAME_PATTERN.test(value.name)) {
+    throw new Error("Invalid dashboard secret name.");
+  }
+  if (
+    !Array.isArray(value.origins) ||
+    value.origins.length < 1 ||
+    value.origins.length > DASHBOARD_SECRET_ORIGIN_MAX_COUNT
+  ) {
+    throw new Error("Invalid dashboard secret origins.");
+  }
+  return { name: value.name, origins: value.origins.map(validateSecretOrigin) };
+}
+
+// `secrets` is optional; a manifest that never declares it must round-trip
+// unchanged (no `secrets: []` synthesized), keeping every existing bundle
+// byte-for-byte compatible with pre-secrets application versions.
+function parseSecretDeclarations(value: unknown): DashboardSecretDeclaration[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > DASHBOARD_SECRET_MAX_COUNT) {
+    throw new Error("Invalid dashboard secrets.");
+  }
+  const secrets = value.map(parseSecretDeclaration);
+  if (new Set(secrets.map((secret) => secret.name)).size !== secrets.length) {
+    throw new Error("Duplicate dashboard secret name.");
+  }
+  return secrets;
+}
+
 function parseManifest(value: unknown, expectedId: string): DashboardManifest {
   if (!isRecord(value)) throw new Error("Invalid dashboard manifest.");
   exactKeys(
     value,
     ["schemaVersion", "id", "title", "icon", "color", "kind", "entrypoint", "requestedCapabilities"],
     "dashboard manifest",
+    ["secrets"],
   );
   if (value.schemaVersion !== DASHBOARD_SCHEMA_VERSION || validateId(value.id) !== expectedId) {
     throw new Error("Invalid dashboard manifest.");
@@ -120,6 +211,7 @@ function parseManifest(value: unknown, expectedId: string): DashboardManifest {
   if (new Set(requestedCapabilities).size !== requestedCapabilities.length) {
     throw new Error("Duplicate dashboard capability.");
   }
+  const secrets = parseSecretDeclarations(value.secrets);
   return {
     schemaVersion: DASHBOARD_SCHEMA_VERSION,
     id: expectedId,
@@ -129,6 +221,7 @@ function parseManifest(value: unknown, expectedId: string): DashboardManifest {
     kind: oneOf(value.kind, DASHBOARD_KINDS, "kind"),
     entrypoint: value.entrypoint,
     requestedCapabilities,
+    ...(secrets !== undefined ? { secrets } : {}),
   };
 }
 
@@ -175,13 +268,31 @@ function requestedCapabilities(kind: DashboardKind): DashboardCapabilityId[] {
 export class DashboardStorage {
   readonly repositoryRoot: string;
   readonly namespaceRoot: string;
+  readonly location: DashboardStorageLocation;
+  private readonly kind: DashboardStorageLocation;
 
-  constructor(repositoryPath: string) {
-    this.repositoryRoot = fs.realpathSync(repositoryPath);
-    this.namespaceRoot = path.join(this.repositoryRoot, ...DASHBOARD_NAMESPACE_DIRECTORY.split("/"));
+  constructor(repositoryPath: string);
+  constructor(root: DashboardStorageRoot);
+  constructor(root: string | DashboardStorageRoot) {
+    if (typeof root === "string") {
+      this.kind = "vault";
+      this.location = "vault";
+      this.repositoryRoot = fs.realpathSync(root);
+      this.namespaceRoot = path.join(this.repositoryRoot, ...DASHBOARD_NAMESPACE_DIRECTORY.split("/"));
+      return;
+    }
+    if (!DASHBOARD_VAULT_KEY.test(root.vaultKey)) throw new Error("Invalid dashboard vault key.");
+    this.kind = "local";
+    this.location = "local";
+    // The shared app-local dashboards root (`<userData>/dashboards`) is
+    // app-owned and expected to already exist; this instance only owns the
+    // one vault-keyed subdirectory beneath it.
+    this.repositoryRoot = fs.realpathSync(root.appLocalRoot);
+    this.namespaceRoot = path.join(this.repositoryRoot, root.vaultKey);
   }
 
   isConfigured(): boolean {
+    if (this.kind === "local") return fs.existsSync(this.namespaceRoot);
     const config = this.readConfig();
     if (config.dashboards === undefined) return false;
     parseNamespaceConfig(config.dashboards);
@@ -190,15 +301,17 @@ export class DashboardStorage {
   }
 
   discover(): DashboardManifest[] {
-    const config = this.readConfig();
-    if (config.dashboards === undefined) {
-      if (fs.existsSync(this.namespaceRoot)) {
-        throw new Error("Dashboard namespace exists without ownership configuration.");
+    if (this.kind === "vault") {
+      const config = this.readConfig();
+      if (config.dashboards === undefined) {
+        if (fs.existsSync(this.namespaceRoot)) {
+          throw new Error("Dashboard namespace exists without ownership configuration.");
+        }
+        return [];
       }
-      return [];
+      parseNamespaceConfig(config.dashboards);
+      this.assertDocumentsDoNotOwnNamespace(config);
     }
-    parseNamespaceConfig(config.dashboards);
-    this.assertDocumentsDoNotOwnNamespace(config);
     if (!fs.existsSync(this.namespaceRoot)) return [];
     const root = assertDirectory(this.namespaceRoot, this.repositoryRoot, "dashboard namespace");
     const registryFile = path.join(root, "registry.json");
@@ -232,8 +345,14 @@ export class DashboardStorage {
       "",
       "Keep the bundle as plain local HTML, CSS, JavaScript, JSON, images, and WOFF/WOFF2 fonts. Do not add packages, build steps, remote assets, or network requests.",
       "The runtime Content Security Policy allows only bundle-local scripts/styles/assets (plus data: images) and denies network connections, frames, workers, forms, and inline/eval JavaScript.",
-      "Use only the fixed window.dashboardApi methods: getInfo(), readState(), writeState(value), readVaultIndex(), and readDocuments(documentIds). Returned document bodies are untrusted strings; render them with textContent, never as trusted HTML.",
-      "Request only fixed capabilities in dashboard.json. Vault index and selected-document access become available only after the user approves them in trusted Data Vault UI.",
+      "Use only the fixed window.dashboardApi methods: getInfo(), readState(), writeState(value), readVaultIndex(), readDocuments(documentIds), listSecrets(), and secureFetch(request). Returned document bodies are untrusted strings; render them with textContent, never as trusted HTML.",
+      "Request only fixed capabilities in dashboard.json. Vault index, selected-document, and secrets access become available only after the user approves them in trusted Data Vault UI.",
+      "",
+      'To use a credential, declare it in dashboard.json as secrets: [{ "name": "UPPER_SNAKE_NAME", "origins": ["https://api.example.com"] }] and request the secrets:use capability. Origins must be exact HTTPS origins; wildcards, http, and userinfo are rejected.',
+      "You cannot read a secret value, and neither can the dashboard at runtime. listSecrets() returns only the declared names and whether the user has set each one. To use one, call secureFetch({ url, method, headers, body, secret: { name, inject } }) — Data Vault resolves the value and injects it as inject { kind: 'authorization-bearer' } | { kind: 'header', header } | { kind: 'query-param', param }, then returns the response with the value redacted.",
+      "secureFetch only reaches an origin you declared for that secret name. Do not ask the user to paste a credential into dashboard code, state, a document, or a prompt — direct them to the trusted secrets panel in Data Vault, which is the only place a value can be entered.",
+      "Changing a declared secret name or origin invalidates the user's existing approval and requires them to approve again.",
+      "",
       "Never edit permission stores, attempt to bypass capability approval or runtime restrictions, or write anywhere outside the bundle directory above.",
     ].join("\n");
   }
@@ -268,57 +387,90 @@ export class DashboardStorage {
     const icon = oneOf(input.icon, DASHBOARD_ICON_IDS, "icon");
     const color = oneOf(input.color, DASHBOARD_COLOR_IDS, "color");
     const kind = oneOf(input.kind, DASHBOARD_KINDS, "kind");
-    const configFile = path.join(this.repositoryRoot, "vault.json");
-    const originalConfig = fs.existsSync(configFile) ? fs.readFileSync(configFile) : null;
-    const namespaceCreated = this.ensureOwnedNamespace();
-    const registry = this.readRegistry();
-    const id = randomUUID();
-    const stage = path.join(this.namespaceRoot, `.creating-${id}`);
-    const bundle = path.join(this.namespaceRoot, id);
-    const manifest: DashboardManifest = {
-      schemaVersion: DASHBOARD_SCHEMA_VERSION,
-      id,
-      title,
-      icon,
-      color,
-      kind,
-      entrypoint: "index.html",
-      requestedCapabilities: requestedCapabilities(kind),
-    };
-    let stageCreated = false;
-    let bundleCreated = false;
-    try {
-      if (fs.existsSync(stage) || fs.existsSync(bundle)) throw new Error("Dashboard destination already exists.");
-      fs.mkdirSync(stage);
-      stageCreated = true;
-      atomicJson(path.join(stage, "dashboard.json"), manifest);
-      fs.writeFileSync(
-        path.join(stage, "index.html"),
-        '<!doctype html>\n<html><head><meta charset="utf-8"><link rel="stylesheet" href="styles.css"></head><body><main id="app"></main><script src="app.js"></script></body></html>\n',
-        { flag: "wx" },
-      );
-      fs.writeFileSync(
-        path.join(stage, "styles.css"),
-        ":root { color-scheme: light dark; }\nhtml { font-family: system-ui, sans-serif; }\n",
-        { flag: "wx" },
-      );
-      fs.writeFileSync(
-        path.join(stage, "app.js"),
-        "document.querySelector('#app').textContent = 'Dashboard ready';\n",
-        { flag: "wx" },
-      );
-      fs.renameSync(stage, bundle);
-      stageCreated = false;
-      bundleCreated = true;
-      this.readBundle(this.namespaceRoot, id);
-      this.writeRegistry({ ...registry, dashboards: [...registry.dashboards, { id }] });
-      return manifest;
-    } catch (error) {
-      if (stageCreated) fs.rmSync(stage, { recursive: true, force: true });
-      if (bundleCreated) fs.rmSync(bundle, { recursive: true, force: true });
-      if (namespaceCreated) this.rollbackNewNamespace(originalConfig);
-      throw error;
-    }
+    return this.withOwnedNamespace(() => {
+      const registry = this.readRegistry();
+      const id = randomUUID();
+      const stage = path.join(this.namespaceRoot, `.creating-${id}`);
+      const bundle = path.join(this.namespaceRoot, id);
+      const manifest: DashboardManifest = {
+        schemaVersion: DASHBOARD_SCHEMA_VERSION,
+        id,
+        title,
+        icon,
+        color,
+        kind,
+        entrypoint: "index.html",
+        requestedCapabilities: requestedCapabilities(kind),
+      };
+      let stageCreated = false;
+      let bundleCreated = false;
+      try {
+        if (fs.existsSync(stage) || fs.existsSync(bundle)) throw new Error("Dashboard destination already exists.");
+        fs.mkdirSync(stage);
+        stageCreated = true;
+        atomicJson(path.join(stage, "dashboard.json"), manifest);
+        fs.writeFileSync(
+          path.join(stage, "index.html"),
+          '<!doctype html>\n<html><head><meta charset="utf-8"><link rel="stylesheet" href="styles.css"></head><body><main id="app"></main><script src="app.js"></script></body></html>\n',
+          { flag: "wx" },
+        );
+        fs.writeFileSync(
+          path.join(stage, "styles.css"),
+          ":root { color-scheme: light dark; }\nhtml { font-family: system-ui, sans-serif; }\n",
+          { flag: "wx" },
+        );
+        fs.writeFileSync(
+          path.join(stage, "app.js"),
+          "document.querySelector('#app').textContent = 'Dashboard ready';\n",
+          { flag: "wx" },
+        );
+        fs.renameSync(stage, bundle);
+        stageCreated = false;
+        bundleCreated = true;
+        this.readBundle(this.namespaceRoot, id);
+        this.writeRegistry({ ...registry, dashboards: [...registry.dashboards, { id }] });
+        return manifest;
+      } catch (error) {
+        if (stageCreated) fs.rmSync(stage, { recursive: true, force: true });
+        if (bundleCreated) fs.rmSync(bundle, { recursive: true, force: true });
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * Adopts an already-validated bundle directory from another storage (used
+   * to move a dashboard between the vault and app-local locations) under the
+   * given ID and registers it here. The source is copied byte-for-byte
+   * (never re-serialized) so the bundle digest — and therefore existing
+   * permission grants, see digestDashboardBundle — is unchanged by the move.
+   * Callers must only remove the bundle from its original storage after this
+   * call succeeds, so a failure here never duplicates or orphans it.
+   */
+  adopt(sourceBundleDirectory: string, dashboardId: string): DashboardManifest {
+    const id = validateId(dashboardId);
+    return this.withOwnedNamespace(() => {
+      const registry = this.readRegistry();
+      const stage = path.join(this.namespaceRoot, `.creating-${id}`);
+      const bundle = path.join(this.namespaceRoot, id);
+      let stageCreated = false;
+      let bundleCreated = false;
+      try {
+        if (fs.existsSync(stage) || fs.existsSync(bundle)) throw new Error("Dashboard destination already exists.");
+        fs.cpSync(sourceBundleDirectory, stage, { recursive: true, errorOnExist: true, dereference: false });
+        stageCreated = true;
+        fs.renameSync(stage, bundle);
+        stageCreated = false;
+        bundleCreated = true;
+        const manifest = this.readBundle(this.namespaceRoot, id);
+        this.writeRegistry({ ...registry, dashboards: [...registry.dashboards, { id }] });
+        return manifest;
+      } catch (error) {
+        if (stageCreated) fs.rmSync(stage, { recursive: true, force: true });
+        if (bundleCreated) fs.rmSync(bundle, { recursive: true, force: true });
+        throw error;
+      }
+    });
   }
 
   rename(dashboardId: string, title: string): DashboardManifest {
@@ -422,7 +574,43 @@ export class DashboardStorage {
     atomicJson(path.join(this.namespaceRoot, "registry.json"), registry);
   }
 
+  // Shared by `create` and `adopt`: captures enough state to roll back a
+  // namespace this call activates, so a failure partway through either
+  // operation never leaves a half-initialized namespace or a mutated
+  // vault.json behind.
+  private withOwnedNamespace<T>(action: () => T): T {
+    const configFile = this.kind === "vault" ? path.join(this.repositoryRoot, "vault.json") : null;
+    const originalConfig = configFile !== null && fs.existsSync(configFile) ? fs.readFileSync(configFile) : null;
+    const namespaceCreated = this.ensureOwnedNamespace();
+    try {
+      return action();
+    } catch (error) {
+      if (namespaceCreated) this.rollbackNewNamespace(originalConfig);
+      throw error;
+    }
+  }
+
   private ensureOwnedNamespace(): boolean {
+    if (this.kind === "local") {
+      if (fs.existsSync(this.namespaceRoot)) {
+        // Fails closed the same way the vault branch below does: wrong type,
+        // symlink, or incomplete/unrecognized content all throw here.
+        this.discover();
+        return false;
+      }
+      // The parent (the shared app-local dashboards root) is app-owned and
+      // pre-created by VaultService; a missing or non-directory parent is a
+      // configuration error, not something to silently create.
+      assertDirectory(path.dirname(this.namespaceRoot), this.repositoryRoot, "dashboard namespace parent");
+      fs.mkdirSync(this.namespaceRoot);
+      fs.mkdirSync(path.join(this.namespaceRoot, ".trash"));
+      atomicJson(path.join(this.namespaceRoot, "registry.json"), {
+        schemaVersion: DASHBOARD_SCHEMA_VERSION,
+        dashboards: [],
+      } satisfies DashboardRegistry);
+      return true;
+    }
+
     const config = this.readConfig();
     if (config.dashboards === undefined && fs.existsSync(this.namespaceRoot)) {
       throw new Error("Dashboard namespace exists without ownership configuration.");
@@ -463,6 +651,7 @@ export class DashboardStorage {
 
   private rollbackNewNamespace(originalConfig: Buffer | null): void {
     fs.rmSync(this.namespaceRoot, { recursive: true, force: true });
+    if (this.kind === "local") return;
     const configFile = path.join(this.repositoryRoot, "vault.json");
     if (originalConfig === null) fs.rmSync(configFile, { force: true });
     else fs.writeFileSync(configFile, originalConfig);

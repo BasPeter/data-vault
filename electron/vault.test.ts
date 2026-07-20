@@ -2,8 +2,23 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cloneFailureMessage, pushFailureMessage, syncFailureMessage, VaultService } from "./vault";
+import { DashboardPermissionStore, digestDashboardBundle } from "./dashboard-permissions";
+
+// Recursively collects every bundle file (relative path + bytes) for digest
+// comparison via digestDashboardBundle, mirroring how the permission layer
+// computes a dashboard's bundle digest from its bundle directory.
+function bundleFiles(directory: string, prefix = ""): { path: string; bytes: Uint8Array }[] {
+  const entries: { path: string; bytes: Uint8Array }[] = [];
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const absolute = path.join(directory, entry.name);
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) entries.push(...bundleFiles(absolute, relative));
+    else entries.push({ path: relative, bytes: fs.readFileSync(absolute) });
+  }
+  return entries;
+}
 
 const temporaryDirectories: string[] = [];
 
@@ -31,6 +46,7 @@ function trySymlink(target: string, link: string, type?: fs.symlink.Type): boole
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const directory of temporaryDirectories.splice(0)) {
     fs.rmSync(directory, { recursive: true, force: true });
   }
@@ -412,6 +428,7 @@ describe("VaultService", () => {
       icon: "target",
       color: "purple",
       kind: "blank",
+      location: "vault",
     });
     const dashboardDocumentId = `.data-vault/dashboards/${dashboard.id}/index.html`;
     const dashboardFile = path.join(root, ...dashboardDocumentId.split("/"));
@@ -439,6 +456,7 @@ describe("VaultService", () => {
       icon: "target",
       color: "purple",
       kind: "blank",
+      location: "vault",
     });
     const bundle = path.join(root, ".data-vault", "dashboards", dashboard.id);
     const entrypoint = path.join(bundle, "index.html");
@@ -495,6 +513,7 @@ describe("VaultService", () => {
       icon: "chart",
       color: "blue",
       kind: "blank",
+      location: "vault",
     });
     const before = service.contentSignature(vault.id);
 
@@ -566,6 +585,7 @@ describe("VaultService", () => {
       icon: "check",
       color: "green",
       kind: "personal-progress",
+      location: "vault",
     });
 
     const status = await service.changes(vault.id);
@@ -579,6 +599,209 @@ describe("VaultService", () => {
       path: `.data-vault/dashboards/${dashboard.id}/app.js`,
     });
     expect(service.manifest(vault.id).tree.some((node) => node.id.includes(".data-vault"))).toBe(false);
+  });
+
+  describe("dashboard storage locations", () => {
+    it("creates an app-local dashboard without writing anything into the vault repository directory", async () => {
+      const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+      const vault = await service.createEmpty("Local only");
+      const before = fs.readdirSync(vault.repositoryPath).sort();
+
+      const dashboard = service.createDashboard(vault.id, {
+        title: "Private",
+        icon: "target",
+        color: "purple",
+        kind: "blank",
+        location: "local",
+      });
+
+      // The vault-format requirement this proves: an app-local dashboard must
+      // never appear anywhere a vault sync/commit could pick it up.
+      expect(fs.readdirSync(vault.repositoryPath).sort()).toEqual(before);
+      expect(fs.existsSync(path.join(vault.repositoryPath, ".data-vault"))).toBe(false);
+      expect(JSON.parse(fs.readFileSync(path.join(vault.repositoryPath, "vault.json"), "utf8"))).not.toHaveProperty(
+        "dashboards",
+      );
+      expect(service.dashboards(vault.id)).toEqual([{ ...dashboard, location: "local" }]);
+    });
+
+    it("lists vault dashboards before app-local dashboards, each in its own registry order", async () => {
+      const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+      const vault = await service.createEmpty("Mixed locations");
+      const base = { icon: "chart" as const, color: "blue" as const, kind: "blank" as const };
+      const vaultFirst = service.createDashboard(vault.id, { ...base, title: "V1", location: "vault" });
+      const localFirst = service.createDashboard(vault.id, { ...base, title: "L1", location: "local" });
+      const vaultSecond = service.createDashboard(vault.id, { ...base, title: "V2", location: "vault" });
+      const localSecond = service.createDashboard(vault.id, { ...base, title: "L2", location: "local" });
+
+      expect(service.dashboards(vault.id).map(({ id, location }) => ({ id, location }))).toEqual([
+        { id: vaultFirst.id, location: "vault" },
+        { id: vaultSecond.id, location: "vault" },
+        { id: localFirst.id, location: "local" },
+        { id: localSecond.id, location: "local" },
+      ]);
+    });
+
+    it("keeps the vault dashboard on an ID collision and reports the app-local duplicate without mutating either bundle", async () => {
+      const appData = path.join(temporaryDirectory(), "app-data");
+      const service = new VaultService(appData);
+      const vault = await service.createEmpty("Collision");
+      const vaultDashboard = service.createDashboard(vault.id, {
+        title: "Vault copy",
+        icon: "chart",
+        color: "blue",
+        kind: "blank",
+        location: "vault",
+      });
+      const localDashboard = service.createDashboard(vault.id, {
+        title: "Local copy",
+        icon: "chart",
+        color: "blue",
+        kind: "blank",
+        location: "local",
+      });
+
+      // Force a collision by relocating the app-local bundle onto the vault
+      // dashboard's ID directly on disk (IDs are random, so this can only be
+      // engineered here — but the two-namespace design must still handle it
+      // safely if it ever occurs, e.g. after a manual copy).
+      const vaultKey = new DashboardPermissionStore(appData).vaultKeyFor(vault.repositoryPath);
+      const localRoot = path.join(appData, "dashboards", vaultKey);
+      fs.renameSync(path.join(localRoot, localDashboard.id), path.join(localRoot, vaultDashboard.id));
+      const manifestFile = path.join(localRoot, vaultDashboard.id, "dashboard.json");
+      fs.writeFileSync(
+        manifestFile,
+        JSON.stringify({ ...JSON.parse(fs.readFileSync(manifestFile, "utf8")), id: vaultDashboard.id }),
+      );
+      fs.writeFileSync(
+        path.join(localRoot, "registry.json"),
+        JSON.stringify({ schemaVersion: 1, dashboards: [{ id: vaultDashboard.id }] }),
+      );
+      const localBundleBefore = fs.readFileSync(manifestFile, "utf8");
+
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const list = service.dashboards(vault.id);
+      expect(list).toHaveLength(1);
+      expect(list[0]).toMatchObject({ id: vaultDashboard.id, location: "vault" });
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining(vaultDashboard.id));
+
+      // Neither bundle was adopted, modified, or deleted by discovery.
+      expect(fs.readFileSync(manifestFile, "utf8")).toBe(localBundleBefore);
+      expect(service.dashboards(vault.id)).toEqual(list);
+    });
+
+    it("moves a dashboard between locations, preserving ID, bundle content, digest, and state", async () => {
+      const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+      const vault = await service.createEmpty("Movable");
+      const created = service.createDashboard(vault.id, {
+        title: "Mover",
+        icon: "chart",
+        color: "blue",
+        kind: "personal-progress",
+        location: "vault",
+      });
+      service.dashboardWriteState(vault.id, created.id, "runtime-1", { progress: 3 });
+      const beforeDigest = digestDashboardBundle(
+        bundleFiles(service.dashboardRuntimeSource(vault.id, created.id).bundleDirectory),
+      );
+
+      const moved = service.moveDashboard(vault.id, created.id, "local");
+
+      expect(moved.id).toBe(created.id);
+      expect(moved.location).toBe("local");
+      expect(service.dashboards(vault.id)).toEqual([{ ...moved }]);
+      const afterMoveDigest = digestDashboardBundle(
+        bundleFiles(service.dashboardRuntimeSource(vault.id, created.id).bundleDirectory),
+      );
+      expect(afterMoveDigest).toBe(beforeDigest);
+      expect(service.dashboardReadState(vault.id, created.id)).toEqual({ progress: 3 });
+
+      const movedBack = service.moveDashboard(vault.id, created.id, "vault");
+      expect(movedBack.location).toBe("vault");
+      const finalDigest = digestDashboardBundle(
+        bundleFiles(service.dashboardRuntimeSource(vault.id, created.id).bundleDirectory),
+      );
+      expect(finalDigest).toBe(beforeDigest);
+      expect(service.dashboardReadState(vault.id, created.id)).toEqual({ progress: 3 });
+    });
+
+    it("keeps an existing permission grant valid across a move, because vaultKey, dashboard ID, and bundle digest are unchanged", async () => {
+      const appData = path.join(temporaryDirectory(), "app-data");
+      const service = new VaultService(appData);
+      const vault = await service.createEmpty("Grant survives move");
+      const created = service.createDashboard(vault.id, {
+        title: "Intel",
+        icon: "chart",
+        color: "blue",
+        kind: "vault-intelligence",
+        location: "vault",
+      });
+      const bundleDigest = digestDashboardBundle(
+        bundleFiles(service.dashboardRuntimeSource(vault.id, created.id).bundleDirectory),
+      );
+      const permissions = new DashboardPermissionStore(appData);
+      const context = {
+        repositoryPath: vault.repositoryPath,
+        dashboardId: created.id,
+        requestedCapabilities: created.requestedCapabilities,
+        bundleDigest,
+      };
+      permissions.grant(context, ["vault:index:read"]);
+      expect(permissions.effective(context).capabilities).toContain("vault:index:read");
+
+      service.moveDashboard(vault.id, created.id, "local");
+
+      const afterDigest = digestDashboardBundle(
+        bundleFiles(service.dashboardRuntimeSource(vault.id, created.id).bundleDirectory),
+      );
+      expect(afterDigest).toBe(bundleDigest);
+      expect(permissions.effective({ ...context, bundleDigest: afterDigest }).capabilities).toContain(
+        "vault:index:read",
+      );
+    });
+
+    it("rolls back partial destination artifacts and leaves the source valid and registered when a move is interrupted", async () => {
+      const appData = path.join(temporaryDirectory(), "app-data");
+      const service = new VaultService(appData);
+      const vault = await service.createEmpty("Interrupted move");
+      const created = service.createDashboard(vault.id, {
+        title: "Interrupted",
+        icon: "chart",
+        color: "blue",
+        kind: "blank",
+        location: "vault",
+      });
+      const vaultKey = new DashboardPermissionStore(appData).vaultKeyFor(vault.repositoryPath);
+      const localRoot = path.join(appData, "dashboards", vaultKey);
+
+      const rename = fs.renameSync;
+      vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+        if (path.dirname(String(to)) === localRoot && path.basename(String(to)) === created.id) {
+          throw new Error("simulated interruption");
+        }
+        return rename(from, to);
+      });
+
+      expect(() => service.moveDashboard(vault.id, created.id, "local")).toThrow("simulated interruption");
+      vi.restoreAllMocks();
+
+      expect(service.dashboards(vault.id)).toEqual([{ ...created, location: "vault" }]);
+      expect(fs.existsSync(localRoot)).toBe(false);
+    });
+
+    it("rejects moving to anything but the destination the dashboard is not already stored in", async () => {
+      const service = new VaultService(path.join(temporaryDirectory(), "app-data"));
+      const vault = await service.createEmpty("No-op move");
+      const created = service.createDashboard(vault.id, {
+        title: "Stays put",
+        icon: "chart",
+        color: "blue",
+        kind: "blank",
+        location: "vault",
+      });
+
+      expect(() => service.moveDashboard(vault.id, created.id, "vault")).toThrow("not stored app-locally");
+    });
   });
 
   it("parses -z status output for a staged rename and an untracked non-ASCII filename", async () => {

@@ -91,3 +91,31 @@ describe("dashboard API authentication", () => {
     expect(mainFrameReads).toBe(0);
   });
 });
+
+describe("dashboard secrets api arguments", () => {
+  it("requires list-secrets to carry no argument", () => {
+    expect(() => validateDashboardApiArgument("list-secrets", undefined)).not.toThrow();
+    expect(() => validateDashboardApiArgument("list-secrets", {})).toThrow("Invalid dashboard API request");
+  });
+
+  it("requires secure-fetch to carry exactly a request object", () => {
+    expect(() => validateDashboardApiArgument("secure-fetch", { request: { url: "https://a.example" } })).not.toThrow();
+    expect(() => validateDashboardApiArgument("secure-fetch", undefined)).toThrow("Invalid dashboard API request");
+    expect(() => validateDashboardApiArgument("secure-fetch", { request: {}, extra: 1 })).toThrow(
+      "Invalid dashboard API request",
+    );
+    expect(() => validateDashboardApiArgument("secure-fetch", { request: "no" })).toThrow(
+      "Invalid dashboard API request",
+    );
+  });
+
+  // The dispatch used to end in a read-documents fallthrough, so an operation
+  // without its own branch would have been silently treated as a document read.
+  it("rejects an unknown operation instead of falling through to read-documents", () => {
+    expect(() =>
+      validateDashboardApiArgument("invented" as Parameters<typeof validateDashboardApiArgument>[0], {
+        documentIds: ["a"],
+      }),
+    ).toThrow("Invalid dashboard API request");
+  });
+});

@@ -10,7 +10,7 @@ import {
   type Session,
   type WebContents,
 } from "electron";
-import type { DashboardManifest } from "../src/dashboard-contracts";
+import type { DashboardManifest, DashboardSecretDeclaration } from "../src/dashboard-contracts";
 import {
   DASHBOARD_SCHEMA_VERSION,
   type DashboardCapabilityId,
@@ -64,6 +64,8 @@ export type DashboardRuntimeServices = Readonly<{
     permissions: DashboardEffectivePermissions,
     documentIds: readonly string[],
   ) => unknown;
+  listSecrets: (manifest: DashboardManifest) => unknown;
+  secureFetch: (manifest: DashboardManifest, request: unknown) => Promise<unknown>;
 }>;
 
 export type DashboardRuntimeStatus = "loading" | "ready" | "failed" | "unresponsive" | "stopped";
@@ -327,6 +329,17 @@ export class DashboardRuntimeController {
     if (operation === "read-vault-index") {
       return this.runExpensiveRead(runtime, () => this.services.readVaultIndex(runtime.source.vaultId, permissions));
     }
+    if (operation === "list-secrets") {
+      if (!permissions.capabilities.includes("secrets:use")) throw new Error("Dashboard access denied.");
+      return this.services.listSecrets(runtime.manifest);
+    }
+    if (operation === "secure-fetch") {
+      if (!permissions.capabilities.includes("secrets:use")) throw new Error("Dashboard access denied.");
+      return this.runExpensiveRead(runtime, () =>
+        this.services.secureFetch(runtime.manifest, (value as { request: unknown }).request),
+      );
+    }
+    if (operation !== "read-documents") throw new Error("Invalid dashboard API request.");
     return this.runExpensiveRead(runtime, () =>
       this.services.readDocuments(
         runtime.source.vaultId,
@@ -343,12 +356,23 @@ export class DashboardRuntimeController {
     requestedCapabilities: DashboardCapabilityId[];
     effectivePermissions: DashboardEffectivePermissions;
     documents: Array<{ id: string; title: string }>;
+    secrets: Array<DashboardSecretDeclaration & { set: boolean }>;
   }> {
     const runtime = this.assertActiveHostTarget(vaultId, dashboardId);
+    const listed = this.services.listSecrets(runtime.manifest) as { secrets?: Array<{ name: string; set: boolean }> };
+    const status = new Map((listed.secrets ?? []).map((entry) => [entry.name, entry.set]));
     return {
       requestedCapabilities: [...runtime.manifest.requestedCapabilities],
       effectivePermissions: this.services.permissions(runtime.source, runtime.snapshot.digest),
       documents: this.services.documentsForSelection(runtime.source.vaultId),
+      // Names, origins, and whether a value already exists — never the value.
+      // `set` matters for consent: approving a dashboard that declares a name the
+      // user already filled in for another dashboard hands it that existing value.
+      secrets: (runtime.manifest.secrets ?? []).map((declaration) => ({
+        name: declaration.name,
+        origins: [...declaration.origins],
+        set: status.get(declaration.name) ?? false,
+      })),
     };
   }
 

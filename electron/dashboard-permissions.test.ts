@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   canonicalDashboardCapabilityRequest,
+  canonicalDashboardSecretRequest,
   dashboardCapabilityRequestDigest,
   DashboardPermissionStore,
   digestDashboardBundle,
@@ -57,6 +58,44 @@ describe("dashboard permission identity", () => {
     const codeChanged = digestDashboardBundle([{ path: "index.html", bytes: Buffer.from("changed") }]);
     expect(stateChanged).toBe(first);
     expect(codeChanged).not.toBe(first);
+  });
+
+  it("canonicalizes declared secrets order-independently by name, then by origin", () => {
+    const a = [
+      { name: "B_TOKEN", origins: ["https://two.example.com", "https://one.example.com"] },
+      { name: "A_TOKEN", origins: ["https://api.example.com"] },
+    ];
+    const b = [
+      { name: "A_TOKEN", origins: ["https://api.example.com"] },
+      { name: "B_TOKEN", origins: ["https://one.example.com", "https://two.example.com"] },
+    ];
+    expect(canonicalDashboardSecretRequest(a)).toEqual(canonicalDashboardSecretRequest(b));
+    expect(canonicalDashboardSecretRequest()).toEqual([]);
+  });
+
+  it("folds declared secrets into the digest, but only when at least one is declared", () => {
+    // A dashboard that never declares a secret must keep exactly the digest it
+    // had before this field existed, so upgrading the app cannot itself revoke
+    // an existing grant for the overwhelming majority of (secret-free) dashboards.
+    const withoutSecretsField = dashboardCapabilityRequestDigest(["state:read"]);
+    const withEmptySecrets = dashboardCapabilityRequestDigest(["state:read"], []);
+    expect(withEmptySecrets).toBe(withoutSecretsField);
+
+    const declared = [{ name: "NOTION_TOKEN", origins: ["https://api.example.com"] }];
+    expect(dashboardCapabilityRequestDigest(["state:read"], declared)).not.toBe(withoutSecretsField);
+  });
+
+  it("changes the digest when a declared secret is renamed or retargeted to a different origin", () => {
+    // Renaming a secret or widening/changing its allowed origin must force new
+    // trusted approval: the consent the user gave was for a specific name sent
+    // to a specific, reviewed origin, not for "whatever this dashboard declares now".
+    const base = [{ name: "NOTION_TOKEN", origins: ["https://api.example.com"] }];
+    const renamed = [{ name: "OTHER_TOKEN", origins: ["https://api.example.com"] }];
+    const retargeted = [{ name: "NOTION_TOKEN", origins: ["https://attacker.example.com"] }];
+
+    const baseDigest = dashboardCapabilityRequestDigest(["state:read"], base);
+    expect(dashboardCapabilityRequestDigest(["state:read"], renamed)).not.toBe(baseDigest);
+    expect(dashboardCapabilityRequestDigest(["state:read"], retargeted)).not.toBe(baseDigest);
   });
 
   it("stores only a salted canonical-root key and grants in canonical order", () => {
@@ -180,5 +219,60 @@ describe("dashboard permission identity", () => {
     expect(() => store.revoke(grantContext)).toThrow("interrupted");
     expect(fs.readFileSync(permissionsFile, "utf8")).toBe(original);
     expect(fs.readdirSync(userData).filter((name) => name.endsWith(".tmp"))).toEqual([]);
+  });
+
+  it("keeps a granted secrets:use approval valid across a pure reordering of declared secrets and origins", () => {
+    const userData = temporaryDirectory();
+    const repository = temporaryDirectory();
+    const store = new DashboardPermissionStore(userData);
+    const declared = [
+      { name: "A_TOKEN", origins: ["https://one.example.com", "https://two.example.com"] },
+      { name: "B_TOKEN", origins: ["https://api.example.com"] },
+    ];
+    const approved = context(repository, { requestedCapabilities: ["secrets:use"], requestedSecrets: declared });
+    store.grant(approved, ["secrets:use"]);
+
+    const reordered = context(repository, {
+      requestedCapabilities: ["secrets:use"],
+      requestedSecrets: [
+        { name: "B_TOKEN", origins: ["https://api.example.com"] },
+        { name: "A_TOKEN", origins: ["https://two.example.com", "https://one.example.com"] },
+      ],
+    });
+    expect(store.effective(reordered).capabilities).toContain("secrets:use");
+  });
+
+  it("revokes secrets:use when a declared origin is retargeted, so a dashboard cannot silently redirect where its secret is sent", () => {
+    const userData = temporaryDirectory();
+    const repository = temporaryDirectory();
+    const store = new DashboardPermissionStore(userData);
+    const approved = context(repository, {
+      requestedCapabilities: ["secrets:use"],
+      requestedSecrets: [{ name: "A_TOKEN", origins: ["https://api.example.com"] }],
+    });
+    store.grant(approved, ["secrets:use"]);
+
+    const retargeted = context(repository, {
+      requestedCapabilities: ["secrets:use"],
+      requestedSecrets: [{ name: "A_TOKEN", origins: ["https://attacker.example.com"] }],
+    });
+    expect(store.effective(retargeted).capabilities).not.toContain("secrets:use");
+  });
+
+  it("revokes secrets:use when a declared secret is renamed", () => {
+    const userData = temporaryDirectory();
+    const repository = temporaryDirectory();
+    const store = new DashboardPermissionStore(userData);
+    const approved = context(repository, {
+      requestedCapabilities: ["secrets:use"],
+      requestedSecrets: [{ name: "A_TOKEN", origins: ["https://api.example.com"] }],
+    });
+    store.grant(approved, ["secrets:use"]);
+
+    const renamed = context(repository, {
+      requestedCapabilities: ["secrets:use"],
+      requestedSecrets: [{ name: "B_TOKEN", origins: ["https://api.example.com"] }],
+    });
+    expect(store.effective(renamed).capabilities).not.toContain("secrets:use");
   });
 });

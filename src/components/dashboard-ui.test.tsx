@@ -2,18 +2,20 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DashboardManifest } from "@/dashboard-contracts";
+import type { DashboardListEntry } from "@/dashboard-contracts";
 import type { VaultApi } from "@/types";
 import { SidebarProvider } from "./ui/sidebar";
 import { AppSidebar } from "./app-sidebar";
 import { DashboardCreateDialog } from "./dashboard-create-dialog";
 import { DashboardHost } from "./dashboard-host";
 import { DashboardPermissionDialog } from "./dashboard-permission-dialog";
+import { DashboardSecretsDialog } from "./dashboard-secrets-dialog";
 
 vi.mock("@/components/agent-skills-panel", () => ({ AgentSkillsPanel: () => null }));
 vi.mock("@/components/update-button", () => ({ UpdateButton: () => null }));
 
-const dashboard: DashboardManifest = {
+const dashboard: DashboardListEntry = {
+  location: "vault",
   schemaVersion: 1,
   id: "focus",
   title: "Focus",
@@ -23,7 +25,7 @@ const dashboard: DashboardManifest = {
   entrypoint: "index.html",
   requestedCapabilities: ["vault:index:read", "vault:documents:read"],
 };
-const ideas: DashboardManifest = {
+const ideas: DashboardListEntry = {
   ...dashboard,
   id: "ideas",
   title: "Ideas",
@@ -86,6 +88,8 @@ describe("dashboard trusted UI", () => {
             onRenameDashboard={vi.fn()}
             onMoveDashboard={vi.fn()}
             onRemoveDashboard={vi.fn()}
+            onRelocateDashboard={vi.fn()}
+            onManageSecrets={vi.fn()}
           />
         </SidebarProvider>,
       ),
@@ -122,6 +126,8 @@ describe("dashboard trusted UI", () => {
             onRenameDashboard={vi.fn()}
             onMoveDashboard={vi.fn()}
             onRemoveDashboard={vi.fn()}
+            onRelocateDashboard={vi.fn()}
+            onManageSecrets={vi.fn()}
           />
         </SidebarProvider>,
       ),
@@ -167,6 +173,8 @@ describe("dashboard trusted UI", () => {
             onRenameDashboard={rename}
             onMoveDashboard={move}
             onRemoveDashboard={remove}
+            onRelocateDashboard={vi.fn()}
+            onManageSecrets={vi.fn()}
           />
         </SidebarProvider>,
       ),
@@ -214,6 +222,8 @@ describe("dashboard trusted UI", () => {
             onRenameDashboard={rename}
             onMoveDashboard={move}
             onRemoveDashboard={remove}
+            onRelocateDashboard={vi.fn()}
+            onManageSecrets={vi.fn()}
           />
         </SidebarProvider>,
       ),
@@ -265,7 +275,31 @@ describe("dashboard trusted UI", () => {
       kind: "vault-intelligence",
       icon: "compass",
       color: "orange",
+      // Sharing with the vault is the default; opting out has to be deliberate.
+      location: "vault",
     });
+  });
+
+  it("creates an app-local dashboard when the user opts out of vault storage", async () => {
+    const create = vi.fn(async () => undefined);
+    await act(async () => root.render(<DashboardCreateDialog open onOpenChange={vi.fn()} onCreate={create} />));
+
+    const input = document.body.querySelector<HTMLInputElement>("input")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Private notes");
+      input.dispatchEvent(new InputEvent("input", { bubbles: true, data: "Private notes", inputType: "insertText" }));
+    });
+    const locationSelect = document.body.querySelector<HTMLSelectElement>(
+      'select[aria-label="Dashboard storage location"]',
+    )!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(locationSelect, "local");
+      locationSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    const button = [...document.body.querySelectorAll("button")].find((item) => item.textContent === "Create")!;
+    await act(async () => button.click());
+
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ title: "Private notes", location: "local" }));
   });
 
   it("shows current permission scope, grants selected documents, and supports revocation", async () => {
@@ -377,5 +411,64 @@ describe("dashboard trusted UI", () => {
     expect(window.vaultApi.dashboardAgentHandoff).toHaveBeenCalledWith("vault", "focus");
     expect(writeText).toHaveBeenCalledWith(handoff);
     expect(document.body.textContent).toContain("Copied");
+  });
+});
+
+describe("dashboard secrets panel", () => {
+  const overview = (available: boolean, set: boolean) => ({
+    schemaVersion: 1 as const,
+    available,
+    secrets: [
+      {
+        name: "NOTION_TOKEN",
+        set,
+        origins: ["https://api.notion.com"],
+        requiredBy: [{ dashboardId: "focus", title: "Focus" }],
+      },
+    ],
+  });
+
+  // There is no API that returns a stored value, and the panel must not imply
+  // otherwise: the field stays empty and masked even for an already-set secret.
+  it("never pre-fills or reveals a stored secret value", async () => {
+    window.vaultApi = { dashboardSecrets: vi.fn(async () => overview(true, true)) } as unknown as VaultApi;
+    await act(async () => root.render(<DashboardSecretsDialog open onOpenChange={vi.fn()} />));
+
+    const input = document.body.querySelector<HTMLInputElement>('input[id="secret-NOTION_TOKEN"]')!;
+    expect(input.value).toBe("");
+    expect(input.type).toBe("password");
+    expect(document.body.textContent).toContain("Set");
+    expect(document.body.textContent).toContain("https://api.notion.com");
+    expect(document.body.textContent).toContain("Focus");
+  });
+
+  it("saves a new value and clears the field afterwards", async () => {
+    const setSecret = vi.fn(async () => overview(true, true));
+    window.vaultApi = {
+      dashboardSecrets: vi.fn(async () => overview(true, false)),
+      setDashboardSecret: setSecret,
+    } as unknown as VaultApi;
+    await act(async () => root.render(<DashboardSecretsDialog open onOpenChange={vi.fn()} />));
+
+    const input = document.body.querySelector<HTMLInputElement>('input[id="secret-NOTION_TOKEN"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "secret-value");
+      input.dispatchEvent(new InputEvent("input", { bubbles: true, data: "secret-value", inputType: "insertText" }));
+    });
+    const save = [...document.body.querySelectorAll("button")].find((item) => item.textContent === "Save")!;
+    await act(async () => save.click());
+
+    expect(setSecret).toHaveBeenCalledWith("NOTION_TOKEN", "secret-value");
+    expect(document.body.querySelector<HTMLInputElement>('input[id="secret-NOTION_TOKEN"]')!.value).toBe("");
+  });
+
+  // Refusing to store a secret is the designed behaviour when the OS keychain is
+  // missing, so the panel has to explain it rather than appear broken.
+  it("explains and disables entry when the OS keychain is unavailable", async () => {
+    window.vaultApi = { dashboardSecrets: vi.fn(async () => overview(false, false)) } as unknown as VaultApi;
+    await act(async () => root.render(<DashboardSecretsDialog open onOpenChange={vi.fn()} />));
+
+    expect(document.body.textContent).toContain("operating system keychain is unavailable");
+    expect(document.body.querySelector<HTMLInputElement>('input[id="secret-NOTION_TOKEN"]')!.disabled).toBe(true);
   });
 });

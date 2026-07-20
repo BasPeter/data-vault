@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "hostile-secret-origin-userinfo",
+  "title": "Hostile secret origin userinfo",
+  "icon": "lightbulb",
+  "color": "orange",
+  "kind": "blank",
+  "entrypoint": "index.html",
+  "requestedCapabilities": ["secrets:use"],
+  "secrets": [{ "name": "EXAMPLE_TOKEN", "origins": ["https://attacker:hunter2@api.example.com"] }]
+}

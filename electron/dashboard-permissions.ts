@@ -8,6 +8,7 @@ import {
   DASHBOARD_SCHEMA_VERSION,
   type DashboardCapabilityId,
   type DashboardEffectivePermissions,
+  type DashboardSecretDeclaration,
 } from "../src/dashboard-contracts";
 
 const DASHBOARD_ID = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
@@ -33,6 +34,10 @@ export type DashboardPermissionContext = {
   repositoryPath: string;
   dashboardId: string;
   requestedCapabilities: readonly DashboardCapabilityId[];
+  // Optional: a manifest with no declared secrets omits this, and the request
+  // digest is then byte-identical to the pre-secrets digest so every existing
+  // grant for a secret-free dashboard survives unchanged.
+  requestedSecrets?: readonly DashboardSecretDeclaration[];
   bundleDigest: string;
 };
 
@@ -87,10 +92,49 @@ export function canonicalDashboardCapabilityRequest(
   return validateCapabilityList(requestedCapabilities);
 }
 
-export function dashboardCapabilityRequestDigest(requestedCapabilities: readonly DashboardCapabilityId[]): string {
-  return createHash("sha256")
-    .update(JSON.stringify(canonicalDashboardCapabilityRequest(requestedCapabilities)))
-    .digest("hex");
+// Order-independent: sorting names and, within each name, its origins means a
+// pure reordering of the manifest's `secrets` array or of one entry's
+// `origins` array produces the same canonical form and therefore the same
+// digest. Any other change (added/removed/renamed secret, added/removed/
+// changed origin) changes the canonical JSON and therefore the digest.
+function canonicalizeSecretDeclarations(
+  requestedSecrets: readonly DashboardSecretDeclaration[],
+): DashboardSecretDeclaration[] {
+  const canonical = requestedSecrets
+    .map((secret) => {
+      if (
+        typeof secret.name !== "string" ||
+        !Array.isArray(secret.origins) ||
+        secret.origins.length < 1 ||
+        secret.origins.some((origin) => typeof origin !== "string")
+      ) {
+        throw new Error("Invalid dashboard secret request.");
+      }
+      return { name: secret.name, origins: [...new Set(secret.origins)].sort() };
+    })
+    .sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
+  if (new Set(canonical.map((secret) => secret.name)).size !== canonical.length) {
+    throw new Error("Invalid dashboard secret request.");
+  }
+  return canonical;
+}
+
+export function canonicalDashboardSecretRequest(
+  requestedSecrets: readonly DashboardSecretDeclaration[] = [],
+): DashboardSecretDeclaration[] {
+  return canonicalizeSecretDeclarations(requestedSecrets);
+}
+
+export function dashboardCapabilityRequestDigest(
+  requestedCapabilities: readonly DashboardCapabilityId[],
+  requestedSecrets: readonly DashboardSecretDeclaration[] = [],
+): string {
+  const hash = createHash("sha256").update(JSON.stringify(canonicalDashboardCapabilityRequest(requestedCapabilities)));
+  const secrets = canonicalDashboardSecretRequest(requestedSecrets);
+  // Folded in only when non-empty so a dashboard that declares no secrets
+  // keeps exactly the digest it had before this field existed.
+  if (secrets.length > 0) hash.update("\0secrets:").update(JSON.stringify(secrets));
+  return hash.digest("hex");
 }
 
 export function digestDashboardBundle(files: readonly DashboardBundleDigestFile[]): string {
@@ -283,6 +327,17 @@ export class DashboardPermissionStore {
     return file.grants.find((grant) => this.matchesIdentity(grant, identity));
   }
 
+  // Dashboard storage keys its app-local namespace by this same value (see
+  // electron/dashboard-storage.ts) so that a dashboard's on-disk location and
+  // its permission grants are always scoped to the same vault. Deriving the
+  // key a second, subtly different way anywhere else would silently split
+  // one of those from the other.
+  vaultKeyFor(repositoryPath: string): string {
+    const canonicalRoot = fs.realpathSync(repositoryPath);
+    if (!fs.statSync(canonicalRoot).isDirectory()) throw new Error("Invalid dashboard permission context.");
+    return createHmac("sha256", this.salt()).update(canonicalRoot, "utf8").digest("hex");
+  }
+
   private identity(
     context: DashboardPermissionContext,
     requested: DashboardCapabilityId[],
@@ -290,13 +345,10 @@ export class DashboardPermissionStore {
     if (!DASHBOARD_ID.test(context.dashboardId) || !SECURITY_DIGEST.test(context.bundleDigest)) {
       throw new Error("Invalid dashboard permission context.");
     }
-    const canonicalRoot = fs.realpathSync(context.repositoryPath);
-    if (!fs.statSync(canonicalRoot).isDirectory()) throw new Error("Invalid dashboard permission context.");
-    const vaultKey = createHmac("sha256", this.salt()).update(canonicalRoot, "utf8").digest("hex");
     return {
-      vaultKey,
+      vaultKey: this.vaultKeyFor(context.repositoryPath),
       dashboardId: context.dashboardId,
-      requestDigest: dashboardCapabilityRequestDigest(requested),
+      requestDigest: dashboardCapabilityRequestDigest(requested, context.requestedSecrets ?? []),
       bundleDigest: context.bundleDigest,
     };
   }
