@@ -31,6 +31,7 @@ test("contains a hostile fixture inside one bounded disposable runtime", async (
   fs.copyFileSync(path.join(hostileFixture, "probe.js"), path.join(bundle, "probe.js"));
   fs.writeFileSync(path.join(bundle, "worker.js"), 'postMessage("worker-ran");\n');
   await page.evaluate((id) => window.vaultApi.watch(id), vaultId);
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1280, 820));
 
   await page.evaluate(
     async ({ vaultId, dashboardId }) => {

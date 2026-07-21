@@ -59,10 +59,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install Linux Secret Service
+        run: sudo apt-get update && sudo apt-get install --yes gnome-keyring
+
       - name: Run Playwright end-to-end tests
         # The Electron runner uses the app's bundled Chromium, so no browser
-        # download is needed. xvfb provides a virtual display on the runner.
-        run: xvfb-run -a npm run test:e2e
+        # download is needed. xvfb provides a virtual display and gnome-keyring
+        # provides OS-keychain-backed encryption on the runner.
+        run: |
+          dbus-run-session -- bash -c '
+            eval "$(printf %s test-keyring-password | gnome-keyring-daemon --unlock)"
+            eval "$(gnome-keyring-daemon --start --components=secrets)"
+            xvfb-run -a npm run test:e2e
+          '
 
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
