@@ -38,7 +38,7 @@ value later, so the command-line switch was overwritten before it was ever read.
 - [x] 4.4 Teach ESLint about CommonJS preloads; the repository had no `.cjs` files and Node's `--require` does not accept ES modules.
 - [x] 4.5 Verify the guard fails when the preload is removed, not merely that it passes.
 - [x] 4.6 Assert the selected backend directly on Linux rather than inferring it from availability, so the exact regression is named.
-- [ ] 4.7 Confirm on CI that the suite reports `Selected backend: gnome_libsecret` and the secret-persistence scenarios pass. Not verifiable off CI.
+- [x] 4.7 Confirm on CI that the suite reports `Selected backend: gnome_libsecret` and the secret-persistence scenarios pass. Confirmed on run 29841061794: 14/14 end-to-end tests passed, including all five secret-persistence scenarios, with the backend asserted by name.
 
 ## 5. Follow-up (not in this change)
 
