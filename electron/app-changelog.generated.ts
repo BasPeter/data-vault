@@ -2,9 +2,25 @@
 import type { AppChangelog } from "../src/types";
 
 export const APP_CHANGELOG = {
-  "generatedAt": "2026-07-21T12:49:08+02:00",
+  "generatedAt": "2026-07-21T15:10:51+02:00",
   "repositoryUrl": "https://github.com/BasPeter/data-vault.git",
   "releases": [
+    {
+      "version": "0.17.0",
+      "date": "2026-07-21T15:10:51+02:00",
+      "commits": [
+        {
+          "hash": "323ce24bbfdcf83ab5d30af3d11fb33599c21e70",
+          "shortHash": "323ce24",
+          "subject": "feat(dashboards): add external links and authoring guide"
+        },
+        {
+          "hash": "9581da45ba377225ed1c8f2a57193411276f1151",
+          "shortHash": "9581da4",
+          "subject": "fix(ci): provision Linux keyring for dashboard e2e"
+        }
+      ]
+    },
     {
       "version": "0.16.0",
       "date": "2026-07-21T11:50:40+02:00",
