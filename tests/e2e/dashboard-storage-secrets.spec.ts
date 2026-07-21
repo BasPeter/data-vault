@@ -24,6 +24,11 @@ function declareSecret(bundleDirectory: string): void {
   fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
+test.beforeEach(async ({ appLaunch }) => {
+  const encryptionAvailable = await appLaunch.app.evaluate(({ safeStorage }) => safeStorage.isEncryptionAvailable());
+  expect(encryptionAvailable, "E2E requires OS-backed safeStorage; check the Linux Secret Service setup.").toBe(true);
+});
+
 test("an app-local dashboard is usable but never written into the vault repository", async ({ appLaunch }) => {
   const { page, vaultDir } = appLaunch;
 

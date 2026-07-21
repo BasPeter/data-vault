@@ -60,7 +60,7 @@ jobs:
         run: npm ci
 
       - name: Install Linux Secret Service
-        run: sudo apt-get update && sudo apt-get install --yes gnome-keyring
+        run: sudo apt-get update && sudo apt-get install --yes gnome-keyring libsecret-1-0
 
       - name: Run Playwright end-to-end tests
         # The Electron runner uses the app's bundled Chromium, so no browser
@@ -68,7 +68,9 @@ jobs:
         # provides OS-keychain-backed encryption on the runner.
         run: |
           dbus-run-session -- bash -c '
-            eval "$(printf %s test-keyring-password | gnome-keyring-daemon --unlock)"
+            keyring_password="$(head -c 32 /dev/urandom | base64)"
+            eval "$(printf %s "$keyring_password" | gnome-keyring-daemon --login)"
+            unset keyring_password
             eval "$(gnome-keyring-daemon --start --components=secrets)"
             XDG_CURRENT_DESKTOP=GNOME xvfb-run -a npm run test:e2e
           '

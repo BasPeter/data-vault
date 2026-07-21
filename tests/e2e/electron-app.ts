@@ -29,6 +29,12 @@ export type AppLaunch = {
   userDataDir: string;
 };
 
+// This switch is intentionally test-only. Production launches retain
+// Electron's platform default and never opt into the insecure basic backend.
+export function e2eElectronArgs(userDataDirectory: string): string[] {
+  return [mainEntry, "--password-store=gnome-libsecret", `--user-data-dir=${userDataDirectory}`];
+}
+
 /**
  * Launch the built Electron app against disposable directories.
  *
@@ -58,7 +64,7 @@ export async function launchApp(
   }
 
   const app = await electron.launch({
-    args: [mainEntry, `--user-data-dir=${userDataDir}`],
+    args: e2eElectronArgs(userDataDir),
     env: { ...process.env, NODE_ENV: "test" },
   });
   const page = await app.firstWindow();
