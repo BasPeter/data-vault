@@ -2,13 +2,44 @@
 import type { AppChangelog } from "../src/types";
 
 export const APP_CHANGELOG = {
-  "generatedAt": "2026-07-21T15:49:50+02:00",
+  "generatedAt": "2026-07-21T16:59:43+02:00",
   "repositoryUrl": "https://github.com/BasPeter/data-vault.git",
   "releases": [
     {
-      "version": "0.17.1",
-      "date": "2026-07-21T15:49:50+02:00",
+      "version": "0.17.2",
+      "date": "2026-07-21T16:59:43+02:00",
       "commits": [
+        {
+          "hash": "805dd159157f6d322bf72bde9ebe5606c2339b85",
+          "shortHash": "805dd15",
+          "subject": "ci: restore e2e gate on packaging"
+        },
+        {
+          "hash": "21dcd06bd2517c294db12f7e5da44453c7972846",
+          "shortHash": "21dcd06",
+          "subject": "fix(e2e): override playwright's plaintext password store"
+        },
+        {
+          "hash": "75949f48fb43a12f7b9e24bc5c2cf52f0589aa61",
+          "shortHash": "75949f4",
+          "subject": "ci: unblock packaging from linux e2e gate"
+        },
+        {
+          "hash": "10518b91ce787efb623da42c9b064bf5a5b04bf3",
+          "shortHash": "10518b9",
+          "subject": "fix(ci): probe secret service before linux e2e"
+        }
+      ]
+    },
+    {
+      "version": "0.17.1",
+      "date": "2026-07-21T15:50:29+02:00",
+      "commits": [
+        {
+          "hash": "9bf1e239ab144337587d64df66d355223ee941b0",
+          "shortHash": "9bf1e23",
+          "subject": "chore(release): prepare 0.17.1"
+        },
         {
           "hash": "6b7e1b262e341bee2ff3d69545519ab8e1b7faaa",
           "shortHash": "6b7e1b2",
