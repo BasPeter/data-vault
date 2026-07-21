@@ -36,6 +36,15 @@ test.beforeEach(async ({ appLaunch }) => {
     storage.available,
     `E2E requires OS-backed safeStorage; check the Linux Secret Service setup. Selected backend: ${storage.backend}`,
   ).toBe(true);
+
+  // Assert the backend by name, not just that encryption is available. This is
+  // the real regression detector: the launch-configuration unit test only
+  // inspects our own arguments, so it cannot see the test harness overriding
+  // the password store at runtime. That override is what caused this failure,
+  // and only the running app can prove it did not happen again.
+  if (process.platform === "linux") {
+    expect(storage.backend, "E2E must run against the OS keyring, never a plaintext store.").toBe("gnome_libsecret");
+  }
 });
 
 test("an app-local dashboard is usable but never written into the vault repository", async ({ appLaunch }) => {

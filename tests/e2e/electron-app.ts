@@ -29,10 +29,25 @@ export type AppLaunch = {
   userDataDir: string;
 };
 
-// This switch is intentionally test-only. Production launches retain
+const passwordStorePreload = path.join(here, "password-store.cjs");
+
+// Both entries below are intentionally test-only. Production launches retain
 // Electron's platform default and never opt into the insecure basic backend.
+//
+// The `-r` preload is the load-bearing one. Playwright's own Electron loader
+// appends an insecure plaintext password store at runtime, which overwrites the
+// command-line switch before Electron reads it, so the switch alone is not
+// enough. Our preload is injected after Playwright's and therefore wins. The
+// switch is kept because it states the intent at the launch site and becomes
+// sufficient on its own if Playwright ever drops its override.
 export function e2eElectronArgs(userDataDirectory: string): string[] {
-  return [mainEntry, "--password-store=gnome-libsecret", `--user-data-dir=${userDataDirectory}`];
+  return [
+    "-r",
+    passwordStorePreload,
+    mainEntry,
+    "--password-store=gnome-libsecret",
+    `--user-data-dir=${userDataDirectory}`,
+  ];
 }
 
 /**

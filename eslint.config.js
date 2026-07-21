@@ -29,6 +29,21 @@ export default tseslint.config(
     },
   },
   {
+    // CommonJS preloads. Node's `--require` does not accept ES modules, and this
+    // package is `"type": "module"`, so these must stay `.cjs`.
+    files: ["**/*.cjs"],
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: "commonjs",
+      globals: {
+        ...globals.node,
+      },
+    },
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
+  {
     files: ["src/**/*.{ts,tsx}"],
     languageOptions: {
       globals: {
