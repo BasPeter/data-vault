@@ -2,9 +2,40 @@
 import type { AppChangelog } from "../src/types";
 
 export const APP_CHANGELOG = {
-  "generatedAt": "2026-07-20T16:07:23+02:00",
+  "generatedAt": "2026-07-21T11:42:47+02:00",
   "repositoryUrl": "https://github.com/BasPeter/data-vault.git",
   "releases": [
+    {
+      "version": "0.16.0",
+      "date": "2026-07-21T11:42:47+02:00",
+      "commits": [
+        {
+          "hash": "215305d3d6a76c741be3b6133c2d16e3f4cd4a86",
+          "shortHash": "215305d",
+          "subject": "feat(dashboards): add basic auth and all-document access"
+        },
+        {
+          "hash": "f5a5d188e864d67fc003feb80c20251fcee7c5ea",
+          "shortHash": "f5a5d18",
+          "subject": "fix(dashboards): show a frozen dashboard still while overlays are open"
+        },
+        {
+          "hash": "890de99061f05c690f7474edb8a9a4c3284aee0f",
+          "shortHash": "890de99",
+          "subject": "fix(dashboards): detach the dashboard view while header overlays are open"
+        },
+        {
+          "hash": "26428f14396d97056d42595e15ec5107e4ca8b69",
+          "shortHash": "26428f1",
+          "subject": "feat(dashboards): add app-local storage option and host-mediated dashboard secrets"
+        },
+        {
+          "hash": "18d59b38fa589b68259771d68fb64e14aba5b027",
+          "shortHash": "18d59b3",
+          "subject": "feat(dashboards): add custom vault dashboards with isolated runtime and permissions"
+        }
+      ]
+    },
     {
       "version": "0.15.1",
       "date": "2026-07-17T12:03:14+02:00",
