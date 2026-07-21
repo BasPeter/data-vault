@@ -109,18 +109,7 @@ jobs:
 
   package:
     name: Package for ${{ matrix.name }}
-    # TEMPORARY. Deliberately does not depend on `e2e`: the suite runs on Linux
-    # only, and a Linux-specific keyring bug blocked macOS and Windows installers
-    # for four days across v0.16.0, v0.17.0, and v0.17.1.
-    #
-    # The cost is real and larger than the Linux keyring: a tagged push now
-    # publishes a GitHub Release even when e2e fails outright, including the nine
-    # tests that cover actual application behaviour on every platform. Only `test`
-    # (lint, unit, build) gates a release today.
-    #
-    # Exit condition: restore `needs: [test, e2e]` once the Linux keyring probe is
-    # green. See openspec/changes/decouple-package-from-e2e-gate/.
-    needs: [test]
+    needs: [test, e2e]
     strategy:
       fail-fast: false
       matrix:

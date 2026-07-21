@@ -1,3 +1,8 @@
+> **Status: reverted.** The gate was restored to `needs: [test, e2e]` after the
+> underlying failure was fixed. This change is retained as a record of why the
+> gate was relaxed and when it was put back. Its spec delta does not describe
+> current behaviour and must not be synced into `openspec/specs/`.
+
 ## Why
 
 The `package` job depended on `e2e`, and `release` depends on `package`. The end-to-end suite runs on Linux only, so a Linux-specific CI keyring failure skipped packaging and publishing for every platform.
