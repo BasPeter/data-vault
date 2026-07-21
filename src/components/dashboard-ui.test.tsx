@@ -303,12 +303,22 @@ describe("dashboard trusted UI", () => {
   });
 
   it("shows current permission scope, grants selected documents, and supports revocation", async () => {
-    const grant = vi.fn(async () => ({ schemaVersion: 1 as const, capabilities: [], selectedDocumentIds: [] }));
+    const grant = vi.fn(async () => ({
+      schemaVersion: 1 as const,
+      capabilities: [],
+      documentScope: "selected" as const,
+      selectedDocumentIds: [],
+    }));
     const revoke = vi.fn(async () => undefined);
     window.vaultApi = {
       dashboardPermissionDetails: vi.fn(async () => ({
         requestedCapabilities: dashboard.requestedCapabilities,
-        effectivePermissions: { schemaVersion: 1, capabilities: [], selectedDocumentIds: [] },
+        effectivePermissions: {
+          schemaVersion: 1,
+          capabilities: [],
+          documentScope: "selected",
+          selectedDocumentIds: [],
+        },
         documents: [{ id: "goal.html", title: "Goal" }],
       })),
       grantDashboardPermissions: grant,
@@ -329,12 +339,55 @@ describe("dashboard trusted UI", () => {
       (item) => item.textContent === "Save access",
     )!;
     await act(async () => save.click());
-    expect(grant).toHaveBeenCalledWith("vault", "focus", ["vault:documents:read"], ["goal.html"]);
+    expect(grant).toHaveBeenCalledWith("vault", "focus", ["vault:documents:read"], "selected", ["goal.html"]);
     const revokeButton = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
       (item) => item.textContent === "Revoke all",
     )!;
     await act(async () => revokeButton.click());
     expect(revoke).toHaveBeenCalledWith("vault", "focus");
+  });
+
+  it("grants all current and future documents and restores unsaved selections when toggled back", async () => {
+    const grant = vi.fn(async () => ({
+      schemaVersion: 1 as const,
+      capabilities: ["vault:documents:read"] as const,
+      documentScope: "all" as const,
+      selectedDocumentIds: [],
+    }));
+    window.vaultApi = {
+      dashboardPermissionDetails: vi.fn(async () => ({
+        requestedCapabilities: dashboard.requestedCapabilities,
+        effectivePermissions: {
+          schemaVersion: 1,
+          capabilities: ["vault:documents:read"],
+          documentScope: "selected",
+          selectedDocumentIds: ["goal.html"],
+        },
+        documents: [{ id: "goal.html", title: "Goal" }],
+        secrets: [],
+      })),
+      grantDashboardPermissions: grant,
+      revokeDashboardPermissions: vi.fn(),
+    } as unknown as VaultApi;
+    await act(async () =>
+      root.render(<DashboardPermissionDialog open vaultId="vault" dashboard={dashboard} onOpenChange={vi.fn()} />),
+    );
+    await act(async () => Promise.resolve());
+
+    const all = [...document.body.querySelectorAll<HTMLInputElement>('input[type="radio"]')].at(1)!;
+    await act(async () => all.click());
+    expect(document.body.textContent).toContain("all current and future documents");
+    expect(document.body.querySelector('[role="group"][aria-label="Allowed documents"]')).toBeNull();
+
+    const selectedScope = [...document.body.querySelectorAll<HTMLInputElement>('input[type="radio"]')][0];
+    await act(async () => selectedScope.click());
+    expect([...document.body.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].at(-1)?.checked).toBe(true);
+    await act(async () => all.click());
+    const save = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
+      (item) => item.textContent === "Save access",
+    )!;
+    await act(async () => save.click());
+    expect(grant).toHaveBeenCalledWith("vault", "focus", ["vault:documents:read"], "all", []);
   });
 
   it("cancels trusted permission management and contains repeated detail denials", async () => {

@@ -95,9 +95,13 @@ export type DashboardCreateInput = {
 
 export type DashboardRemoval = { dashboardId: string; trashPath: string };
 
+export const DASHBOARD_DOCUMENT_SCOPES = ["selected", "all"] as const;
+export type DashboardDocumentScope = (typeof DASHBOARD_DOCUMENT_SCOPES)[number];
+
 export type DashboardEffectivePermissions = {
   schemaVersion: typeof DASHBOARD_SCHEMA_VERSION;
   capabilities: DashboardCapabilityId[];
+  documentScope: DashboardDocumentScope;
   selectedDocumentIds: string[];
 };
 
@@ -209,6 +213,7 @@ export type DashboardDocumentsSnapshot = {
 
 export const DASHBOARD_SECURE_FETCH_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
 export type DashboardSecureFetchMethod = (typeof DASHBOARD_SECURE_FETCH_METHODS)[number];
+export const DASHBOARD_BASIC_AUTH_USERNAME_MAX_LENGTH = 256 as const;
 
 /**
  * Where the main process places the resolved secret value. Dashboard code chooses
@@ -216,6 +221,7 @@ export type DashboardSecureFetchMethod = (typeof DASHBOARD_SECURE_FETCH_METHODS)
  */
 export type DashboardSecretInjection =
   | { kind: "authorization-bearer" }
+  | { kind: "authorization-basic"; username: string }
   | { kind: "header"; header: string }
   | { kind: "query-param"; param: string };
 

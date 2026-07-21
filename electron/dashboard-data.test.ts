@@ -31,8 +31,9 @@ function fixture(): { service: VaultService; vaultId: string; root: string; docu
 function permissions(
   capabilities: DashboardEffectivePermissions["capabilities"],
   selectedDocumentIds: string[] = [],
+  documentScope: DashboardEffectivePermissions["documentScope"] = "selected",
 ): DashboardEffectivePermissions {
-  return { schemaVersion: DASHBOARD_SCHEMA_VERSION, capabilities, selectedDocumentIds };
+  return { schemaVersion: DASHBOARD_SCHEMA_VERSION, capabilities, documentScope, selectedDocumentIds };
 }
 
 afterEach(() => {
@@ -135,6 +136,17 @@ describe("VaultService dashboard intelligence", () => {
       },
     ]);
     expect(JSON.stringify(snapshot)).not.toContain("Other");
+  });
+
+  it("dynamically includes future current documents under all scope without granting index access", () => {
+    const { service, vaultId, documents } = fixture();
+    fs.writeFileSync(path.join(documents, "current.html"), "<p>Current</p>");
+    const all = permissions(["vault:documents:read"], [], "all");
+
+    expect(service.dashboardDocuments(vaultId, all, ["current.html"]).documents[0].id).toBe("current.html");
+    fs.writeFileSync(path.join(documents, "future.html"), "<p>Future</p>");
+    expect(service.dashboardDocuments(vaultId, all, ["future.html"]).documents[0].id).toBe("future.html");
+    expect(() => service.dashboardVaultIndex(vaultId, all)).toThrow("Dashboard access denied");
   });
 
   it("uses one non-enumerating denial for malformed, path-like, duplicate, unapproved, stale, and revoked IDs", () => {

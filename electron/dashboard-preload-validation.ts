@@ -1,4 +1,5 @@
 import {
+  DASHBOARD_BASIC_AUTH_USERNAME_MAX_LENGTH,
   DASHBOARD_DOCUMENT_ID_MAX_LENGTH,
   DASHBOARD_DOCUMENT_REQUEST_MAX_COUNT,
   DASHBOARD_SECRET_NAME_PATTERN,
@@ -133,6 +134,18 @@ function validateInjection(value: unknown): void {
   const inject = plainObject(value);
   if (inject.kind === "authorization-bearer") {
     onlyKeys(inject, ["kind"]);
+    return;
+  }
+  if (inject.kind === "authorization-basic") {
+    onlyKeys(inject, ["kind", "username"]);
+    if (
+      typeof inject.username !== "string" ||
+      inject.username.length < 1 ||
+      inject.username.length > DASHBOARD_BASIC_AUTH_USERNAME_MAX_LENGTH ||
+      /[:\r\n\0]/.test(inject.username)
+    ) {
+      invalid();
+    }
     return;
   }
   if (inject.kind === "header") {

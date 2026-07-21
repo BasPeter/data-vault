@@ -592,19 +592,24 @@ function registerIpc(): void {
       stringArgument(dashboardId, "dashboard ID"),
     );
   });
-  ipcMain.handle("dashboard-permissions:grant", (event, vaultId, dashboardId, capabilities, selectedDocumentIds) => {
-    assertTrusted(event);
-    const requested = canonicalDashboardCapabilityRequest(capabilities as DashboardCapabilityId[]);
-    if (!Array.isArray(selectedDocumentIds) || selectedDocumentIds.length > 2_000)
-      throw new Error("Invalid dashboard document selection.");
-    const selection = selectedDocumentIds.map((id) => stringArgument(id, "document ID"));
-    return runtime().grantPermissions(
-      stringArgument(vaultId, "vault ID"),
-      stringArgument(dashboardId, "dashboard ID"),
-      requested,
-      selection,
-    );
-  });
+  ipcMain.handle(
+    "dashboard-permissions:grant",
+    (event, vaultId, dashboardId, capabilities, documentScope, selectedDocumentIds) => {
+      assertTrusted(event);
+      const requested = canonicalDashboardCapabilityRequest(capabilities as DashboardCapabilityId[]);
+      if (documentScope !== "selected" && documentScope !== "all") throw new Error("Invalid dashboard document scope.");
+      if (!Array.isArray(selectedDocumentIds) || selectedDocumentIds.length > 2_000)
+        throw new Error("Invalid dashboard document selection.");
+      const selection = selectedDocumentIds.map((id) => stringArgument(id, "document ID"));
+      return runtime().grantPermissions(
+        stringArgument(vaultId, "vault ID"),
+        stringArgument(dashboardId, "dashboard ID"),
+        requested,
+        documentScope,
+        selection,
+      );
+    },
+  );
   ipcMain.handle("dashboard-permissions:revoke", (event, vaultId, dashboardId) => {
     assertTrusted(event);
     runtime().revokePermissions(stringArgument(vaultId, "vault ID"), stringArgument(dashboardId, "dashboard ID"));
@@ -866,7 +871,7 @@ function createWindow(): void {
           requestedSecrets: source.manifest.secrets ?? [],
           bundleDigest: digest,
         }),
-      grant: (source, digest, capabilities, selectedDocumentIds) =>
+      grant: (source, digest, capabilities, documentScope, selectedDocumentIds) =>
         dashboardPermissions.grant(
           {
             repositoryPath: source.repositoryPath,
@@ -877,6 +882,7 @@ function createWindow(): void {
           },
           capabilities,
           selectedDocumentIds,
+          documentScope,
         ),
       revoke: (source, digest) =>
         dashboardPermissions.revoke({

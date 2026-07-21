@@ -7,6 +7,7 @@ import {
   DASHBOARD_PRIVILEGED_CAPABILITY_IDS,
   DASHBOARD_SCHEMA_VERSION,
   type DashboardCapabilityId,
+  type DashboardDocumentScope,
   type DashboardEffectivePermissions,
   type DashboardSecretDeclaration,
 } from "../src/dashboard-contracts";
@@ -22,6 +23,7 @@ type PermissionGrant = {
   requestDigest: string;
   bundleDigest: string;
   grantedCapabilities: DashboardCapabilityId[];
+  documentScope: DashboardDocumentScope;
   selectedDocumentIds: string[];
 };
 
@@ -179,14 +181,23 @@ function parsePermissionFile(value: unknown): PermissionFile {
   const grants = value.grants.map((candidate): PermissionGrant => {
     if (
       !isRecord(candidate) ||
-      !exactKeys(candidate, [
-        "vaultKey",
-        "dashboardId",
-        "requestDigest",
-        "bundleDigest",
-        "grantedCapabilities",
-        "selectedDocumentIds",
-      ]) ||
+      ![6, 7].includes(Object.keys(candidate).length) ||
+      !["vaultKey", "dashboardId", "requestDigest", "bundleDigest", "grantedCapabilities", "selectedDocumentIds"].every(
+        (key) => key in candidate,
+      ) ||
+      (Object.keys(candidate).length === 7 && !("documentScope" in candidate)) ||
+      Object.keys(candidate).some(
+        (key) =>
+          ![
+            "vaultKey",
+            "dashboardId",
+            "requestDigest",
+            "bundleDigest",
+            "grantedCapabilities",
+            "documentScope",
+            "selectedDocumentIds",
+          ].includes(key),
+      ) ||
       typeof candidate.vaultKey !== "string" ||
       !SECURITY_DIGEST.test(candidate.vaultKey) ||
       typeof candidate.dashboardId !== "string" ||
@@ -204,6 +215,10 @@ function parsePermissionFile(value: unknown): PermissionFile {
       DASHBOARD_PRIVILEGED_CAPABILITY_IDS,
     );
     const selectedDocumentIds = candidate.selectedDocumentIds.map(validateDocumentId);
+    const documentScope = candidate.documentScope ?? "selected";
+    if (documentScope !== "selected" && documentScope !== "all") {
+      throw new Error("Invalid dashboard permission store.");
+    }
     if (new Set(selectedDocumentIds).size !== selectedDocumentIds.length) {
       throw new Error("Invalid dashboard permission store.");
     }
@@ -213,7 +228,8 @@ function parsePermissionFile(value: unknown): PermissionFile {
       requestDigest: candidate.requestDigest,
       bundleDigest: candidate.bundleDigest,
       grantedCapabilities,
-      selectedDocumentIds: [...selectedDocumentIds].sort(),
+      documentScope,
+      selectedDocumentIds: documentScope === "all" ? [] : [...selectedDocumentIds].sort(),
     };
   });
   const keys = grants.map((grant) =>
@@ -256,7 +272,12 @@ export class DashboardPermissionStore {
     try {
       const match = this.findGrant(context, requested, this.read());
       if (!match) {
-        return { schemaVersion: DASHBOARD_SCHEMA_VERSION, capabilities: local, selectedDocumentIds: [] };
+        return {
+          schemaVersion: DASHBOARD_SCHEMA_VERSION,
+          capabilities: local,
+          documentScope: "selected",
+          selectedDocumentIds: [],
+        };
       }
       const privileged: DashboardCapabilityId[] = DASHBOARD_PRIVILEGED_CAPABILITY_IDS.filter(
         (capability) => requested.includes(capability) && match.grantedCapabilities.includes(capability),
@@ -266,10 +287,16 @@ export class DashboardPermissionStore {
         capabilities: DASHBOARD_CAPABILITY_IDS.filter(
           (capability) => local.includes(capability) || privileged.includes(capability),
         ),
+        documentScope: privileged.includes("vault:documents:read") ? match.documentScope : "selected",
         selectedDocumentIds: privileged.includes("vault:documents:read") ? [...match.selectedDocumentIds] : [],
       };
     } catch {
-      return { schemaVersion: DASHBOARD_SCHEMA_VERSION, capabilities: local, selectedDocumentIds: [] };
+      return {
+        schemaVersion: DASHBOARD_SCHEMA_VERSION,
+        capabilities: local,
+        documentScope: "selected",
+        selectedDocumentIds: [],
+      };
     }
   }
 
@@ -277,9 +304,13 @@ export class DashboardPermissionStore {
     context: DashboardPermissionContext,
     grantedCapabilities: readonly DashboardCapabilityId[],
     selectedDocumentIds: readonly string[] = [],
+    documentScope: DashboardDocumentScope = "selected",
   ): DashboardEffectivePermissions {
     const requested = canonicalDashboardCapabilityRequest(context.requestedCapabilities);
     const privileged = validateCapabilityList(grantedCapabilities, DASHBOARD_PRIVILEGED_CAPABILITY_IDS);
+    if (documentScope !== "selected" && documentScope !== "all") {
+      throw new Error("Invalid dashboard document scope.");
+    }
     if (privileged.some((capability) => !requested.includes(capability))) {
       throw new Error("Cannot grant an unrequested dashboard capability.");
     }
@@ -287,7 +318,7 @@ export class DashboardPermissionStore {
     if (new Set(selection).size !== selection.length || selection.length > 2_000) {
       throw new Error("Invalid dashboard document selection.");
     }
-    if (!privileged.includes("vault:documents:read") && selection.length > 0) {
+    if (!privileged.includes("vault:documents:read") && (documentScope !== "selected" || selection.length > 0)) {
       throw new Error("Selected documents require document-read access.");
     }
     const current = this.read();
@@ -299,7 +330,8 @@ export class DashboardPermissionStore {
     grants.push({
       ...identity,
       grantedCapabilities: privileged,
-      selectedDocumentIds: [...selection].sort(),
+      documentScope,
+      selectedDocumentIds: documentScope === "all" ? [] : [...selection].sort(),
     });
     this.write({ schemaVersion: DASHBOARD_SCHEMA_VERSION, grants });
     return this.effective(context);

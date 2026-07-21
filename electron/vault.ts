@@ -1034,7 +1034,7 @@ export class VaultService {
     }
     const selected = new Set(permissions.selectedDocumentIds);
     for (const id of documentIds) {
-      if (!this.validDashboardDocumentId(id) || !selected.has(id)) denied();
+      if (!this.validDashboardDocumentId(id) || (permissions.documentScope !== "all" && !selected.has(id))) denied();
     }
 
     const currentIds = new Set(this.dashboardDocumentNodes(this.manifest(vaultId).tree).map(({ id }) => id));

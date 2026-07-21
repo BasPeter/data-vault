@@ -195,10 +195,11 @@ test("vault intelligence returns the approved index and document while denying u
   await page.getByRole("button", { name: "Manage access" }).click();
   await expect(page.getByRole("dialog", { name: "Manage dashboard access" })).toBeVisible();
   await page.getByText("Vault index", { exact: true }).click();
-  await page.getByText("Selected documents", { exact: true }).click();
-  for (const checkbox of await page.getByRole("group", { name: "Allowed documents" }).getByRole("checkbox").all()) {
-    await checkbox.check();
-  }
+  await page.getByText("Document contents", { exact: true }).click();
+  await page.getByText("All documents", { exact: true }).click();
+  await expect(
+    page.getByText("Read all current and future documents until you change or revoke access."),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Save access" }).click();
   await page.getByRole("button", { name: "Reload dashboard" }).click();
 
@@ -214,6 +215,21 @@ test("vault intelligence returns the approved index and document while denying u
     )
     .toMatchObject({ denied: "denied" });
   void result;
+
+  fs.writeFileSync(path.join(vaultDir, "documents", "future.html"), "<h1>Future document</h1>");
+  await page.reload();
+  await page.getByRole("button", { name: "Open Synthetic intelligence dashboard" }).click();
+  await expect
+    .poll(() =>
+      app.evaluate(async ({ webContents }) => {
+        const runtime = webContents.getAllWebContents().find((item) => item.getURL().startsWith("vault-dashboard://"));
+        if (!runtime) return "missing";
+        return runtime.executeJavaScript(
+          "window.dashboardApi.readDocuments(['future.html']).then((value) => value.documents[0]?.id, () => 'denied')",
+        );
+      }),
+    )
+    .toBe("future.html");
 
   const expensiveReadLimits = await app.evaluate(async ({ webContents }) => {
     const runtime = webContents.getAllWebContents().find((item) => item.getURL().startsWith("vault-dashboard://"));
@@ -257,6 +273,25 @@ test("vault intelligence returns the approved index and document while denying u
     return runtime.executeJavaScript("window.dashboardApi.readVaultIndex().then(() => 'fulfilled', () => 'rejected')");
   });
   expect(recoveredAfterReload).toBe("fulfilled");
+
+  await page.getByRole("button", { name: "Manage access" }).click();
+  await page.getByText("Selected documents", { exact: true }).click();
+  const allowed = page.getByRole("group", { name: "Allowed documents" });
+  for (const checkbox of await allowed.getByRole("checkbox").all()) await checkbox.uncheck();
+  await allowed.getByText("Welcome").click();
+  await page.getByRole("button", { name: "Save access" }).click();
+  await page.getByRole("button", { name: "Reload dashboard" }).click();
+  await expect
+    .poll(() =>
+      app.evaluate(async ({ webContents }) => {
+        const runtime = webContents.getAllWebContents().find((item) => item.getURL().startsWith("vault-dashboard://"));
+        if (!runtime) return "missing";
+        return runtime.executeJavaScript(
+          "window.dashboardApi.readDocuments(['future.html']).then(() => 'unexpected', () => 'denied')",
+        );
+      }),
+    )
+    .toBe("denied");
 
   await page.getByRole("button", { name: "Manage access" }).click();
   await page.getByRole("button", { name: "Revoke all" }).click();

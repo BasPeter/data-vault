@@ -14,6 +14,7 @@ import type { DashboardManifest, DashboardSecretDeclaration } from "../src/dashb
 import {
   DASHBOARD_SCHEMA_VERSION,
   type DashboardCapabilityId,
+  type DashboardDocumentScope,
   type DashboardEffectivePermissions,
   type DashboardInfo,
   type DashboardState,
@@ -52,6 +53,7 @@ export type DashboardRuntimeServices = Readonly<{
     source: DashboardRuntimeSource,
     digest: string,
     capabilities: readonly DashboardCapabilityId[],
+    documentScope: DashboardDocumentScope,
     selectedDocumentIds: readonly string[],
   ) => DashboardEffectivePermissions;
   revoke: (source: DashboardRuntimeSource, digest: string) => void;
@@ -404,10 +406,17 @@ export class DashboardRuntimeController {
     vaultId: unknown,
     dashboardId: unknown,
     capabilities: readonly DashboardCapabilityId[],
+    documentScope: DashboardDocumentScope,
     selectedDocumentIds: readonly string[],
   ): DashboardEffectivePermissions {
     const runtime = this.assertActiveHostTarget(vaultId, dashboardId);
-    return this.services.grant(runtime.source, runtime.snapshot.digest, capabilities, selectedDocumentIds);
+    return this.services.grant(
+      runtime.source,
+      runtime.snapshot.digest,
+      capabilities,
+      documentScope,
+      selectedDocumentIds,
+    );
   }
 
   revokePermissions(vaultId: unknown, dashboardId: unknown): void {

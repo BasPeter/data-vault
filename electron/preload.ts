@@ -33,8 +33,15 @@ const api: VaultApi = {
   dashboardRuntimeAuthorityCountForTesting: () => ipcRenderer.invoke("dashboard-runtime:authority-count-for-testing"),
   dashboardPermissionDetails: (vaultId, dashboardId) =>
     ipcRenderer.invoke("dashboard-permissions:details", vaultId, dashboardId),
-  grantDashboardPermissions: (vaultId, dashboardId, capabilities, selectedDocumentIds) =>
-    ipcRenderer.invoke("dashboard-permissions:grant", vaultId, dashboardId, capabilities, selectedDocumentIds),
+  grantDashboardPermissions: (vaultId, dashboardId, capabilities, documentScope, selectedDocumentIds) =>
+    ipcRenderer.invoke(
+      "dashboard-permissions:grant",
+      vaultId,
+      dashboardId,
+      capabilities,
+      documentScope,
+      selectedDocumentIds,
+    ),
   revokeDashboardPermissions: (vaultId, dashboardId) =>
     ipcRenderer.invoke("dashboard-permissions:revoke", vaultId, dashboardId),
   dashboardSecrets: () => ipcRenderer.invoke("dashboard-secrets:overview"),

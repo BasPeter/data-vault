@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { DASHBOARD_DOCUMENT_ID_MAX_LENGTH, DASHBOARD_STATE_MAX_BYTES } from "../src/dashboard-contracts";
+import {
+  DASHBOARD_BASIC_AUTH_USERNAME_MAX_LENGTH,
+  DASHBOARD_DOCUMENT_ID_MAX_LENGTH,
+  DASHBOARD_STATE_MAX_BYTES,
+} from "../src/dashboard-contracts";
 import {
   DASHBOARD_PRELOAD_STATE_MAX_DEPTH,
   DASHBOARD_PRELOAD_STATE_MAX_NODES,
@@ -67,6 +71,40 @@ describe("dashboard preload secure fetch validation", () => {
         body: '{"a":1}',
       }),
     ).not.toThrow();
+  });
+
+  it("accepts Basic injection with a bounded non-secret username", () => {
+    expect(() =>
+      validatePreloadSecureFetchInput({
+        ...valid,
+        secret: { name: "API_TOKEN", inject: { kind: "authorization-basic", username: "user@example.com" } },
+      }),
+    ).not.toThrow();
+    expect(() =>
+      validatePreloadSecureFetchInput({
+        ...valid,
+        secret: {
+          name: "API_TOKEN",
+          inject: { kind: "authorization-basic", username: "x".repeat(DASHBOARD_BASIC_AUTH_USERNAME_MAX_LENGTH) },
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  it.each([
+    ["empty", ""],
+    ["over limit", "x".repeat(DASHBOARD_BASIC_AUTH_USERNAME_MAX_LENGTH + 1)],
+    ["colon", "user:name"],
+    ["carriage return", "user\rname"],
+    ["line feed", "user\nname"],
+    ["NUL", "user\0name"],
+  ])("rejects a Basic username that is %s", (_reason, username) => {
+    expect(() =>
+      validatePreloadSecureFetchInput({
+        ...valid,
+        secret: { name: "API_TOKEN", inject: { kind: "authorization-basic", username } },
+      }),
+    ).toThrow("Invalid dashboard API request");
   });
 
   it("rejects unknown fields so new request surface cannot be smuggled in", () => {

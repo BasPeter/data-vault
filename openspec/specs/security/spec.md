@@ -244,11 +244,11 @@ The dashboard preload SHALL expose only fixed dashboard API methods, and every m
 
 ### Requirement: Repository content cannot grant dashboard authority
 
-Dashboard manifests MAY request fixed capability identifiers, but only trusted application state and trusted host UI SHALL grant or scope privileged capabilities; repository-controlled approval flags, paths, globs, document IDs, hashes, scripts, or messages SHALL NOT grant authority.
+Dashboard manifests MAY request fixed capability identifiers, but only trusted application state and trusted host UI SHALL grant or scope privileged capabilities, including selected-document and all-current-and-future-document scope; repository-controlled approval flags, scope modes, paths, globs, document IDs, hashes, scripts, or messages SHALL NOT grant authority.
 
 #### Scenario: Synced dashboard declares itself approved
 
-- **WHEN** a dashboard manifest or state file contains fields claiming a grant or selected-document scope
+- **WHEN** a dashboard manifest or state file contains fields claiming a grant, selected-document scope, or all-documents scope
 - **THEN** the application ignores those claims and uses only its trusted grant store
 
 #### Scenario: Requested privileges increase
@@ -263,12 +263,17 @@ Dashboard manifests MAY request fixed capability identifiers, but only trusted a
 
 ### Requirement: Permission consent is host-initiated and visually isolated
 
-Privileged dashboard consent SHALL begin only from an affirmative user action in recognizable trusted application chrome, and the dashboard view SHALL be hidden or detached, input-disabled, and unable to overlay or capture focus for the complete permission and document-selection flow.
+Privileged dashboard consent SHALL begin only from an affirmative user action in recognizable trusted application chrome, and the dashboard view SHALL be hidden or detached, input-disabled, and unable to overlay or capture focus for the complete permission, document-scope, and document-selection flow; consent for all-documents scope SHALL explicitly state that future documents are included until the grant is changed or revoked.
 
 #### Scenario: Permission management opens
 
 - **WHEN** the user activates Manage access in trusted host UI
-- **THEN** the application removes dashboard pixels and input from the consent surface before presenting capability details or document selection
+- **THEN** the application removes dashboard pixels and input from the consent surface before presenting capability details, document scope, or document selection
+
+#### Scenario: User considers all-documents scope
+
+- **WHEN** trusted permission UI offers all-documents access
+- **THEN** it identifies the scope as covering every current and future document until changed or revoked before the user can save it
 
 #### Scenario: Permission flow is cancelled
 
@@ -296,7 +301,7 @@ Dashboard web contents SHALL enforce `default-src 'none'; script-src 'self'; sty
 
 ### Requirement: Dashboard file and data access is least-privilege
 
-Dashboard runtime operations SHALL use fixed dashboard-local state, structured vault snapshot, secret metadata, and host-mediated request APIs, SHALL enforce real-path containment and current document validation, and SHALL never accept arbitrary filesystem paths, repository locations, raw credential values, or general query expressions; secrets SHALL be referenced only by declared name.
+Dashboard runtime operations SHALL use fixed dashboard-local state, structured vault snapshot, secret metadata, and host-mediated request APIs, SHALL enforce real-path containment and current document validation, SHALL authorize document bodies only through a trusted selected-document or explicit all-current-and-future-document scope, and SHALL never accept arbitrary filesystem paths, repository locations, raw credential values, general query expressions, or repository-supplied scope; secrets SHALL be referenced only by declared name.
 
 #### Scenario: Dashboard attempts path injection
 
@@ -307,6 +312,16 @@ Dashboard runtime operations SHALL use fixed dashboard-local state, structured v
 
 - **WHEN** a permitted dashboard requests vault intelligence
 - **THEN** the result excludes absolute paths, repository remotes, Git configuration, credentials, hidden files, application settings, and unapproved document bodies and is bounded by the versioned response schema
+
+#### Scenario: All scope reads a current document
+
+- **WHEN** a dashboard with trusted all-documents scope requests a current valid document ID
+- **THEN** the host authorizes only that bounded ID-based request and still applies containment, file validation, and response limits
+
+#### Scenario: Dashboard supplies document scope
+
+- **WHEN** dashboard code or repository content supplies an all-scope flag, path, glob, query, or document authorization claim
+- **THEN** the application rejects or ignores it and derives effective scope only from trusted application-private grant state
 
 #### Scenario: Dashboard supplies a raw credential
 
@@ -334,17 +349,17 @@ The application SHALL run at most one dashboard runtime at a time, SHALL bound m
 
 ### Requirement: Secret values never cross the dashboard or agent boundary
 
-The application SHALL keep decrypted secret values confined to transient use inside the main process, and SHALL ensure no IPC payload, dashboard API result, agent-accessible channel, renderer surface, error message, or log line contains a secret value in any form.
+The application SHALL keep decrypted secret values confined to transient use inside the main process, MAY transiently derive an encoded credential from a secret solely for host-side injection, and SHALL ensure no IPC payload, dashboard API result, agent-accessible channel, renderer surface, error message, or log line contains the raw secret value, its tracked URL-encoded form, or any complete credential representation derived and tracked by the host for injection.
 
 #### Scenario: Dashboard code probes for secret values
 
 - **WHEN** arbitrary dashboard JavaScript calls any dashboard API operation, inspects any API result or error, or exercises the secrets metadata and host-mediated request operations
-- **THEN** it observes at most secret names and set/unset status and never a secret value, prefix, length-revealing encoding, or ciphertext
+- **THEN** it observes at most secret names and set/unset status and never the raw secret value, its tracked URL-encoded form, ciphertext, or any complete credential representation derived and tracked by the host for injection
 
 #### Scenario: Host-mediated request fails
 
 - **WHEN** a host-mediated secret-injected request fails at validation, resolution, network, or response stage
-- **THEN** the returned error and any diagnostic logging exclude the secret value and the injected header content
+- **THEN** the returned error and any diagnostic logging exclude the secret value, every host-derived credential representation, and the injected header content
 
 ### Requirement: Secret storage refuses insecure persistence
 
@@ -357,12 +372,17 @@ Secret values SHALL be stored only encrypted with OS-keychain-backed encryption 
 
 ### Requirement: Host-mediated network egress requires explicit scoped consent
 
-Host-mediated outbound requests on behalf of a dashboard SHALL require the granted privileged secrets capability, SHALL be validated against a fixed bounded request schema, SHALL send a secret only to an exact HTTPS origin declared for that secret name in the digest-bound manifest declaration, SHALL not follow redirects, SHALL prevent caller-supplied fields from overriding the injected secret, and SHALL enforce fixed response size, time, and rate bounds.
+Host-mediated outbound requests on behalf of a dashboard SHALL require the granted privileged secrets capability, SHALL be validated against a fixed bounded request schema, SHALL send a secret only to an exact HTTPS origin declared for that secret name in the digest-bound manifest declaration, SHALL not follow redirects, SHALL prevent caller-supplied fields from setting or overriding authorization or another injected secret, MAY compose a credential only through a fixed host-side injection kind, and SHALL enforce fixed response size, time, and rate bounds.
 
 #### Scenario: Dashboard attempts secret exfiltration through the host
 
 - **WHEN** dashboard code requests a host-mediated call whose URL origin is not exactly declared for the referenced secret, including via redirect, non-HTTPS scheme, userinfo tricks, or header override of the injection point
 - **THEN** the application rejects or bounds the request so the secret value is never transmitted to an undeclared origin
+
+#### Scenario: Dashboard supplies authorization directly
+
+- **WHEN** dashboard code supplies an `authorization` header, a raw credential, or a value-bearing authorization injection field
+- **THEN** the application rejects the request without resolving a secret or performing network activity
 
 #### Scenario: Ungranted dashboard requests egress
 

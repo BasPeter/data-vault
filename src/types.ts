@@ -5,6 +5,7 @@ import type {
   DashboardListEntry,
   DashboardManifest,
   DashboardPermissionDetails,
+  DashboardDocumentScope,
   DashboardSecretsOverview,
   DashboardRemoval,
   DashboardRuntimeHostStatus,
@@ -269,6 +270,7 @@ export type VaultApi = {
     vaultId: string,
     dashboardId: string,
     capabilities: DashboardCapabilityId[],
+    documentScope: DashboardDocumentScope,
     selectedDocumentIds: string[],
   ) => Promise<DashboardEffectivePermissions>;
   revokeDashboardPermissions: (vaultId: string, dashboardId: string) => Promise<void>;

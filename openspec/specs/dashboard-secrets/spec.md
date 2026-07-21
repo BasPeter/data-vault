@@ -79,12 +79,27 @@ The application SHALL expose to dashboard code, behind the privileged secrets ca
 
 ### Requirement: Secrets are used only through host-mediated requests
 
-The application SHALL let a dashboard with the granted secrets capability request a bounded outbound HTTPS call in which the main process resolves a declared secret and injects it at a fixed injection point, and SHALL send the secret only to an exact origin declared for that secret name, without following redirects, without letting caller-supplied fields override the injection, and without including the secret value in any result, error, or log.
+The application SHALL let a dashboard with the granted secrets capability request a bounded outbound HTTPS call in which the main process resolves a declared secret and injects it at a fixed injection point, including host-composed HTTP Basic authorization from a validated non-secret username and the resolved secret, and SHALL send the secret only to an exact origin declared for that secret name, without following redirects, without letting caller-supplied fields override the injection, and without including the secret value or any host-derived credential representation in any result, error, or log.
 
 #### Scenario: Dashboard performs an authenticated request
 
 - **WHEN** a dashboard with the secrets capability requests a host-mediated call to a declared origin using a declared, set secret with a fixed injection point
 - **THEN** the main process injects the value, performs the request subject to fixed size, time, and rate bounds, and returns only the bounded status, header subset, and body
+
+#### Scenario: Dashboard performs HTTP Basic authentication
+
+- **WHEN** a dashboard requests `authorization-basic` injection with a valid username and a declared, set secret
+- **THEN** the main process sets `authorization` to `Basic ` followed by the Base64 encoding of the UTF-8 bytes of `username:secretValue`, without exposing the resolved secret or composed authorization value to dashboard code
+
+#### Scenario: Basic-auth username is invalid
+
+- **WHEN** an `authorization-basic` username is empty, exceeds the fixed length bound, or contains colon, CR, LF, or NUL
+- **THEN** the application rejects the request without resolving the secret or contacting the target
+
+#### Scenario: Remote response echoes a derived credential
+
+- **WHEN** a remote response or failure includes the Base64 credential payload or the complete host-composed Basic authorization value
+- **THEN** the application redacts the derived value before returning or logging any response or error field
 
 #### Scenario: Request targets an undeclared origin
 

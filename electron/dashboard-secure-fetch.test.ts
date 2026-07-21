@@ -101,6 +101,23 @@ describe("dashboard secure fetch origin binding", () => {
 });
 
 describe("dashboard secure fetch injection", () => {
+  it.each(["", "x".repeat(257), "user:name", "user\rname", "user\nname", "user\0name"])(
+    "rejects invalid Basic username %j before secret resolution or network activity",
+    async (username) => {
+      const resolveSecret = vi.fn(() => SECRET);
+      const fetchImpl = ok();
+      await expect(
+        performDashboardSecureFetch(
+          manifest,
+          request({ secret: { name: "NOTION_TOKEN", inject: { kind: "authorization-basic", username } } }),
+          { resolveSecret, fetchImpl },
+        ),
+      ).rejects.toThrow("Invalid dashboard API request.");
+      expect(resolveSecret).not.toHaveBeenCalled();
+      expect(fetchImpl).not.toHaveBeenCalled();
+    },
+  );
+
   it("injects the secret as a bearer token without returning it", async () => {
     const fetchImpl = ok('{"ok":true}');
     const result = await performDashboardSecureFetch(manifest, request(), deps(fetchImpl));
@@ -108,6 +125,37 @@ describe("dashboard secure fetch injection", () => {
     const [, init] = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
     expect((init.headers as Headers).get("authorization")).toBe(`Bearer ${SECRET}`);
     expect(JSON.stringify(result)).not.toContain(SECRET);
+  });
+
+  it("composes a UTF-8 Basic credential in the host", async () => {
+    const fetchImpl = ok();
+    const username = "josé@example.com";
+    await performDashboardSecureFetch(
+      manifest,
+      request({ secret: { name: "NOTION_TOKEN", inject: { kind: "authorization-basic", username } } }),
+      deps(fetchImpl),
+    );
+
+    const [, init] = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    const payload = Buffer.from(`${username}:${SECRET}`, "utf8").toString("base64");
+    expect((init.headers as Headers).get("authorization")).toBe(`Basic ${payload}`);
+  });
+
+  it("rejects caller-supplied authorization before secret resolution or network activity", async () => {
+    const resolveSecret = vi.fn(() => SECRET);
+    const fetchImpl = ok();
+    await expect(
+      performDashboardSecureFetch(
+        manifest,
+        request({
+          headers: { Authorization: "Basic attacker-chosen" },
+          secret: { name: "NOTION_TOKEN", inject: { kind: "authorization-basic", username: "user" } },
+        }),
+        { resolveSecret, fetchImpl },
+      ),
+    ).rejects.toThrow("Invalid dashboard API request.");
+    expect(resolveSecret).not.toHaveBeenCalled();
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("injects into a named header and a query parameter", async () => {
@@ -213,6 +261,38 @@ describe("dashboard secure fetch response handling", () => {
 });
 
 describe("dashboard secure fetch never returns the secret", () => {
+  it("redacts the Basic payload and complete authorization value from responses", async () => {
+    const username = "user@example.com";
+    const payload = Buffer.from(`${username}:${SECRET}`, "utf8").toString("base64");
+    const fieldValue = `Basic ${payload}`;
+    const result = await performDashboardSecureFetch(
+      manifest,
+      request({ secret: { name: "NOTION_TOKEN", inject: { kind: "authorization-basic", username } } }),
+      deps(ok(`echoed payload=${payload}; field=${fieldValue}`, { headers: { "x-echo": fieldValue } })),
+    );
+
+    expect(JSON.stringify(result)).not.toContain(payload);
+    expect(JSON.stringify(result)).not.toContain(fieldValue);
+    expect(result.body).toContain("[redacted]");
+  });
+
+  it("does not leak a derived Basic credential through failure output", async () => {
+    const username = "user@example.com";
+    const payload = Buffer.from(`${username}:${SECRET}`, "utf8").toString("base64");
+    const fetchImpl = vi.fn(async () => {
+      throw new Error(`request failed with Basic ${payload}`);
+    }) as unknown as typeof fetch;
+
+    const error = await performDashboardSecureFetch(
+      manifest,
+      request({ secret: { name: "NOTION_TOKEN", inject: { kind: "authorization-basic", username } } }),
+      deps(fetchImpl),
+    ).catch((caught: Error) => caught);
+
+    expect(String(error)).not.toContain(payload);
+    expect((error as Error).message).toBe("Dashboard request failed.");
+  });
+
   // The host writes the secret into the request line for query-param injection,
   // so a redirect that preserves the query string echoes it straight back.
   it("redacts a secret echoed in a redirect Location header", async () => {

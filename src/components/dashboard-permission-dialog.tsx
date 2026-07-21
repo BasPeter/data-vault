@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import type { DashboardCapabilityId, DashboardManifest, DashboardPermissionDetails } from "@/dashboard-contracts";
+import type {
+  DashboardCapabilityId,
+  DashboardDocumentScope,
+  DashboardManifest,
+  DashboardPermissionDetails,
+} from "@/dashboard-contracts";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,6 +29,7 @@ export function DashboardPermissionDialog({
   const [details, setDetails] = useState<DashboardPermissionDetails | null>(null);
   const [index, setIndex] = useState(false);
   const [documents, setDocuments] = useState(false);
+  const [documentScope, setDocumentScope] = useState<DashboardDocumentScope>("selected");
   const [secrets, setSecrets] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +43,7 @@ export function DashboardPermissionDialog({
         setDetails(next);
         setIndex(next.effectivePermissions.capabilities.includes("vault:index:read"));
         setDocuments(next.effectivePermissions.capabilities.includes("vault:documents:read"));
+        setDocumentScope(next.effectivePermissions.documentScope);
         setSecrets(next.effectivePermissions.capabilities.includes("secrets:use"));
         setSelected(new Set(next.effectivePermissions.selectedDocumentIds));
       })
@@ -53,7 +60,8 @@ export function DashboardPermissionDialog({
         vaultId,
         dashboard.id,
         capabilities,
-        documents ? [...selected] : [],
+        documents ? documentScope : "selected",
+        documents && documentScope === "selected" ? [...selected] : [],
       );
       onOpenChange(false);
     } catch (cause) {
@@ -93,14 +101,47 @@ export function DashboardPermissionDialog({
               </label>
             )}
             {details.requestedCapabilities.includes("vault:documents:read") && (
-              <label className="flex gap-2">
-                <input type="checkbox" checked={documents} onChange={(event) => setDocuments(event.target.checked)} />
-                <span>
-                  <strong>Selected documents</strong>
-                  <br />
-                  <span className="text-muted-foreground">Read only the documents you select below.</span>
-                </span>
-              </label>
+              <div className="grid gap-2">
+                <label className="flex gap-2">
+                  <input type="checkbox" checked={documents} onChange={(event) => setDocuments(event.target.checked)} />
+                  <span>
+                    <strong>Document contents</strong>
+                  </span>
+                </label>
+                {documents && (
+                  <fieldset className="ml-6 grid gap-2">
+                    <legend className="sr-only">Document access scope</legend>
+                    <label className="flex gap-2">
+                      <input
+                        type="radio"
+                        name="document-scope"
+                        checked={documentScope === "selected"}
+                        onChange={() => setDocumentScope("selected")}
+                      />
+                      <span>
+                        <strong>Selected documents</strong>
+                        <br />
+                        <span className="text-muted-foreground">Read only the documents you select below.</span>
+                      </span>
+                    </label>
+                    <label className="flex gap-2">
+                      <input
+                        type="radio"
+                        name="document-scope"
+                        checked={documentScope === "all"}
+                        onChange={() => setDocumentScope("all")}
+                      />
+                      <span>
+                        <strong>All documents</strong>
+                        <br />
+                        <span className="text-muted-foreground">
+                          Read all current and future documents until you change or revoke access.
+                        </span>
+                      </span>
+                    </label>
+                  </fieldset>
+                )}
+              </div>
             )}
             {details.requestedCapabilities.includes("secrets:use") && (
               <label className="flex gap-2">
@@ -131,7 +172,7 @@ export function DashboardPermissionDialog({
                 </span>
               </label>
             )}
-            {documents && (
+            {documents && documentScope === "selected" && (
               <fieldset className="grid max-h-48 gap-1 overflow-auto rounded-md border p-2">
                 <legend className="px-1 text-xs">Allowed documents</legend>
                 {details.documents.map((document) => (

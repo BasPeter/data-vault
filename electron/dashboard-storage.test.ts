@@ -107,6 +107,9 @@ describe("DashboardStorage discovery and ownership", () => {
     expect(handoff).toContain("secrets:use");
     expect(handoff).toContain("You cannot read a secret value");
     expect(handoff).toContain("secureFetch");
+    expect(handoff).toContain("authorization-basic");
+    expect(handoff).toContain("1–256 code units");
+    expect(handoff).toContain("only the host composes the authorization value");
     expect(handoff).toContain("exact HTTPS origins");
     expect(handoff).toContain("trusted secrets panel");
     expect(handoff).toContain("Do not ask the user to paste a credential");

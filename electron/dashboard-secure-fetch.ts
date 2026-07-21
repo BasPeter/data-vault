@@ -65,20 +65,28 @@ function resolveTarget(declaration: DashboardSecretDeclaration, rawUrl: string):
   return url;
 }
 
-function applyInjection(url: URL, headers: Headers, input: DashboardSecureFetchInput, secretValue: string): void {
+function applyInjection(url: URL, headers: Headers, input: DashboardSecureFetchInput, secretValue: string): string[] {
   const inject = input.secret.inject;
   if (inject.kind === "authorization-bearer") {
     if (headers.has("authorization")) invalid();
     headers.set("authorization", `Bearer ${secretValue}`);
-    return;
+    return [];
+  }
+  if (inject.kind === "authorization-basic") {
+    if (headers.has("authorization")) invalid();
+    const payload = Buffer.from(`${inject.username}:${secretValue}`, "utf8").toString("base64");
+    const fieldValue = `Basic ${payload}`;
+    headers.set("authorization", fieldValue);
+    return [payload, fieldValue];
   }
   if (inject.kind === "header") {
     if (headers.has(inject.header)) invalid();
     headers.set(inject.header, secretValue);
-    return;
+    return [];
   }
   if (url.searchParams.has(inject.param)) invalid();
   url.searchParams.set(inject.param, secretValue);
+  return [];
 }
 
 async function readBoundedBody(response: Response, limit: number): Promise<{ body: string; truncated: boolean }> {
@@ -178,7 +186,7 @@ export async function performDashboardSecureFetch(
 
   const secretValue = dependencies.resolveSecret(input.secret.name);
   if (secretValue === undefined) throw new DashboardSecretUnsetError();
-  applyInjection(url, headers, input, secretValue);
+  const derivedVariants = applyInjection(url, headers, input, secretValue);
 
   const run = dependencies.fetchImpl ?? fetch;
   try {
@@ -193,7 +201,9 @@ export async function performDashboardSecureFetch(
 
     // Reading the body stays inside this catch: a mid-body reset, decode failure,
     // or timeout rejects with an error whose cause can embed the request.
-    const variants = secretVariants(secretValue);
+    const variants = [...new Set([...secretVariants(secretValue), ...derivedVariants])].sort(
+      (left, right) => right.length - left.length,
+    );
     // Slack is sized from the LONGEST variant, not the raw secret: the encoded
     // forms run up to three times longer, and a shorter slack leaves a prefix.
     const slack = Math.max(...variants.map((variant) => variant.length));

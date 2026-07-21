@@ -106,6 +106,7 @@ describe("dashboard permission identity", () => {
     expect(store.grant(context(repository), ["vault:documents:read", "vault:index:read"], ["docs/b.html"])).toEqual({
       schemaVersion: 1,
       capabilities: ["state:read", "vault:index:read", "vault:documents:read"],
+      documentScope: "selected",
       selectedDocumentIds: ["docs/b.html"],
     });
     const persisted = fs.readFileSync(path.join(userData, "dashboard-permissions.json"), "utf8");
@@ -153,6 +154,7 @@ describe("dashboard permission identity", () => {
     expect(store.effective(context(repository))).toEqual({
       schemaVersion: 1,
       capabilities: ["state:read"],
+      documentScope: "selected",
       selectedDocumentIds: [],
     });
     expect(() => store.grant(context(repository), ["vault:index:read"])).toThrow("Invalid dashboard permission store");
@@ -171,8 +173,51 @@ describe("dashboard permission identity", () => {
     expect(second.effective(grantContext)).toEqual({
       schemaVersion: 1,
       capabilities: ["state:read"],
+      documentScope: "selected",
       selectedDocumentIds: [],
     });
+  });
+
+  it("reads legacy grants as selected and round-trips canonical all scope", () => {
+    const userData = temporaryDirectory();
+    const repository = temporaryDirectory();
+    const store = new DashboardPermissionStore(userData);
+    const grantContext = context(repository);
+    store.grant(grantContext, ["vault:documents:read"], ["legacy.html"]);
+    const file = path.join(userData, "dashboard-permissions.json");
+    const legacy = JSON.parse(fs.readFileSync(file, "utf8"));
+    delete legacy.grants[0].documentScope;
+    fs.writeFileSync(file, JSON.stringify(legacy));
+
+    expect(store.effective(grantContext)).toMatchObject({
+      documentScope: "selected",
+      selectedDocumentIds: ["legacy.html"],
+    });
+
+    expect(store.grant(grantContext, ["vault:documents:read"], ["ignored.html"], "all")).toMatchObject({
+      documentScope: "all",
+      selectedDocumentIds: [],
+    });
+    const persisted = JSON.parse(fs.readFileSync(file, "utf8"));
+    expect(persisted.grants).toHaveLength(1);
+    expect(persisted.grants[0]).toMatchObject({ documentScope: "all", selectedDocumentIds: [] });
+  });
+
+  it("fails closed for an invalid persisted scope", () => {
+    const userData = temporaryDirectory();
+    const repository = temporaryDirectory();
+    const store = new DashboardPermissionStore(userData);
+    const grantContext = context(repository);
+    store.grant(grantContext, ["vault:documents:read"], [], "all");
+    const file = path.join(userData, "dashboard-permissions.json");
+    const forged = JSON.parse(fs.readFileSync(file, "utf8"));
+    forged.grants[0].documentScope = "manifest-controlled";
+    fs.writeFileSync(file, JSON.stringify(forged));
+
+    expect(store.effective(grantContext)).toMatchObject({ capabilities: ["state:read"], documentScope: "selected" });
+    expect(() => store.grant(grantContext, ["vault:documents:read"], [], "all")).toThrow(
+      "Invalid dashboard permission store",
+    );
   });
 
   it("cannot regain an old grant after superseding and revoking the current dashboard tuple", () => {
