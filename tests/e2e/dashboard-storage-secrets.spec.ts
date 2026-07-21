@@ -25,8 +25,17 @@ function declareSecret(bundleDirectory: string): void {
 }
 
 test.beforeEach(async ({ appLaunch }) => {
-  const encryptionAvailable = await appLaunch.app.evaluate(({ safeStorage }) => safeStorage.isEncryptionAvailable());
-  expect(encryptionAvailable, "E2E requires OS-backed safeStorage; check the Linux Secret Service setup.").toBe(true);
+  // Report the selected backend alongside the assertion: it distinguishes "no
+  // OS backend was selected at all" from "a backend was selected but the key
+  // could not be derived", which the boolean alone cannot.
+  const storage = await appLaunch.app.evaluate(({ safeStorage }) => ({
+    available: safeStorage.isEncryptionAvailable(),
+    backend: process.platform === "linux" ? safeStorage.getSelectedStorageBackend() : process.platform,
+  }));
+  expect(
+    storage.available,
+    `E2E requires OS-backed safeStorage; check the Linux Secret Service setup. Selected backend: ${storage.backend}`,
+  ).toBe(true);
 });
 
 test("an app-local dashboard is usable but never written into the vault repository", async ({ appLaunch }) => {

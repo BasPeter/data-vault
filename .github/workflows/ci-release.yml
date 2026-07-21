@@ -44,6 +44,7 @@ jobs:
   e2e:
     name: End-to-end tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -60,7 +61,7 @@ jobs:
         run: npm ci
 
       - name: Install Linux Secret Service
-        run: sudo apt-get update && sudo apt-get install --yes gnome-keyring libsecret-1-0
+        run: sudo apt-get update && sudo apt-get install --yes gnome-keyring libsecret-1-0 libsecret-tools
 
       - name: Run Playwright end-to-end tests
         # The Electron runner uses the app's bundled Chromium, so no browser
@@ -68,10 +69,23 @@ jobs:
         # provides OS-keychain-backed encryption on the runner.
         run: |
           dbus-run-session -- bash -c '
+            set -euo pipefail
             keyring_password="$(head -c 32 /dev/urandom | base64)"
-            eval "$(printf %s "$keyring_password" | gnome-keyring-daemon --login)"
+            printf %s "$keyring_password" | gnome-keyring-daemon --daemonize --unlock --components=secrets
             unset keyring_password
-            eval "$(gnome-keyring-daemon --start --components=secrets)"
+            # Prove the Secret Service actually serves a default collection before
+            # Playwright starts. This is the same store-into-default-collection
+            # path Chromium uses to derive its encryption key, so a broken keyring
+            # fails here with a clear message instead of surfacing later as an
+            # opaque safeStorage assertion. gnome-keyring swallows its own
+            # initialization failures and still exits 0, so this probe is the only
+            # thing that can detect them.
+            # Bounded: a locked collection with no prompter available makes these
+            # calls block on a prompt that never resolves, which would recreate
+            # the opaque failure this probe exists to remove.
+            timeout 30 bash -c "printf %s probe-value | secret-tool store --label=ci-probe data-vault ci-probe"
+            timeout 30 secret-tool lookup data-vault ci-probe > /dev/null
+            timeout 30 secret-tool clear data-vault ci-probe
             XDG_CURRENT_DESKTOP=GNOME xvfb-run -a npm run test:e2e
           '
 
