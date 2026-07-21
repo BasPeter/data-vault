@@ -9,6 +9,7 @@ import {
   DASHBOARD_PRELOAD_STATE_MAX_NODES,
   validatePreloadDashboardState,
   validatePreloadDocumentIds,
+  validatePreloadExternalLinkRequest,
   validatePreloadSecureFetchInput,
 } from "./dashboard-preload-validation";
 
@@ -51,6 +52,31 @@ describe("dashboard preload document ID validation", () => {
     expect(() => validatePreloadDocumentIds(["x".repeat(DASHBOARD_DOCUMENT_ID_MAX_LENGTH + 1)])).toThrow(
       "Invalid dashboard API request",
     );
+  });
+});
+
+describe("dashboard preload external link validation", () => {
+  it("accepts only an exact canonical HTTPS destination", () => {
+    expect(() => validatePreloadExternalLinkRequest({ url: "https://example.com/path?x=1" })).not.toThrow();
+  });
+
+  it.each([
+    "http://example.com/",
+    "https://user@example.com/",
+    "https://example.com/%",
+    "https://example.com/%0",
+    "https://example.com/a b",
+    "https://example.com/\n",
+    "HTTPS://example.com/",
+    "https://example.com",
+    "https:///path",
+    `https://example.com/${"x".repeat(8_192)}`,
+  ])("rejects unsafe or non-canonical URL %j", (url) => {
+    expect(() => validatePreloadExternalLinkRequest({ url })).toThrow("Invalid dashboard API request");
+  });
+
+  it("rejects a request with fields beyond its fixed URL surface", () => {
+    expect(() => validatePreloadExternalLinkRequest({ url: "https://example.com/", target: "_blank" })).toThrow();
   });
 });
 

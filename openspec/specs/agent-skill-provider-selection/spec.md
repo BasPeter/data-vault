@@ -25,8 +25,7 @@ for any provider.
 #### Scenario: User selects OpenCode only
 
 - **WHEN** a user selects only OpenCode and saves
-- **THEN** the application SHALL install `vault-guide` and
-  `document-reviewer` at `~/.config/opencode/skills/<skill>/SKILL.md`
+- **THEN** the application SHALL install `vault-guide`, `document-reviewer`, and `vault-dashboard-guide` at `~/.config/opencode/skills/<skill>/SKILL.md`
 - **AND** it SHALL NOT install or refresh the Claude or Codex copies
 
 #### Scenario: User changes a saved selection

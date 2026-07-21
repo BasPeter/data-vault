@@ -68,12 +68,15 @@ describe("dashboard API authentication", () => {
     expect(() => validateDashboardApiArgument("get-info", undefined)).not.toThrow();
     expect(() => validateDashboardApiArgument("write-state", { state: { complete: true } })).not.toThrow();
     expect(() => validateDashboardApiArgument("read-documents", { documentIds: ["goal.html"] })).not.toThrow();
+    expect(() => validateDashboardApiArgument("open-external-link", { url: "https://example.com/" })).not.toThrow();
     for (const [operation, value] of [
       ["get-info", {}],
       ["write-state", { state: null, path: "outside" }],
       ["read-documents", { documentIds: Array.from({ length: 21 }, () => "goal.html") }],
       ["read-documents", { documentIds: [""] }],
       ["read-documents", { documentIds: [], method: "invented" }],
+      ["open-external-link", { url: "https://example.com/", target: "_blank" }],
+      ["open-external-link", { url: "http://example.com/" }],
     ] as const)
       expect(() => validateDashboardApiArgument(operation, value)).toThrow("Invalid dashboard API request");
   });

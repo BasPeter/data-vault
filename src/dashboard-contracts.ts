@@ -153,6 +153,7 @@ export const DASHBOARD_SECURE_FETCH_URL_MAX_LENGTH = 2048;
 export const DASHBOARD_SECURE_FETCH_REQUEST_MAX_BYTES = 256 * 1024;
 export const DASHBOARD_SECURE_FETCH_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
 export const DASHBOARD_SECURE_FETCH_TIMEOUT_MS = 15_000;
+export const DASHBOARD_EXTERNAL_LINK_URL_MAX_LENGTH = 8_192;
 // Secure fetches share the runtime's expensive-read budget rather than having a
 // dedicated one, so a dashboard cannot use them to bypass that limit.
 export const DASHBOARD_SECURE_FETCH_REQUEST_HEADER_MAX_COUNT = 16;
@@ -266,6 +267,8 @@ export type DashboardListSecretsRequest = undefined;
 export type DashboardListSecretsResponse = DashboardListSecretsResult;
 export type DashboardSecureFetchRequest = { request: DashboardSecureFetchInput };
 export type DashboardSecureFetchResponse = DashboardSecureFetchResult;
+export type DashboardOpenExternalLinkRequest = { url: string };
+export type DashboardOpenExternalLinkResponse = { opened: true } | { opened: false };
 
 export type DashboardApi = {
   getInfo: () => Promise<DashboardGetInfoResponse>;
@@ -275,6 +278,7 @@ export type DashboardApi = {
   readDocuments: (documentIds: string[]) => Promise<DashboardReadDocumentsResponse>;
   listSecrets: () => Promise<DashboardListSecretsResponse>;
   secureFetch: (request: DashboardSecureFetchInput) => Promise<DashboardSecureFetchResponse>;
+  openExternalLink: (request: DashboardOpenExternalLinkRequest) => Promise<DashboardOpenExternalLinkResponse>;
 };
 
 export type DashboardApiRequestMap = {
@@ -285,6 +289,7 @@ export type DashboardApiRequestMap = {
   readDocuments: DashboardReadDocumentsRequest;
   listSecrets: DashboardListSecretsRequest;
   secureFetch: DashboardSecureFetchRequest;
+  openExternalLink: DashboardOpenExternalLinkRequest;
 };
 
 export type DashboardApiResponseMap = {
@@ -295,6 +300,7 @@ export type DashboardApiResponseMap = {
   readDocuments: DashboardReadDocumentsResponse;
   listSecrets: DashboardListSecretsResponse;
   secureFetch: DashboardSecureFetchResponse;
+  openExternalLink: DashboardOpenExternalLinkResponse;
 };
 
 export type DashboardApiErrorCode =

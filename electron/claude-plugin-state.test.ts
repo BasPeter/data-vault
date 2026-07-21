@@ -74,10 +74,11 @@ describe("ClaudePluginStateService", () => {
     }
   });
 
-  it("uses an exact fixed prompt with only the two allowed skill paths and safety boundaries", () => {
+  it("uses an exact fixed prompt with only the three allowed skill paths and safety boundaries", () => {
     expect(CLAUDE_COWORK_UPDATE_PROMPT.match(/~\/\.claude\/skills\/[^\s]+\/SKILL\.md/g)).toEqual([
       "~/.claude/skills/vault-guide/SKILL.md",
       "~/.claude/skills/document-reviewer/SKILL.md",
+      "~/.claude/skills/vault-dashboard-guide/SKILL.md",
     ]);
     expect(CLAUDE_COWORK_UPDATE_PROMPT).toContain("%USERPROFILE%");
     expect(CLAUDE_COWORK_UPDATE_PROMPT).toContain("explicitly attached, selected, or provided as the target");
@@ -85,7 +86,7 @@ describe("ClaudePluginStateService", () => {
     expect(CLAUDE_COWORK_UPDATE_PROMPT).toContain("Do not search the filesystem for the plugin.");
     expect(CLAUDE_COWORK_UPDATE_PROMPT).toContain("inside only the selected target plugin tree");
     expect(CLAUDE_COWORK_UPDATE_PROMPT).toContain(
-      "Outside that selected target tree, access only the two source files",
+      "Outside that selected target tree, access only the three source files",
     );
     expect(CLAUDE_COWORK_UPDATE_PROMPT).toContain("preserving its .claude-plugin/plugin.json manifest");
     expect(CLAUDE_COWORK_UPDATE_PROMPT).toContain(

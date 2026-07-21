@@ -10,6 +10,7 @@ export const CLAUDE_PLUGIN_ENTRIES = [
   ".claude-plugin/plugin.json",
   "README.md",
   "skills/document-reviewer/SKILL.md",
+  "skills/vault-dashboard-guide/SKILL.md",
   "skills/vault-guide/SKILL.md",
 ] as const;
 
@@ -109,7 +110,7 @@ function pluginEntries(vaults: VaultSummary[]): { entries: Entry[]; fingerprint:
     .update(manifest)
     .update(skills.map((skill) => `${skill.name}\0${skill.content}`).join("\0"))
     .digest("hex");
-  const readme = `# Data Vault for Claude\n\nThis plugin is a snapshot of the vaults registered when it was exported.\n\nSnapshot fingerprint: \`${fingerprint}\`\n\n## Install or update\n\nIn Claude Desktop, open Customize > Plugins and upload this ZIP as a custom plugin. To update after changing vault configuration, remove the previously uploaded Data Vault plugin, export a new snapshot, and upload it. Same-name replacement is not assumed.\n\nBoth skills work in Chat and Cowork. If the standalone Claude skills are also installed, Claude may show duplicate capabilities; remove or disable either copy manually if desired.\n\n## Uninstall\n\nRemove the Data Vault plugin in Claude Desktop. Data Vault never modifies Claude Desktop's private plugin storage.\n`;
+  const readme = `# Data Vault for Claude\n\nThis plugin is a snapshot of the vaults registered when it was exported.\n\nSnapshot fingerprint: \`${fingerprint}\`\n\n## Install or update\n\nIn Claude Desktop, open Customize > Plugins and upload this ZIP as a custom plugin. To update after changing vault configuration, remove the previously uploaded Data Vault plugin, export a new snapshot, and upload it. Same-name replacement is not assumed.\n\nAll three skills work in Chat and Cowork. If the standalone Claude skills are also installed, Claude may show duplicate capabilities; remove or disable either copy manually if desired.\n\n## Uninstall\n\nRemove the Data Vault plugin in Claude Desktop. Data Vault never modifies Claude Desktop's private plugin storage.\n`;
   const content = new Map<string, string>([
     [CLAUDE_PLUGIN_ENTRIES[0], manifest],
     [CLAUDE_PLUGIN_ENTRIES[1], readme],

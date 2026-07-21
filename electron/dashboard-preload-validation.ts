@@ -2,6 +2,7 @@ import {
   DASHBOARD_BASIC_AUTH_USERNAME_MAX_LENGTH,
   DASHBOARD_DOCUMENT_ID_MAX_LENGTH,
   DASHBOARD_DOCUMENT_REQUEST_MAX_COUNT,
+  DASHBOARD_EXTERNAL_LINK_URL_MAX_LENGTH,
   DASHBOARD_SECRET_NAME_PATTERN,
   DASHBOARD_SECURE_FETCH_HEADER_VALUE_MAX_LENGTH,
   DASHBOARD_SECURE_FETCH_METHODS,
@@ -11,6 +12,43 @@ import {
   DASHBOARD_STATE_MAX_BYTES,
   type DashboardSecureFetchInput,
 } from "../src/dashboard-contracts";
+
+export function canonicalDashboardExternalLinkUrl(value: unknown): string {
+  if (typeof value !== "string" || value.length < 1 || value.length > DASHBOARD_EXTERNAL_LINK_URL_MAX_LENGTH) invalid();
+  if (/\s/.test(value) || containsControlCharacter(value) || /%(?![0-9a-fA-F]{2})/.test(value)) invalid();
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    invalid();
+  }
+  const canonical = parsed!.toString();
+  if (
+    canonical.length > DASHBOARD_EXTERNAL_LINK_URL_MAX_LENGTH ||
+    parsed!.protocol !== "https:" ||
+    parsed!.host === "" ||
+    parsed!.username !== "" ||
+    parsed!.password !== "" ||
+    value !== canonical
+  ) {
+    invalid();
+  }
+  return canonical;
+}
+
+function containsControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code <= 0x1f || code === 0x7f) return true;
+  }
+  return false;
+}
+
+export function validatePreloadExternalLinkRequest(value: unknown): asserts value is { url: string } {
+  const request = plainObject(value);
+  onlyKeys(request, ["url"]);
+  canonicalDashboardExternalLinkUrl(request.url);
+}
 
 export const DASHBOARD_PRELOAD_STATE_MAX_DEPTH = 64;
 export const DASHBOARD_PRELOAD_STATE_MAX_NODES = 100_000;

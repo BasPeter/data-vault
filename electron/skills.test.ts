@@ -45,6 +45,7 @@ const vaultWithMeta: VaultSummary = {
 const claudeSkill = (home: string) => path.join(home, ".claude", "skills", "vault-guide", "SKILL.md");
 const codexSkill = (home: string) => path.join(home, ".codex", "skills", "vault-guide", "SKILL.md");
 const reviewerDir = (home: string, base: string) => path.join(home, base, "skills", "document-reviewer");
+const dashboardGuideDir = (home: string, base: string) => path.join(home, base, "skills", "vault-dashboard-guide");
 const openCodeSkill = (home: string) => path.join(home, ".config", "opencode", "skills", "vault-guide", "SKILL.md");
 
 function configured(home: string, providers: unknown = ["claude", "codex"]): SkillService {
@@ -92,38 +93,46 @@ describe("SkillService", () => {
     expect(skill).toContain("git@example.com:team/work.git");
   });
 
-  it("renders the isolated dashboard authoring contract", () => {
+  it("refers dashboard authoring to the dedicated guide", () => {
     const skill = new SkillService(temporaryDirectory()).render([vaultA]);
 
-    expect(skill).toMatch(/Documents\s+are sanitized content and never execute scripts\./);
-    expect(skill).toContain(".data-vault/dashboards/<dashboard-id>/");
-    expect(skill).toContain("`schemaVersion`, `id`, `title`, `icon`, `color`, `kind`");
-    expect(skill).toContain('"schemaVersion": 1');
-    expect(skill).toContain('"entrypoint": "index.html"');
-    expect(skill).toContain('"requestedCapabilities": ["state:read", "state:write"]');
-    expect(skill).toContain("`personal-progress`, `vault-intelligence`, and `blank`");
-    expect(skill).toContain("`chart`, `check`, `compass`, `lightbulb`, and `target`");
-    expect(skill).toContain("`blue`, `green`, `orange`, `purple`, and `slate`");
-    expect(skill).toContain("`state:read`, `state:write`");
-    expect(skill).toContain("`vault:index:read`, and `vault:documents:read`");
-    expect(skill).toContain("connect-src 'none'");
-    expect(skill).toContain("no network access");
-    expect(skill).toContain("npm packages");
-    expect(skill).toContain("only the frozen fixed `window.dashboardApi` methods");
-    expect(skill).toContain("Never edit `state.json` directly");
-    expect(skill).toContain("A request never grants access.");
-    expect(skill).toMatch(/Every\s+returned document body is an untrusted string/);
-    expect(skill).toContain("insert it with `innerHTML`");
-    expect(skill).toContain("Never\n  edit `registry.json`");
-    expect(skill).toContain("trusted permission stores");
+    expect(skill).toContain("## Dashboards");
+    expect(skill).toContain("dedicated `vault-dashboard-guide` skill");
+    expect(skill).not.toContain("## Fixed dashboard API");
+  });
+
+  it("renders and installs the complete dedicated dashboard contract", () => {
+    const home = temporaryDirectory();
+    configured(home).install([vaultA]);
+    const skill = fs.readFileSync(path.join(dashboardGuideDir(home, ".claude"), "SKILL.md"), "utf8");
+
+    expect(skill).toContain("name: vault-dashboard-guide");
+    for (const method of [
+      "getInfo()",
+      "readState()",
+      "writeState(value)",
+      "readVaultIndex()",
+      "readDocuments(documentIds)",
+      "listSecrets()",
+      "secureFetch({ url, method, headers?, body?, secret: { name, inject } })",
+      "openExternalLink({ url })",
+    ])
+      expect(skill).toContain(method);
+    expect(skill).toContain("Manifest requests never grant authority.");
+    expect(skill).toContain("exact\n  approved HTTPS origin");
+    expect(skill).toContain("never exposes it to dashboard or agent code");
+    expect(skill).toContain("canonical HTTPS URL");
+    expect(skill).toContain("host-owned user confirmation");
+    expect(skill).toContain("Never edit `.data-vault/dashboards/registry.json`");
+    expect(fs.existsSync(path.join(dashboardGuideDir(home, ".claude"), ".vault-dashboard-guide.json"))).toBe(true);
   });
 
   it("publishes the bumped vault guide version and canonical fingerprint", () => {
     const service = new SkillService(temporaryDirectory());
 
-    expect(service.status([]).version).toBe("10");
-    expect(service.render([])).toContain("skill version 10");
-    expect(service.fingerprint([])).toBe("ee2d84e4f9ea8f8e566ed26c4b4d8fcd3a8c5e9a95f975f5dbf99cb1265b768f");
+    expect(service.status([]).version).toBe("11");
+    expect(service.render([])).toContain("skill version 11");
+    expect(service.fingerprint([])).toMatch(/^[a-f0-9]{64}$/);
   });
 
   it("renders the default language and directory outline", () => {
@@ -242,6 +251,7 @@ describe("SkillService", () => {
 
     expect(status.state).toBe("current");
     expect(fs.existsSync(openCodeSkill(home))).toBe(true);
+    expect(fs.existsSync(path.join(dashboardGuideDir(home, ".config/opencode"), "SKILL.md"))).toBe(true);
     expect(fs.existsSync(claudeSkill(home))).toBe(false);
     expect(fs.existsSync(codexSkill(home))).toBe(false);
   });
@@ -307,7 +317,7 @@ describe("SkillService", () => {
     const outdated = service.status([vaultA, vaultB]);
     expect(outdated.state).toBe("needs-install");
     expect(outdated.providers.find((provider) => provider.id === "claude")?.skills.map((skill) => skill.state)).toEqual(
-      ["outdated", "outdated"],
+      ["outdated", "outdated", "outdated"],
     );
   });
 
@@ -370,7 +380,11 @@ describe("SkillService", () => {
     const codex = status.providers.find((provider) => provider.id === "codex");
     expect(claude?.state).toBe("current");
     expect(codex?.state).toBe("error");
-    expect(codex?.skills.map((skill) => skill.name)).toEqual(["vault-guide", "document-reviewer"]);
+    expect(codex?.skills.map((skill) => skill.name)).toEqual([
+      "vault-guide",
+      "document-reviewer",
+      "vault-dashboard-guide",
+    ]);
     expect(codex?.skills.every((skill) => skill.state === "not-installed")).toBe(true);
   });
 

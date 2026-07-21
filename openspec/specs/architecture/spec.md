@@ -29,8 +29,8 @@ Each top-level module SHALL keep to its documented responsibility:
   logic
 - `electron/github.ts` — GitHub OAuth device-flow sign-in, token storage,
   and REST (clone/create repos)
-- `electron/skills.ts` — renders and installs the versioned vault-guide and
-  document-reviewer agent skills
+- `electron/skills.ts` — renders and installs the versioned `vault-guide`,
+  `document-reviewer`, and `vault-dashboard-guide` agent skills
 - `src/` — sandboxed React renderer
 - `skills/` — repository-local agent workflows
 

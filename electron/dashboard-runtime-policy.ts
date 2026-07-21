@@ -1,5 +1,6 @@
 import type { Rectangle } from "electron";
 import { DASHBOARD_DOCUMENT_REQUEST_MAX_COUNT } from "../src/dashboard-contracts";
+import { canonicalDashboardExternalLinkUrl } from "./dashboard-preload-validation";
 
 export type DashboardApiOperation =
   | "get-info"
@@ -8,7 +9,8 @@ export type DashboardApiOperation =
   | "read-vault-index"
   | "read-documents"
   | "list-secrets"
-  | "secure-fetch";
+  | "secure-fetch"
+  | "open-external-link";
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -33,6 +35,11 @@ export function validateDashboardApiArgument(operation: DashboardApiOperation, v
     // Shape only; the request body is validated in full and authorized against
     // declared secrets and origins where the call is performed.
     if (Object.keys(value).length !== 1 || !record(value.request)) throw new Error("Invalid dashboard API request.");
+    return;
+  }
+  if (operation === "open-external-link") {
+    if (Object.keys(value).length !== 1 || !("url" in value)) throw new Error("Invalid dashboard API request.");
+    canonicalDashboardExternalLinkUrl(value.url);
     return;
   }
   if (operation !== "read-documents") throw new Error("Invalid dashboard API request.");

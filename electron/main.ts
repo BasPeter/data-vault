@@ -646,6 +646,9 @@ function registerIpc(): void {
     return dashboardSecretsOverview();
   });
   ipcMain.handle("dashboard-api:list-secrets", (event) => runtime().handleApiCall(event, "list-secrets"));
+  ipcMain.handle("dashboard-api:open-external-link", (event, request) =>
+    runtime().handleApiCall(event, "open-external-link", request),
+  );
   ipcMain.handle("dashboard-api:secure-fetch", (event, request) =>
     runtime().handleApiCall(event, "secure-fetch", request),
   );
@@ -905,6 +908,22 @@ function createWindow(): void {
         performDashboardSecureFetch(manifest, request, {
           resolveSecret: (name) => dashboardSecrets.resolve(name),
         }),
+      confirmExternalLink: async (url) => {
+        const result = await dialog.showMessageBox(window, {
+          type: "question",
+          buttons: ["Open link", "Cancel"],
+          defaultId: 1,
+          cancelId: 1,
+          noLink: true,
+          title: "Open external link?",
+          message: "Open this link in your default browser?",
+          detail: url,
+        });
+        return result.response === 0;
+      },
+      openExternalLink: async (url) => {
+        await shell.openExternal(url);
+      },
     },
   );
 

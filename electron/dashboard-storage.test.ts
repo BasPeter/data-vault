@@ -87,7 +87,10 @@ describe("DashboardStorage discovery and ownership", () => {
     const handoff = storage.agentHandoff(validManifest.id);
 
     expect(handoff).toContain(`Work only inside this validated dashboard bundle:\n${bundle}`);
+    expect(handoff).toContain("Use the installed vault-dashboard-guide skill");
     expect(handoff).toContain("Use only the fixed window.dashboardApi methods");
+    expect(handoff).toContain("openExternalLink({ url })");
+    expect(handoff).toContain("each request requires user confirmation");
     expect(handoff).toContain("denies network connections");
     expect(handoff).toContain("Never edit permission stores");
     expect(handoff).toContain("attempt to bypass capability approval");

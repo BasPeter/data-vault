@@ -162,6 +162,7 @@ test("contains a hostile fixture inside one bounded disposable runtime", async (
       dashboardApiKeys: [
         "getInfo",
         "listSecrets",
+        "openExternalLink",
         "readDocuments",
         "readState",
         "readVaultIndex",

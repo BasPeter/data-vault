@@ -84,6 +84,10 @@ describe("ClaudePluginExporter", () => {
       expect(entries.get(`skills/${skill.name}/SKILL.md`)).toEqual(Buffer.from(skill.content, "utf8"));
     }
     expect(entries.get("README.md")!.toString("utf8")).toMatch(/Snapshot fingerprint: `[a-f0-9]{64}`/);
+    expect(entries.get("README.md")!.toString("utf8")).toContain("All three skills work in Chat and Cowork.");
+    expect(entries.get("skills/vault-dashboard-guide/SKILL.md")!.toString("utf8")).toContain(
+      "# Data Vault Dashboard Guide",
+    );
   });
 
   it("produces identical archives and fingerprints for identical snapshots", () => {

@@ -17,6 +17,7 @@ import {
   type DashboardDocumentScope,
   type DashboardEffectivePermissions,
   type DashboardInfo,
+  type DashboardOpenExternalLinkResponse,
   type DashboardState,
 } from "../src/dashboard-contracts";
 import {
@@ -34,6 +35,7 @@ import {
   validateDashboardBounds,
   type DashboardApiOperation,
 } from "./dashboard-runtime-policy";
+import { DashboardExternalLinkPromptGate } from "./dashboard-external-link-flow";
 
 const TRUSTED_HEADER_HEIGHT = 56;
 const SAFE_UNREGISTERED_SIDEBAR_WIDTH = 512;
@@ -69,6 +71,8 @@ export type DashboardRuntimeServices = Readonly<{
   ) => unknown;
   listSecrets: (manifest: DashboardManifest) => unknown;
   secureFetch: (manifest: DashboardManifest, request: unknown) => Promise<unknown>;
+  confirmExternalLink: (url: string) => Promise<boolean>;
+  openExternalLink: (url: string) => Promise<void>;
 }>;
 
 export type DashboardRuntimeStatus = "loading" | "ready" | "failed" | "unresponsive" | "stopped";
@@ -92,6 +96,7 @@ type Runtime = {
   suspended: boolean;
   expensiveReadInFlight: boolean;
   expensiveReadTimestamps: number[];
+  externalLinkPromptGate: DashboardExternalLinkPromptGate;
   cleanups: Array<() => void>;
 };
 
@@ -170,6 +175,7 @@ export class DashboardRuntimeController {
       suspended: false,
       expensiveReadInFlight: false,
       expensiveReadTimestamps: [],
+      externalLinkPromptGate: new DashboardExternalLinkPromptGate(),
       cleanups: [],
     };
     this.runtime = runtime;
@@ -365,6 +371,9 @@ export class DashboardRuntimeController {
         this.services.secureFetch(runtime.manifest, (value as { request: unknown }).request),
       );
     }
+    if (operation === "open-external-link") {
+      return this.openExternalLink(runtime, event, (value as { url: string }).url);
+    }
     if (operation !== "read-documents") throw new Error("Invalid dashboard API request.");
     return this.runExpensiveRead(runtime, () =>
       this.services.readDocuments(
@@ -512,6 +521,23 @@ export class DashboardRuntimeController {
     }
   }
 
+  private async openExternalLink(
+    runtime: Runtime,
+    event: IpcMainInvokeEvent,
+    url: string,
+  ): Promise<DashboardOpenExternalLinkResponse> {
+    const opened = await runtime.externalLinkPromptGate.request(
+      () => this.services.confirmExternalLink(url),
+      // Re-authenticate the exact IPC identity after an asynchronous trusted prompt.
+      () => {
+        if (!this.isCurrentIdentity(runtime)) throw new Error("Dashboard runtime is unavailable.");
+        this.authenticate(event);
+      },
+      () => this.services.openExternalLink(url),
+    );
+    return { opened };
+  }
+
   private applyViewBackground(view: WebContentsView): void {
     view.setBackgroundColor(nativeTheme.shouldUseDarkColors ? "#0a0a0a" : "#ffffff");
   }
@@ -651,6 +677,7 @@ export class DashboardRuntimeController {
     this.authority.delete(runtime.senderId);
     runtime.expensiveReadInFlight = false;
     runtime.expensiveReadTimestamps = [];
+    runtime.externalLinkPromptGate.cancel();
     this.services.releaseState(runtime.runtimeId);
     if (this.runtime === runtime) this.runtime = null;
     removeChildView(this.window, runtime);

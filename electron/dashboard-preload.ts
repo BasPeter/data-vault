@@ -3,6 +3,7 @@ import type { DashboardApi } from "../src/dashboard-contracts";
 import {
   validatePreloadDashboardState,
   validatePreloadDocumentIds,
+  validatePreloadExternalLinkRequest,
   validatePreloadSecureFetchInput,
 } from "./dashboard-preload-validation";
 
@@ -22,6 +23,10 @@ const dashboardApi: DashboardApi = Object.freeze({
   secureFetch: (request) => {
     validatePreloadSecureFetchInput(request);
     return ipcRenderer.invoke("dashboard-api:secure-fetch", { request });
+  },
+  openExternalLink: (request) => {
+    validatePreloadExternalLinkRequest(request);
+    return ipcRenderer.invoke("dashboard-api:open-external-link", request);
   },
 });
 

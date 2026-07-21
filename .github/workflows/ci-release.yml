@@ -70,7 +70,7 @@ jobs:
           dbus-run-session -- bash -c '
             eval "$(printf %s test-keyring-password | gnome-keyring-daemon --unlock)"
             eval "$(gnome-keyring-daemon --start --components=secrets)"
-            xvfb-run -a npm run test:e2e
+            XDG_CURRENT_DESKTOP=GNOME xvfb-run -a npm run test:e2e
           '
 
       - name: Upload Playwright report
