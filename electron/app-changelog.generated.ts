@@ -2,13 +2,29 @@
 import type { AppChangelog } from "../src/types";
 
 export const APP_CHANGELOG = {
-  "generatedAt": "2026-07-21T15:10:51+02:00",
+  "generatedAt": "2026-07-21T15:49:50+02:00",
   "repositoryUrl": "https://github.com/BasPeter/data-vault.git",
   "releases": [
     {
-      "version": "0.17.0",
-      "date": "2026-07-21T15:10:51+02:00",
+      "version": "0.17.1",
+      "date": "2026-07-21T15:49:50+02:00",
       "commits": [
+        {
+          "hash": "6b7e1b262e341bee2ff3d69545519ab8e1b7faaa",
+          "shortHash": "6b7e1b2",
+          "subject": "fix(ci): use OS-backed keyring for linux secret e2e"
+        }
+      ]
+    },
+    {
+      "version": "0.17.0",
+      "date": "2026-07-21T15:16:20+02:00",
+      "commits": [
+        {
+          "hash": "ea769579f6d7fdc86da9052dea1bc44c1c231801",
+          "shortHash": "ea76957",
+          "subject": "chore(release): prepare 0.17.0"
+        },
         {
           "hash": "323ce24bbfdcf83ab5d30af3d11fb33599c21e70",
           "shortHash": "323ce24",
