@@ -2,9 +2,30 @@
 import type { AppChangelog } from "../src/types";
 
 export const APP_CHANGELOG = {
-  "generatedAt": "2026-07-24T12:24:27+02:00",
+  "generatedAt": "2026-07-24T16:29:02+02:00",
   "repositoryUrl": "https://github.com/BasPeter/data-vault.git",
   "releases": [
+    {
+      "version": "0.17.3",
+      "date": "2026-07-24T16:29:02+02:00",
+      "commits": [
+        {
+          "hash": "1a4427bf59584ad90923f476e891fc4146b1024a",
+          "shortHash": "1a4427b",
+          "subject": "fix(dashboard): secure inline webview trusted flows"
+        },
+        {
+          "hash": "dc7d94f83b17830b9ed3436abd1262833b0c58c9",
+          "shortHash": "dc7d94f",
+          "subject": "refactor(dashboard): render sandbox in inline webview"
+        },
+        {
+          "hash": "5a2017aa6e2948f1a7804f883642411ae0c2dc18",
+          "shortHash": "5a2017a",
+          "subject": "chore(openspec): sync specs and archive completed changes"
+        }
+      ]
+    },
     {
       "version": "0.17.2",
       "date": "2026-07-21T17:00:21+02:00",
