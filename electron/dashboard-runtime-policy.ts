@@ -1,4 +1,3 @@
-import type { Rectangle } from "electron";
 import { DASHBOARD_DOCUMENT_REQUEST_MAX_COUNT } from "../src/dashboard-contracts";
 import { canonicalDashboardExternalLinkUrl } from "./dashboard-preload-validation";
 
@@ -52,8 +51,6 @@ export function validateDashboardApiArgument(operation: DashboardApiOperation, v
   }
 }
 
-export type DashboardBounds = Pick<Rectangle, "x" | "y" | "width" | "height">;
-
 export function dashboardMainFrameIfAlive<TFrame>(contents: {
   isDestroyed: () => boolean;
   readonly mainFrame: TFrame;
@@ -63,48 +60,6 @@ export function dashboardMainFrameIfAlive<TFrame>(contents: {
   } catch {
     return null;
   }
-}
-
-function intersect(left: Rectangle, right: Rectangle): Rectangle | null {
-  const x = Math.max(left.x, right.x);
-  const y = Math.max(left.y, right.y);
-  const endX = Math.min(left.x + left.width, right.x + right.width);
-  const endY = Math.min(left.y + left.height, right.y + right.height);
-  if (endX <= x || endY <= y) return null;
-  return { x, y, width: endX - x, height: endY - y };
-}
-
-export function validateDashboardBounds(
-  value: unknown,
-  contentBounds: Rectangle,
-  allowedBounds: Rectangle,
-): Rectangle | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
-  const record = value as Record<string, unknown>;
-  if (Object.keys(record).length !== 4 || !["x", "y", "width", "height"].every((key) => key in record)) return null;
-  const numbers = [record.x, record.y, record.width, record.height];
-  if (numbers.some((item) => typeof item !== "number" || !Number.isFinite(item))) return null;
-  const { x, y, width, height } = record as DashboardBounds;
-  if (
-    x < 0 ||
-    y < 0 ||
-    width <= 0 ||
-    height <= 0 ||
-    x > 100_000 ||
-    y > 100_000 ||
-    width > 100_000 ||
-    height > 100_000
-  ) {
-    return null;
-  }
-  const enclosing = {
-    x: Math.floor(x),
-    y: Math.floor(y),
-    width: Math.ceil(x + width) - Math.floor(x),
-    height: Math.ceil(y + height) - Math.floor(y),
-  };
-  const withinContent = intersect(enclosing, contentBounds);
-  return withinContent ? intersect(withinContent, allowedBounds) : null;
 }
 
 export function isExactDashboardOriginRequest(url: string, runtimeId: string): boolean {

@@ -437,8 +437,6 @@ describe("dashboard trusted UI", () => {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
     window.vaultApi = {
       openDashboard,
-      setDashboardBounds: vi.fn(async () => undefined),
-      setDashboardContentBounds: vi.fn(async () => undefined),
       stopDashboard: vi.fn(async () => undefined),
       dashboardRuntimeStatus: vi.fn(async () => null),
       dashboardAgentHandoff: vi.fn(async () => handoff),

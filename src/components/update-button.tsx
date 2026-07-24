@@ -3,7 +3,6 @@ import { Check, Clipboard, Download, FileText, RefreshCw, RotateCcw, TriangleAle
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { useDashboardOverlay } from "@/hooks/use-dashboard-overlay";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { sanitize } from "@/lib/sanitize";
 import type { AppChangelog, AppChangelogRelease, UpdateStatus } from "@/types";
@@ -113,9 +112,6 @@ export function UpdateButton({ showLabel = false }: { showLabel?: boolean }) {
   const [changelog, setChangelog] = useState<AppChangelog | null>(null);
   const [changelogError, setChangelogError] = useState<string | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
-  // Covers the popover and the changelog dialog it hands off to; otherwise they
-  // render behind a running dashboard's native view.
-  useDashboardOverlay(open || changelogOpen);
 
   useEffect(() => {
     const unsubscribe = window.vaultApi.onUpdateStatus(setStatus);

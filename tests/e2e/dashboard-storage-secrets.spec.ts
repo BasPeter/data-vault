@@ -6,6 +6,21 @@ import { expect, SEEDED_VAULT_ID, test } from "./electron-app";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fixtures = path.resolve(here, "..", "fixtures", "dashboards");
 
+/** Whether a dashboard guest web contents is currently alive. */
+function guestPresent(app: import("@playwright/test").ElectronApplication): Promise<boolean> {
+  return app.evaluate(({ webContents }) =>
+    webContents.getAllWebContents().some((item) => item.getURL().startsWith("vault-dashboard://")),
+  );
+}
+
+/** Whether the dashboard `<webview>` is hidden — the consent/trusted-flow state. */
+function dashboardHidden(page: import("@playwright/test").Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const webview = document.querySelector<HTMLElement>('[data-testid="dashboard-webview"]');
+    return webview ? getComputedStyle(webview).display === "none" : true;
+  });
+}
+
 function installBundleFiles(bundleDirectory: string): void {
   const source = path.join(fixtures, "valid-personal");
   for (const name of fs.readdirSync(source)) {
@@ -131,9 +146,7 @@ test("secrets are refused to an ungranted dashboard and never exposed by value",
 
   await page.reload();
   await page.getByRole("button", { name: "Open Secret consumer dashboard" }).click();
-  await expect
-    .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children.length))
-    .toBe(1);
+  await expect.poll(() => guestPresent(app)).toBe(true);
 
   // secrets:use was never granted, so both operations must be refused outright.
   const denied = await app.evaluate(async ({ webContents }) => {
@@ -189,14 +202,12 @@ test("the trusted secrets panel shows status without ever pre-filling a value", 
   expect(await panel.textContent()).not.toContain("e2e-secret-value");
 });
 
-// A dashboard runs in a native view composited above the renderer, so a header
-// popover drawn over its rectangle is invisible until the view is detached. This
-// is not observable from the DOM — the popover is present and "visible" to
-// Playwright either way — so the assertion has to be on the attached view count.
-test("header overlays detach the dashboard view so they are not hidden behind it", async ({ appLaunch }) => {
+// The dashboard is now an in-DOM `<webview>`, so a header popover simply layers
+// over it through normal stacking. Lightweight overlays (git status, vault
+// switcher) that do not gate privileged consent must neither hide nor tear down
+// the dashboard — the whole point of the layering change.
+test("header overlays layer over the dashboard without hiding or tearing it down", async ({ appLaunch }) => {
   const { app, page } = appLaunch;
-  const attachedViews = () =>
-    app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children.length);
 
   await page.evaluate(
     (vaultId) =>
@@ -211,21 +222,18 @@ test("header overlays detach the dashboard view so they are not hidden behind it
   );
   await page.reload();
   await page.getByRole("button", { name: "Open Overlay check dashboard" }).click();
-  await expect.poll(attachedViews).toBe(1);
+  await expect.poll(() => guestPresent(app)).toBe(true);
 
-  // The git status panel: the report that prompted this test.
+  // The git status panel: the report that prompted the layering change. It opens
+  // over the dashboard without hiding it or destroying its runtime.
   await page.getByRole("button", { name: /uncommitted change|No uncommitted changes|check vault changes/ }).click();
-  await expect.poll(attachedViews).toBe(0);
-  // A detached view paints nothing, so the host must show a still in its place
-  // or the user sees a black hole where the dashboard was.
-  await expect(page.getByTestId("dashboard-snapshot")).toBeVisible();
+  expect(await dashboardHidden(page)).toBe(false);
+  expect(await guestPresent(app)).toBe(true);
   await page.keyboard.press("Escape");
-  await expect.poll(attachedViews).toBe(1);
-  await expect(page.getByTestId("dashboard-snapshot")).toHaveCount(0);
 
-  // The vault switcher shares the defect and the fix.
+  // The vault switcher behaves the same way.
   await page.getByTestId("vault-switcher").click();
-  await expect.poll(attachedViews).toBe(0);
+  expect(await dashboardHidden(page)).toBe(false);
+  expect(await guestPresent(app)).toBe(true);
   await page.keyboard.press("Escape");
-  await expect.poll(attachedViews).toBe(1);
 });

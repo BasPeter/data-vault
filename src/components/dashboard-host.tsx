@@ -2,42 +2,65 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Copy, RefreshCw, Shield, Square } from "lucide-react";
 import type { DashboardManifest, DashboardRuntimeHostStatus } from "@/dashboard-contracts";
 import { Button } from "@/components/ui/button";
-import { DASHBOARD_RESUME_EVENT, DASHBOARD_SUSPEND_EVENT } from "@/hooks/use-dashboard-overlay";
 
 type Props = {
   vaultId: string;
   dashboard: DashboardManifest;
   version: number;
   onManageAccess: () => void;
+  // Set while a trusted host flow (permission consent, secrets, create) is open.
+  // The dashboard `<webview>` is a real DOM element, so hiding it with
+  // `display:none` removes its pixels and its input/focus surface entirely for
+  // the duration of the flow — the in-DOM equivalent of detaching the old native
+  // view, and stronger than merely covering a still-live guest.
+  hidden?: boolean;
 };
 
-export function DashboardHost({ vaultId, dashboard, version, onManageAccess }: Props) {
+export function DashboardHost({ vaultId, dashboard, version, onManageAccess, hidden = false }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const webviewRef = useRef<HTMLElement | null>(null);
+  const hiddenRef = useRef(hidden);
+  hiddenRef.current = hidden;
   const [status, setStatus] = useState<DashboardRuntimeHostStatus>(null);
   const [error, setError] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">("idle");
-  // A still of the dashboard held while its native view is detached for an
-  // overlay, so the region does not go black.
-  const [snapshot, setSnapshot] = useState<string | null>(null);
 
-  const reportBounds = useCallback(() => {
-    const rect = hostRef.current?.getBoundingClientRect();
-    if (!rect || rect.width <= 0 || rect.height <= 0) return;
-    void window.vaultApi.setDashboardContentBounds({ x: rect.x, y: rect.y, width: rect.width, height: rect.height });
-    void window.vaultApi.setDashboardBounds({ x: rect.x, y: rect.y, width: rect.width, height: rect.height });
+  const removeWebview = useCallback(() => {
+    const element = webviewRef.current;
+    webviewRef.current = null;
+    element?.remove();
   }, []);
 
   const open = useCallback(async () => {
     void version;
     setError(null);
     setStatus({ runtimeId: "", status: "loading", attached: false });
+    // Removing the old element destroys the previous guest before main prepares a
+    // new runtime, so authority for the old generation is gone before the reload.
+    removeWebview();
     try {
-      await window.vaultApi.openDashboard(vaultId, dashboard.id);
-      reportBounds();
+      const descriptor = await window.vaultApi.openDashboard(vaultId, dashboard.id);
+      const host = hostRef.current;
+      if (!host) return;
+      // Created imperatively rather than in JSX: the `partition` attribute is
+      // fixed at attach time, so each runtime needs a fresh element, and main —
+      // not this markup — forces the guest's sandboxed webPreferences and preload
+      // through the `will-attach-webview` hook.
+      const webview = document.createElement("webview");
+      webview.setAttribute("partition", descriptor.partition);
+      webview.setAttribute("src", descriptor.src);
+      webview.setAttribute("data-testid", "dashboard-webview");
+      webview.style.position = "absolute";
+      webview.style.inset = "0";
+      webview.style.width = "100%";
+      webview.style.height = "100%";
+      webview.style.display = hiddenRef.current ? "none" : "";
+      host.appendChild(webview);
+      webviewRef.current = webview;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     }
-  }, [dashboard.id, reportBounds, vaultId, version]);
+  }, [dashboard.id, removeWebview, vaultId, version]);
 
   useEffect(() => {
     let current = true;
@@ -52,34 +75,23 @@ export function DashboardHost({ vaultId, dashboard, version, onManageAccess }: P
           );
       });
     }, 300);
-    const resume = () => {
-      setSnapshot(null);
-      reportBounds();
-    };
-    const suspend = (event: Event) => setSnapshot((event as CustomEvent<string | null>).detail ?? null);
-    window.addEventListener(DASHBOARD_RESUME_EVENT, resume);
-    window.addEventListener(DASHBOARD_SUSPEND_EVENT, suspend);
     return () => {
       current = false;
       window.clearInterval(interval);
-      window.removeEventListener(DASHBOARD_RESUME_EVENT, resume);
-      window.removeEventListener(DASHBOARD_SUSPEND_EVENT, suspend);
+      removeWebview();
       void window.vaultApi.stopDashboard();
     };
-  }, [open, reportBounds]);
+  }, [open, removeWebview]);
 
+  // Toggle guest visibility for trusted flows. Blurring on hide moves keyboard
+  // focus off the guest — a `<webview>` is a separate focus context, so the
+  // trusted overlay cannot be relied on to reclaim focus from it on its own.
   useEffect(() => {
-    const element = hostRef.current;
+    const element = webviewRef.current;
     if (!element) return;
-    const observer = new ResizeObserver(reportBounds);
-    observer.observe(element);
-    window.addEventListener("resize", reportBounds);
-    reportBounds();
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", reportBounds);
-    };
-  }, [reportBounds]);
+    element.style.display = hidden ? "none" : "";
+    if (hidden) element.blur();
+  }, [hidden, status]);
 
   const unavailable =
     error || status?.status === "failed" || status?.status === "unresponsive" || status?.status === "stopped";
@@ -114,6 +126,7 @@ export function DashboardHost({ vaultId, dashboard, version, onManageAccess }: P
             title="Stop dashboard"
             aria-label="Stop dashboard"
             onClick={() => {
+              removeWebview();
               void window.vaultApi.stopDashboard();
               setStatus({ runtimeId: "", status: "stopped", attached: false });
             }}
@@ -122,18 +135,9 @@ export function DashboardHost({ vaultId, dashboard, version, onManageAccess }: P
           </Button>
         </div>
       </div>
-      {/* bg-background is the floor: the native view paints this region itself,
-          so without it a detached view leaves the window's bare background. */}
+      {/* bg-background is the floor: the webview paints over this region, so the
+          area reads as the app background before the guest loads or after it stops. */}
       <div ref={hostRef} data-testid="dashboard-host" className="bg-background absolute inset-x-0 bottom-0 top-11" />
-      {snapshot && (
-        <img
-          src={snapshot}
-          alt=""
-          aria-hidden
-          data-testid="dashboard-snapshot"
-          className="pointer-events-none absolute inset-x-0 bottom-0 top-11 size-full object-cover object-top opacity-70"
-        />
-      )}
       {unavailable && (
         <div className="bg-background absolute inset-x-0 bottom-0 top-11 z-10 grid place-items-center p-8 text-center">
           <div>

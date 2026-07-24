@@ -135,6 +135,18 @@ export type DashboardRuntimeHostStatus = {
   attached: boolean;
 } | null;
 
+/**
+ * The opaque descriptor the trusted renderer needs to mount the dashboard
+ * `<webview>`: the isolated session partition to attach to and the asset origin
+ * to load. Both are validated against the prepared runtime when the guest
+ * attaches, so a renderer cannot repoint the element at another runtime.
+ */
+export type DashboardRuntimeDescriptor = {
+  runtimeId: string;
+  partition: string;
+  src: string;
+};
+
 export type DashboardJsonPrimitive = boolean | number | string | null;
 export type DashboardJsonValue = DashboardJsonPrimitive | DashboardJsonValue[] | { [key: string]: DashboardJsonValue };
 export type DashboardState = DashboardJsonValue;

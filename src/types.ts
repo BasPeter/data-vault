@@ -8,6 +8,7 @@ import type {
   DashboardDocumentScope,
   DashboardSecretsOverview,
   DashboardRemoval,
+  DashboardRuntimeDescriptor,
   DashboardRuntimeHostStatus,
   DashboardStorageLocation,
 } from "./dashboard-contracts";
@@ -256,13 +257,8 @@ export type VaultApi = {
     location: DashboardStorageLocation,
   ) => Promise<DashboardListEntry>;
   dashboardAgentHandoff: (vaultId: string, dashboardId: string) => Promise<string>;
-  openDashboard: (vaultId: string, dashboardId: string) => Promise<void>;
-  setDashboardBounds: (bounds: { x: number; y: number; width: number; height: number }) => Promise<void>;
-  setDashboardContentBounds: (bounds: { x: number; y: number; width: number; height: number }) => Promise<void>;
+  openDashboard: (vaultId: string, dashboardId: string) => Promise<DashboardRuntimeDescriptor>;
   stopDashboard: () => Promise<void>;
-  captureDashboard: () => Promise<string | null>;
-  suspendDashboard: () => Promise<string | null>;
-  resumeDashboard: (runtimeId: string) => Promise<void>;
   dashboardRuntimeStatus: () => Promise<DashboardRuntimeHostStatus>;
   dashboardRuntimeAuthorityCountForTesting: () => Promise<number>;
   dashboardPermissionDetails: (vaultId: string, dashboardId: string) => Promise<DashboardPermissionDetails>;

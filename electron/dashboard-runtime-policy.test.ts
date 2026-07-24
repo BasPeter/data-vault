@@ -4,36 +4,7 @@ import {
   isAuthenticatedDashboardSender,
   isExactDashboardOriginRequest,
   validateDashboardApiArgument,
-  validateDashboardBounds,
 } from "./dashboard-runtime-policy";
-
-describe("dashboard runtime bounds", () => {
-  const content = { x: 0, y: 0, width: 1280, height: 820 };
-  const allowed = { x: 512, y: 56, width: 768, height: 764 };
-
-  it("intersects renderer bounds with main-owned content away from trusted chrome", () => {
-    expect(validateDashboardBounds({ x: 0, y: 0, width: 1280, height: 820 }, content, allowed)).toEqual(allowed);
-    expect(validateDashboardBounds({ x: 500.2, y: 55.2, width: 100.1, height: 100.1 }, content, allowed)).toEqual({
-      x: 512,
-      y: 56,
-      width: 89,
-      height: 100,
-    });
-  });
-
-  it("rejects empty, non-finite, negative, oversized, and malformed bounds", () => {
-    for (const value of [
-      null,
-      { x: 0, y: 0, width: 0, height: 1 },
-      { x: -1, y: 0, width: 1, height: 1 },
-      { x: Number.NaN, y: 0, width: 1, height: 1 },
-      { x: 0, y: 0, width: 100_001, height: 1 },
-      { x: 0, y: 0, width: 1, height: 1, extra: true },
-    ]) {
-      expect(validateDashboardBounds(value, content, allowed)).toBeNull();
-    }
-  });
-});
 
 describe("dashboard request isolation", () => {
   it("accepts only the active opaque custom origin", () => {

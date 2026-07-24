@@ -546,34 +546,14 @@ function registerIpc(): void {
     return service.moveDashboard(trustedVaultId, trustedDashboardId, trustedLocation);
   });
   ipcMain.handle("dashboard:agent-handoff", dashboardHandlers.agentHandoff);
-  ipcMain.handle("dashboard-runtime:open", async (event, vaultId, dashboardId) => {
+  ipcMain.handle("dashboard-runtime:open", (event, vaultId, dashboardId) => {
     assertTrusted(event);
     if (!dashboardRuntime) throw new Error("Dashboard runtime is unavailable.");
-    await dashboardRuntime.open(stringArgument(vaultId, "vault ID"), stringArgument(dashboardId, "dashboard ID"));
-  });
-  ipcMain.handle("dashboard-runtime:set-bounds", (event, bounds) => {
-    assertTrusted(event);
-    dashboardRuntime?.setBounds(bounds);
-  });
-  ipcMain.handle("dashboard-runtime:set-content-bounds", (event, bounds) => {
-    assertTrusted(event);
-    dashboardRuntime?.setHostContentBounds(bounds);
+    return dashboardRuntime.prepare(stringArgument(vaultId, "vault ID"), stringArgument(dashboardId, "dashboard ID"));
   });
   ipcMain.handle("dashboard-runtime:stop", (event) => {
     assertTrusted(event);
     dashboardRuntime?.stop();
-  });
-  ipcMain.handle("dashboard-runtime:capture", (event) => {
-    assertTrusted(event);
-    return dashboardRuntime?.capture() ?? null;
-  });
-  ipcMain.handle("dashboard-runtime:suspend", (event) => {
-    assertTrusted(event);
-    return dashboardRuntime?.suspend() ?? null;
-  });
-  ipcMain.handle("dashboard-runtime:resume", (event, runtimeId) => {
-    assertTrusted(event);
-    dashboardRuntime?.resume(stringArgument(runtimeId, "dashboard runtime token"));
   });
   ipcMain.handle("dashboard-runtime:status", (event) => {
     assertTrusted(event);
@@ -858,6 +838,11 @@ function createWindow(): void {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
+      // Enables the dashboard sandbox to render as an in-DOM `<webview>`. Every
+      // guest's webPreferences are forced to the sandboxed dashboard profile at
+      // `will-attach-webview` by DashboardRuntimeController; a guest not
+      // originating from trusted host attributes is denied before it attaches.
+      webviewTag: true,
     },
   });
   mainWindow = window;

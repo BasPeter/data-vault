@@ -23,12 +23,7 @@ const api: VaultApi = {
     ipcRenderer.invoke("dashboard:move", vaultId, dashboardId, location),
   dashboardAgentHandoff: (vaultId, dashboardId) => ipcRenderer.invoke("dashboard:agent-handoff", vaultId, dashboardId),
   openDashboard: (vaultId, dashboardId) => ipcRenderer.invoke("dashboard-runtime:open", vaultId, dashboardId),
-  setDashboardBounds: (bounds) => ipcRenderer.invoke("dashboard-runtime:set-bounds", bounds),
-  setDashboardContentBounds: (bounds) => ipcRenderer.invoke("dashboard-runtime:set-content-bounds", bounds),
   stopDashboard: () => ipcRenderer.invoke("dashboard-runtime:stop"),
-  captureDashboard: () => ipcRenderer.invoke("dashboard-runtime:capture"),
-  suspendDashboard: () => ipcRenderer.invoke("dashboard-runtime:suspend"),
-  resumeDashboard: (runtimeId) => ipcRenderer.invoke("dashboard-runtime:resume", runtimeId),
   dashboardRuntimeStatus: () => ipcRenderer.invoke("dashboard-runtime:status"),
   dashboardRuntimeAuthorityCountForTesting: () => ipcRenderer.invoke("dashboard-runtime:authority-count-for-testing"),
   dashboardPermissionDetails: (vaultId, dashboardId) =>

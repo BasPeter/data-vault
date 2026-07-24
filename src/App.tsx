@@ -31,7 +31,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
-import { resumeDashboardForOverlay, suspendDashboardForOverlay } from "@/hooks/use-dashboard-overlay";
 import { useTheme } from "@/hooks/use-theme";
 import { cn } from "@/lib/utils";
 import { parseStoredAppView, safeAppView, type AppView } from "@/app-view";
@@ -100,7 +99,10 @@ export default function App() {
   const [secretsOpen, setSecretsOpen] = useState(false);
   const [missingSecrets, setMissingSecrets] = useState<string[]>([]);
   const [permissionDashboard, setPermissionDashboard] = useState<DashboardManifest | null>(null);
-  const trustedFlowRuntimeRef = useRef<string | null>(null);
+  // True while a trusted host flow (permission consent, secrets, dashboard
+  // creation) is open, hiding the dashboard `<webview>` so it cannot overlay,
+  // intercept, or hold focus during the flow.
+  const [trustedFlowActive, setTrustedFlowActive] = useState(false);
   const viewInitializedVaultRef = useRef<string | null>(null);
   const [version, setVersion] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -404,14 +406,11 @@ export default function App() {
   );
 
   const beginTrustedFlow = useCallback(async () => {
-    trustedFlowRuntimeRef.current = view.kind === "dashboard" ? await suspendDashboardForOverlay() : null;
-  }, [view.kind]);
+    setTrustedFlowActive(true);
+  }, []);
 
   const endTrustedFlow = useCallback(async () => {
-    const runtimeId = trustedFlowRuntimeRef.current;
-    trustedFlowRuntimeRef.current = null;
-    if (!runtimeId) return;
-    await resumeDashboardForOverlay(runtimeId);
+    setTrustedFlowActive(false);
   }, []);
 
   const reloadDashboards = useCallback(async () => {
@@ -427,7 +426,7 @@ export default function App() {
       if (!vaultId) return;
       const created = await window.vaultApi.createDashboard(vaultId, input);
       await reloadDashboards();
-      trustedFlowRuntimeRef.current = null;
+      setTrustedFlowActive(false);
       setView({ kind: "dashboard", dashboardId: created.id });
     },
     [reloadDashboards, vaultId],
@@ -703,6 +702,7 @@ export default function App() {
                   vaultId={vaultId}
                   dashboard={dashboard}
                   version={version}
+                  hidden={trustedFlowActive}
                   onManageAccess={() => {
                     void beginTrustedFlow().then(() => setPermissionDashboard(dashboard));
                   }}

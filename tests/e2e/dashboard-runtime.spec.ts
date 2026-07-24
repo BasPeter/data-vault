@@ -2,10 +2,67 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "./electron-app";
+import type { Page } from "@playwright/test";
 
 const vaultId = "00000000-0000-4000-8000-000000000001";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const hostileFixture = path.resolve(here, "..", "fixtures", "dashboards", "hostile");
+
+/**
+ * Mirror `DashboardHost`: open the runtime and mount a `<webview>` for it with
+ * the host-derived partition and src. The guest attaches through the hardened
+ * `will-attach-webview`/`did-attach-webview` hooks, which force the sandboxed
+ * preload and preferences — nothing here can widen them.
+ */
+async function mountDashboardWebview(page: Page, dashboardId: string): Promise<void> {
+  await page.evaluate(
+    async ({ vaultId, dashboardId }) => {
+      document.querySelector("webview")?.remove();
+      const descriptor = await window.vaultApi.openDashboard(vaultId, dashboardId);
+      const webview = document.createElement("webview");
+      webview.setAttribute("partition", descriptor.partition);
+      webview.setAttribute("src", descriptor.src);
+      webview.setAttribute("data-testid", "dashboard-webview");
+      webview.style.cssText = "position:absolute;inset:0;width:100%;height:100%;";
+      document.body.append(webview);
+    },
+    { vaultId, dashboardId },
+  );
+}
+
+// `ready` is set on the guest's `did-finish-load`, so it guarantees the guest
+// has attached and loaded — unlike a non-null status, which `prepare()` sets to
+// `loading` before any guest exists.
+async function waitForDashboardReady(page: Page): Promise<void> {
+  await expect
+    .poll(() => page.evaluate(() => window.vaultApi.dashboardRuntimeStatus()))
+    .toEqual(expect.objectContaining({ status: "ready", attached: true }));
+}
+
+type RuntimeTestingStatus = {
+  runtimeId: string;
+  status: "loading" | "ready" | "failed" | "unresponsive" | "stopped";
+  attached: boolean;
+};
+
+async function runtimeStatus(page: Page): Promise<RuntimeTestingStatus> {
+  const status = (await page.evaluate(() => window.vaultApi.dashboardRuntimeStatus())) as RuntimeTestingStatus | null;
+  if (!status) throw new Error("Dashboard runtime status is unavailable.");
+  return status;
+}
+
+async function guestIdForRuntime(
+  app: import("@playwright/test").ElectronApplication,
+  runtimeId: string,
+): Promise<number> {
+  return app.evaluate(({ webContents }, mappedRuntimeId) => {
+    const guest = webContents
+      .getAllWebContents()
+      .find((contents) => contents.getURL().startsWith(`vault-dashboard://${mappedRuntimeId}/`));
+    if (!guest) throw new Error("Mapped dashboard guest not found.");
+    return guest.id;
+  }, runtimeId);
+}
 
 test("contains a hostile fixture inside one bounded disposable runtime", async ({ appLaunch }) => {
   const { app, page, vaultDir } = appLaunch;
@@ -31,60 +88,55 @@ test("contains a hostile fixture inside one bounded disposable runtime", async (
   fs.copyFileSync(path.join(hostileFixture, "probe.js"), path.join(bundle, "probe.js"));
   fs.writeFileSync(path.join(bundle, "worker.js"), 'postMessage("worker-ran");\n');
   await page.evaluate((id) => window.vaultApi.watch(id), vaultId);
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1280, 820));
 
-  await page.evaluate(
-    async ({ vaultId, dashboardId }) => {
-      await window.vaultApi.openDashboard(vaultId, dashboardId);
-      await window.vaultApi.setDashboardBounds({ x: 0, y: 0, width: 1280, height: 820 });
-    },
-    { vaultId, dashboardId: dashboard.id },
-  );
-
-  const native = await app.evaluate(({ BrowserWindow, WebContentsView, webContents }) => {
-    const host = BrowserWindow.getAllWindows()[0];
-    const child = host.contentView.children.find(
-      (view): view is Electron.WebContentsView => view instanceof WebContentsView,
-    );
-    const dashboardContents = webContents
-      .getAllWebContents()
-      .find((contents) => contents.getURL().startsWith("vault-dashboard://"));
-    return {
-      childCount: host.contentView.children.length,
-      bounds: child?.getBounds() ?? null,
-      hostZoomFactor: host.webContents.getZoomFactor(),
-      hostZoomLevel: host.webContents.getZoomLevel(),
-      dashboardId: dashboardContents?.id,
-      dashboardUrl: dashboardContents?.getURL(),
-      preferences: dashboardContents?.getLastWebPreferences(),
-    };
-  });
-  expect(native.childCount).toBe(1);
-  expect(native.bounds).toEqual(expect.objectContaining({ x: 512, y: 56 }));
-  expect(native.bounds!.width).toBeGreaterThan(0);
-  expect(native.bounds!.height).toBeGreaterThan(0);
-  expect(native.hostZoomFactor).toBe(1);
-  expect(native.hostZoomLevel).toBe(0);
-  expect(native.preferences).toEqual(
-    expect.objectContaining({ nodeIntegration: false, contextIsolation: true, sandbox: true }),
-  );
-
-  await page.evaluate(async () => {
-    await window.vaultApi.setDashboardContentBounds({ x: 280, y: 56, width: 1000, height: 764 });
-    await window.vaultApi.setDashboardBounds({ x: 0, y: 0, width: 1280, height: 820 });
-  });
-  const responsiveBounds = await app.evaluate(({ BrowserWindow, WebContentsView }) => {
-    const host = BrowserWindow.getAllWindows()[0];
-    return host.contentView.children.find((view) => view instanceof WebContentsView)?.getBounds() ?? null;
-  });
-  expect(responsiveBounds).toEqual({ x: 280, y: 56, width: 1000, height: 764 });
-
-  const probes = await app.evaluate(async ({ webContents }, expectedHostOrigin) => {
-    const contents = webContents
-      .getAllWebContents()
-      .find((candidate) => candidate.getURL().startsWith("vault-dashboard://"));
+  await mountDashboardWebview(page, dashboard.id);
+  await waitForDashboardReady(page);
+  // The guest is a distinct web contents attached through the hooks, not a
+  // DOM descendant of the app page. Its forced preferences are the load-bearing
+  // isolation guarantee that replaces the old "native view off trusted chrome".
+  const attachedStatus = await runtimeStatus(page);
+  const attachedGuestId = await guestIdForRuntime(app, attachedStatus.runtimeId);
+  const guest = await app.evaluate(({ webContents }, webContentsId) => {
+    const contents = webContents.fromId(webContentsId);
     if (!contents) throw new Error("Dashboard web contents not found.");
-    return contents.executeJavaScript(`(async () => {
+    return {
+      count: webContents.getAllWebContents().filter((c) => c.getURL().startsWith("vault-dashboard://")).length,
+      id: contents.id,
+      url: contents.getURL(),
+      loading: contents.isLoadingMainFrame(),
+      preferences: contents.getLastWebPreferences(),
+      sessionStoragePath: contents.session.storagePath,
+    };
+  }, attachedGuestId);
+  const dashboardUrl = guest.url;
+  expect(guest.count).toBe(1);
+  expect(guest.id).toBe(attachedGuestId);
+  expect(new URL(guest.url).hostname).toBe(attachedStatus.runtimeId);
+  expect(guest.loading).toBe(false);
+  expect(guest.preferences).toEqual(
+    expect.objectContaining({
+      nodeIntegration: false,
+      nodeIntegrationInSubFrames: false,
+      contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+      webviewTag: false,
+    }),
+  );
+  expect(guest.sessionStoragePath).toBeNull();
+  expect(await page.evaluate(() => window.vaultApi.dashboardRuntimeStatus())).toEqual(
+    expect.objectContaining({
+      status: "ready",
+      attached: true,
+      runtimeId: attachedStatus.runtimeId,
+    }),
+  );
+
+  const probes = await app.evaluate(
+    async ({ webContents }, { expectedHostOrigin, webContentsId }) => {
+      const contents = webContents.fromId(webContentsId);
+      if (!contents) throw new Error("Dashboard web contents not found.");
+      return contents.executeJavaScript(`(async () => {
       const attempt = async (work) => { try { await work(); return "unexpected"; } catch { return "blocked"; } };
       const iframe = document.createElement("iframe");
       iframe.src = "https://example.com/";
@@ -150,7 +202,9 @@ test("contains a hostile fixture inside one bounded disposable runtime", async (
         fixtureProbe: globalThis.__boundaryProbeVersion,
       };
     })()`);
-  }, hostOrigin);
+    },
+    { expectedHostOrigin: hostOrigin, webContentsId: attachedGuestId },
+  );
   expect(probes).toEqual(
     expect.objectContaining({
       node: "undefined",
@@ -191,16 +245,13 @@ test("contains a hostile fixture inside one bounded disposable runtime", async (
   expect(probes.url).toMatch(/^vault-dashboard:\/\//);
   expect(
     await app.evaluate(
-      ({ webContents }) =>
-        webContents.getAllWebContents().find((contents) => contents.getURL().startsWith("vault-dashboard://"))
-          ?.mainFrame.frames.length,
+      ({ webContents }, webContentsId) => webContents.fromId(webContentsId)?.mainFrame.frames.length,
+      attachedGuestId,
     ),
   ).toBe(1);
 
-  const preloadLimits = await app.evaluate(async ({ webContents }) => {
-    const contents = webContents
-      .getAllWebContents()
-      .find((candidate) => candidate.getURL().startsWith("vault-dashboard://"));
+  const preloadLimits = await app.evaluate(async ({ webContents }, webContentsId) => {
+    const contents = webContents.fromId(webContentsId);
     if (!contents) throw new Error("Dashboard web contents not found.");
     return contents.executeJavaScript(`(async () => {
       const rejected = async (operation) => {
@@ -218,7 +269,7 @@ test("contains a hostile fixture inside one bounded disposable runtime", async (
         responsive: (await window.dashboardApi.getInfo()).id,
       };
     })()`);
-  });
+  }, attachedGuestId);
   expect(preloadLimits).toEqual({
     oversizedString: "Invalid dashboard API request.",
     oversizedObject: "Invalid dashboard API request.",
@@ -228,10 +279,8 @@ test("contains a hostile fixture inside one bounded disposable runtime", async (
     responsive: dashboard.id,
   });
 
-  const download = await app.evaluate(async ({ webContents }) => {
-    const contents = webContents
-      .getAllWebContents()
-      .find((candidate) => candidate.getURL().startsWith("vault-dashboard://"));
+  const download = await app.evaluate(async ({ webContents }, webContentsId) => {
+    const contents = webContents.fromId(webContentsId);
     if (!contents) throw new Error("Dashboard web contents not found.");
     return new Promise<{ seen: boolean; prevented: boolean }>((resolve) => {
       let settled = false;
@@ -254,38 +303,16 @@ test("contains a hostile fixture inside one bounded disposable runtime", async (
         }
       }, 250);
     });
-  });
+  }, attachedGuestId);
   expect(download.prevented).toBe(true);
 
-  await page.evaluate(() => window.vaultApi.setDashboardBounds({ x: 200_000, y: 200_000, width: 10, height: 10 }));
-  await expect
-    .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children.length))
-    .toBe(0);
-  await page.evaluate(() => window.vaultApi.setDashboardBounds({ x: Number.NaN, y: 0, width: 100, height: 100 }));
-  await expect
-    .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children.length))
-    .toBe(0);
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(900, 600));
-  await page.evaluate(() => window.vaultApi.setDashboardBounds({ x: 0, y: 0, width: 1280, height: 820 }));
-  const resizedBounds = await app.evaluate(({ BrowserWindow, WebContentsView }) => {
-    const host = BrowserWindow.getAllWindows()[0];
-    return host.contentView.children.find((view) => view instanceof WebContentsView)?.getBounds() ?? null;
-  });
-  expect(resizedBounds).toEqual({ x: 280, y: 56, width: 620, height: 544 });
-
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.setZoomFactor(2));
-  await page.evaluate(() => window.vaultApi.setDashboardBounds({ x: 0, y: 0, width: 900, height: 600 }));
-  expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.getZoomFactor())).toBe(
-    1,
-  );
-
+  // An active runtime serves the immutable snapshot bytes even after the source
+  // file changes on disk; only a reload re-reads and re-digests the bundle.
   const probeFile = path.join(bundle, "probe.js");
   fs.writeFileSync(probeFile, 'globalThis.__boundaryProbeVersion = "mutated";\n');
   await page.evaluate((id) => window.vaultApi.watch(id), vaultId);
-  const sameRuntimeBytes = await app.evaluate(async ({ webContents }) => {
-    const contents = webContents
-      .getAllWebContents()
-      .find((candidate) => candidate.getURL().startsWith("vault-dashboard://"));
+  const sameRuntimeBytes = await app.evaluate(async ({ webContents }, webContentsId) => {
+    const contents = webContents.fromId(webContentsId);
     if (!contents) throw new Error("Dashboard web contents not found.");
     return contents.executeJavaScript(`new Promise((resolve, reject) => {
       globalThis.__boundaryProbeVersion = "cleared";
@@ -295,10 +322,10 @@ test("contains a hostile fixture inside one bounded disposable runtime", async (
       script.onerror = reject;
       document.head.append(script);
     })`);
-  });
+  }, attachedGuestId);
   expect(sameRuntimeBytes).toBe("fixture-original");
 
-  const oldOrigin = native.dashboardUrl?.replace(/\/[^/]*$/, "") ?? "";
+  const oldOrigin = dashboardUrl.replace(/\/[^/]*$/, "");
   const second = await page.evaluate(
     async (id) =>
       window.vaultApi.createDashboard(id, {
@@ -311,42 +338,49 @@ test("contains a hostile fixture inside one bounded disposable runtime", async (
     vaultId,
   );
   await page.evaluate((id) => window.vaultApi.watch(id), vaultId);
-  await page.evaluate(
-    async ({ vaultId, dashboardId }) => {
-      await window.vaultApi.openDashboard(vaultId, dashboardId);
-      await window.vaultApi.setDashboardBounds({ x: 0, y: 0, width: 900, height: 600 });
-    },
-    { vaultId, dashboardId: second.id },
-  );
-  const crossRuntime = await app.evaluate(async ({ webContents }, previousOrigin) => {
-    const dashboards = webContents
-      .getAllWebContents()
-      .filter((candidate) => candidate.getURL().startsWith("vault-dashboard://"));
-    const blocked = await dashboards[0]?.executeJavaScript(`new Promise((resolve) => {
+  await mountDashboardWebview(page, second.id);
+  await waitForDashboardReady(page);
+  const secondStatus = await runtimeStatus(page);
+  const secondGuestId = await guestIdForRuntime(app, secondStatus.runtimeId);
+  expect(secondGuestId).not.toBe(attachedGuestId);
+  expect(
+    await app.evaluate(
+      ({ webContents }) =>
+        webContents.getAllWebContents().filter((contents) => contents.getURL().startsWith("vault-dashboard://")).length,
+    ),
+  ).toBe(1);
+  const crossRuntime = await app.evaluate(
+    async ({ webContents }, { previousOrigin, webContentsId }) => {
+      const contents = webContents.fromId(webContentsId);
+      if (!contents) throw new Error("Dashboard web contents not found.");
+      const blocked = await contents.executeJavaScript(`new Promise((resolve) => {
       const image = new Image();
       image.onload = () => resolve(false);
       image.onerror = () => resolve(true);
       image.src = ${JSON.stringify(`${previousOrigin}/index.html`)};
     })`);
-    return { count: dashboards.length, currentOrigin: dashboards[0].getURL().replace(/\/[^/]*$/, ""), blocked };
-  }, oldOrigin);
-  expect(crossRuntime).toEqual({ count: 1, currentOrigin: expect.not.stringContaining(oldOrigin), blocked: true });
-
-  await page.evaluate(
-    async ({ vaultId, dashboardId }) => {
-      await window.vaultApi.openDashboard(vaultId, dashboardId);
-      await window.vaultApi.setDashboardBounds({ x: 0, y: 0, width: 900, height: 600 });
+      return { currentOrigin: contents.getURL().replace(/\/[^/]*$/, ""), blocked };
     },
-    { vaultId, dashboardId: dashboard.id },
+    { previousOrigin: oldOrigin, webContentsId: secondGuestId },
   );
-  const reopenedBytes = await app.evaluate(async ({ webContents }) => {
-    const contents = webContents
-      .getAllWebContents()
-      .find((candidate) => candidate.getURL().startsWith("vault-dashboard://"));
+  expect(crossRuntime).toEqual({ currentOrigin: expect.not.stringContaining(oldOrigin), blocked: true });
+
+  // Reopening the mutated first dashboard re-reads the snapshot, so the changed
+  // bytes now execute (after reload, digest and grants are re-evaluated).
+  await mountDashboardWebview(page, dashboard.id);
+  await waitForDashboardReady(page);
+  const reopenedStatus = await runtimeStatus(page);
+  const reopenedGuestId = await guestIdForRuntime(app, reopenedStatus.runtimeId);
+  const reopenedBytes = await app.evaluate(async ({ webContents }, webContentsId) => {
+    const contents = webContents.fromId(webContentsId);
     return contents?.executeJavaScript("globalThis.__boundaryProbeVersion");
-  });
+  }, reopenedGuestId);
   expect(reopenedBytes).toBe("mutated");
-  await page.evaluate(() => window.vaultApi.stopDashboard());
+
+  await page.evaluate(() => {
+    document.querySelector("webview")?.remove();
+    return window.vaultApi.stopDashboard();
+  });
   await expect
     .poll(() =>
       app.evaluate(({ webContents }) =>
@@ -370,16 +404,10 @@ test("contains unresponsive, crash, reload, and stop lifecycle events", async ({
     vaultId,
   );
   await page.evaluate((id) => window.vaultApi.watch(id), vaultId);
-  const open = () =>
-    page.evaluate(
-      async ({ vaultId, dashboardId }) => {
-        await window.vaultApi.openDashboard(vaultId, dashboardId);
-        await window.vaultApi.setDashboardBounds({ x: 0, y: 0, width: 1280, height: 820 });
-      },
-      { vaultId, dashboardId: dashboard.id },
-    );
 
-  const interruptedLoad = await page.evaluate(
+  // Preparing a runtime and immediately stopping it must resolve cleanly without
+  // leaking a destroyed-object error, even though no guest ever attaches.
+  const interruptedPrepare = await page.evaluate(
     async ({ vaultId, dashboardId }) => {
       const opening = window.vaultApi.openDashboard(vaultId, dashboardId);
       await window.vaultApi.stopDashboard();
@@ -390,14 +418,7 @@ test("contains unresponsive, crash, reload, and stop lifecycle events", async ({
     },
     { vaultId, dashboardId: dashboard.id },
   );
-  expect(interruptedLoad).toBe("resolved");
-  await expect
-    .poll(() =>
-      app.evaluate(({ webContents }) =>
-        webContents.getAllWebContents().some((contents) => contents.getURL().startsWith("vault-dashboard://")),
-      ),
-    )
-    .toBe(false);
+  expect(interruptedPrepare).toBe("resolved");
 
   const concurrentSwitch = await page.evaluate(
     async ({ vaultId, dashboardId }) => {
@@ -409,15 +430,19 @@ test("contains unresponsive, crash, reload, and stop lifecycle events", async ({
   );
   expect(concurrentSwitch).toEqual(["fulfilled", "fulfilled"]);
   await page.evaluate(() => window.vaultApi.stopDashboard());
-  await open();
 
-  await app.evaluate(({ webContents }) => {
-    const contents = webContents
-      .getAllWebContents()
-      .find((candidate) => candidate.getURL().startsWith("vault-dashboard://"));
+  await mountDashboardWebview(page, dashboard.id);
+  await waitForDashboardReady(page);
+  const firstLifecycleStatus = await runtimeStatus(page);
+  const firstLifecycleGuestId = await guestIdForRuntime(app, firstLifecycleStatus.runtimeId);
+
+  // Destroying the guest from main tears the runtime down and clears authority
+  // without leaking Electron's native destroyed-object error to trusted callers.
+  await app.evaluate(({ webContents }, webContentsId) => {
+    const contents = webContents.fromId(webContentsId);
     if (!contents) throw new Error("Dashboard web contents not found.");
     contents.close({ waitForBeforeUnload: false });
-  });
+  }, firstLifecycleGuestId);
   await expect.poll(() => page.evaluate(() => window.vaultApi.dashboardRuntimeStatus())).toBeNull();
   await expect.poll(() => page.evaluate(() => window.vaultApi.dashboardRuntimeAuthorityCountForTesting())).toBe(0);
   const staleError = await page.evaluate(
@@ -430,49 +455,33 @@ test("contains unresponsive, crash, reload, and stop lifecycle events", async ({
   );
   expect(staleError).toContain("Dashboard runtime is unavailable");
   expect(staleError).not.toContain("Object has been destroyed");
-  await open();
 
-  await app.evaluate(({ webContents }) => {
-    webContents
-      .getAllWebContents()
-      .find((contents) => contents.getURL().startsWith("vault-dashboard://"))
-      ?.emit("unresponsive");
-  });
-  await expect
-    .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children.length))
-    .toBe(0);
-  await page.evaluate(() => window.vaultApi.setDashboardBounds({ x: 0, y: 0, width: 1280, height: 820 }));
-  expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children.length)).toBe(
-    0,
-  );
-  await app.evaluate(({ webContents }) => {
-    webContents
-      .getAllWebContents()
-      .find((contents) => contents.getURL().startsWith("vault-dashboard://"))
-      ?.emit("responsive");
-  });
-  await expect
-    .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children.length))
-    .toBe(1);
-  expect(await page.evaluate(() => window.vaultApi.dashboardRuntimeStatus())).toEqual(
-    expect.objectContaining({ status: "ready", attached: true }),
-  );
+  await mountDashboardWebview(page, dashboard.id);
+  await waitForDashboardReady(page);
+  const responsiveStatus = await runtimeStatus(page);
+  const responsiveGuestId = await guestIdForRuntime(app, responsiveStatus.runtimeId);
 
-  await app.evaluate(({ webContents }) => {
-    webContents
-      .getAllWebContents()
-      .find((contents) => contents.getURL().startsWith("vault-dashboard://"))
-      ?.emit("render-process-gone", {}, { reason: "crashed", exitCode: 1 });
-  });
+  // Unresponsive exposes a host-visible status without detaching or prompting
+  // from dashboard pixels; responsive clears it back to ready.
+  await app.evaluate(({ webContents }, webContentsId) => {
+    webContents.fromId(webContentsId)?.emit("unresponsive");
+  }, responsiveGuestId);
   await expect
-    .poll(() =>
-      app.evaluate(({ webContents }) =>
-        webContents.getAllWebContents().some((contents) => contents.getURL().startsWith("vault-dashboard://")),
-      ),
-    )
-    .toBe(false);
+    .poll(() => page.evaluate(() => window.vaultApi.dashboardRuntimeStatus()))
+    .toEqual(expect.objectContaining({ status: "unresponsive" }));
+  await app.evaluate(({ webContents }, webContentsId) => {
+    webContents.fromId(webContentsId)?.emit("responsive");
+  }, responsiveGuestId);
+  await expect
+    .poll(() => page.evaluate(() => window.vaultApi.dashboardRuntimeStatus()))
+    .toEqual(expect.objectContaining({ status: "ready", attached: true }));
 
-  await open();
+  await app.evaluate(({ webContents }, webContentsId) => {
+    webContents.fromId(webContentsId)?.emit("render-process-gone", {}, { reason: "crashed", exitCode: 1 });
+  }, responsiveGuestId);
+  await expect.poll(() => page.evaluate(() => window.vaultApi.dashboardRuntimeStatus())).toBeNull();
+  await mountDashboardWebview(page, dashboard.id);
+  await waitForDashboardReady(page);
   await page.reload();
   await expect
     .poll(() =>
@@ -483,8 +492,12 @@ test("contains unresponsive, crash, reload, and stop lifecycle events", async ({
     .toBe(false);
 
   await page.waitForFunction(() => typeof window.vaultApi?.openDashboard === "function");
-  await open();
-  await page.evaluate(() => window.vaultApi.stopDashboard());
+  await mountDashboardWebview(page, dashboard.id);
+  await waitForDashboardReady(page);
+  await page.evaluate(() => {
+    document.querySelector("webview")?.remove();
+    return window.vaultApi.stopDashboard();
+  });
   await expect
     .poll(() =>
       app.evaluate(({ webContents }) =>

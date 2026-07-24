@@ -15,16 +15,25 @@ function installFixture(vaultDir: string, dashboardId: string, fixture: "valid-p
   }
 }
 
-async function openAndBound(page: import("@playwright/test").Page, dashboardId: string): Promise<void> {
-  await page.evaluate(
-    async ({ vaultId, dashboardId }) => {
-      await window.vaultApi.openDashboard(vaultId, dashboardId);
-      const bounds = { x: 260, y: 56, width: 1020, height: 764 };
-      await window.vaultApi.setDashboardContentBounds(bounds);
-      await window.vaultApi.setDashboardBounds(bounds);
-    },
-    { vaultId: SEEDED_VAULT_ID, dashboardId },
+/** Open a dashboard through the real launcher, mounting the DashboardHost `<webview>`. */
+async function openDashboardViaUi(page: import("@playwright/test").Page, title: string): Promise<void> {
+  await page.reload();
+  await page.getByRole("button", { name: `Open ${title} dashboard` }).click();
+}
+
+/** Whether a dashboard guest web contents is currently alive. */
+function guestPresent(app: import("@playwright/test").ElectronApplication): Promise<boolean> {
+  return app.evaluate(({ webContents }) =>
+    webContents.getAllWebContents().some((item) => item.getURL().startsWith("vault-dashboard://")),
   );
+}
+
+/** Whether the dashboard `<webview>` is hidden — the consent/trusted-flow state. */
+function dashboardHidden(page: import("@playwright/test").Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const webview = document.querySelector<HTMLElement>('[data-testid="dashboard-webview"]');
+    return webview ? getComputedStyle(webview).display === "none" : true;
+  });
 }
 
 test("personal dashboard state survives a full application restart", async () => {
@@ -42,14 +51,8 @@ test("personal dashboard state survives a full application restart", async () =>
       SEEDED_VAULT_ID,
     );
     installFixture(first.vaultDir, dashboard.id, "valid-personal");
-    await openAndBound(first.page, dashboard.id);
-    await expect
-      .poll(() =>
-        first.app.evaluate(({ webContents }) =>
-          webContents.getAllWebContents().some((item) => item.getURL().startsWith("vault-dashboard://")),
-        ),
-      )
-      .toBe(true);
+    await openDashboardViaUi(first.page, "Synthetic progress");
+    await expect.poll(() => guestPresent(first.app)).toBe(true);
     await first.app.evaluate(async ({ webContents }) => {
       const runtime = webContents.getAllWebContents().find((item) => item.getURL().startsWith("vault-dashboard://"));
       if (!runtime) throw new Error("Dashboard runtime missing");
@@ -105,18 +108,14 @@ test("removal invalidates active authority before moving the bundle", async ({ a
   );
   await page.reload();
   await page.getByRole("button", { name: "Open Remove active dashboard" }).click();
-  await expect
-    .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children.length))
-    .toBe(1);
+  await expect.poll(() => guestPresent(app)).toBe(true);
   const removal = await page.evaluate(
     ({ vaultId, dashboardId }) => window.vaultApi.removeDashboard(vaultId, dashboardId),
     { vaultId: SEEDED_VAULT_ID, dashboardId: dashboard.id },
   );
   expect(await page.evaluate(() => window.vaultApi.dashboardRuntimeStatus())).toBeNull();
   expect(await page.evaluate(() => window.vaultApi.dashboardRuntimeAuthorityCountForTesting())).toBe(0);
-  expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children.length)).toBe(
-    0,
-  );
+  expect(await guestPresent(app)).toBe(false);
   expect(fs.existsSync(path.join(vaultDir, ".data-vault", "dashboards", dashboard.id))).toBe(false);
   expect(fs.existsSync(path.join(vaultDir, removal.trashPath))).toBe(true);
 });
@@ -136,9 +135,7 @@ test("a main-frame load failure remains visible in trusted recovery UI", async (
   );
   await page.reload();
   await page.getByRole("button", { name: "Open Broken runtime dashboard" }).click();
-  await expect
-    .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children.length))
-    .toBe(1);
+  await expect.poll(() => guestPresent(app)).toBe(true);
   await app.evaluate(({ webContents }) => {
     const runtime = webContents.getAllWebContents().find((item) => item.getURL().startsWith("vault-dashboard://"));
     if (!runtime) throw new Error("Dashboard runtime missing");
@@ -146,9 +143,7 @@ test("a main-frame load failure remains visible in trusted recovery UI", async (
   });
   await expect(page.getByRole("heading", { name: "Dashboard unavailable" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
-  expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children.length)).toBe(
-    0,
-  );
+  await expect.poll(() => guestPresent(app)).toBe(false);
 });
 
 test("vault intelligence returns the approved index and document while denying unapproved IDs", async ({
@@ -169,9 +164,7 @@ test("vault intelligence returns the approved index and document while denying u
   installFixture(vaultDir, dashboard.id, "valid-intelligence");
   await page.reload();
   await page.getByRole("button", { name: "Open Synthetic intelligence dashboard" }).click();
-  await expect
-    .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children.length))
-    .toBe(1);
+  await expect.poll(() => guestPresent(app)).toBe(true);
   await app.evaluate(async ({ webContents }) => {
     const runtime = webContents.getAllWebContents().find((item) => item.getURL().startsWith("vault-dashboard://"));
     if (!runtime) throw new Error("Dashboard runtime missing");
@@ -182,15 +175,13 @@ test("vault intelligence returns the approved index and document while denying u
   await expect(page.getByRole("dialog", { name: "Manage dashboard access" })).toHaveCount(0);
   await page.getByRole("button", { name: "Manage access" }).click();
   await expect(page.getByRole("dialog", { name: "Manage dashboard access" })).toBeVisible();
-  expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children.length)).toBe(
-    0,
-  );
+  // Consent isolation: the dashboard webview is hidden (no pixels, no input
+  // surface) and focus sits inside the trusted dialog while it is open.
+  await expect.poll(() => dashboardHidden(page)).toBe(true);
   expect(await page.evaluate(() => document.activeElement?.closest('[role="dialog"]') !== null)).toBe(true);
   await page.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByRole("dialog", { name: "Manage dashboard access" })).toHaveCount(0);
-  await expect
-    .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children.length))
-    .toBe(1);
+  await expect.poll(() => dashboardHidden(page)).toBe(false);
 
   await page.getByRole("button", { name: "Manage access" }).click();
   await expect(page.getByRole("dialog", { name: "Manage dashboard access" })).toBeVisible();
@@ -295,9 +286,7 @@ test("vault intelligence returns the approved index and document while denying u
 
   await page.getByRole("button", { name: "Manage access" }).click();
   await page.getByRole("button", { name: "Revoke all" }).click();
-  await expect
-    .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children.length))
-    .toBe(1);
+  await expect.poll(() => dashboardHidden(page)).toBe(false);
   const revoked = await app.evaluate(async ({ webContents }) => {
     const runtime = webContents.getAllWebContents().find((item) => item.getURL().startsWith("vault-dashboard://"));
     if (!runtime) throw new Error("Dashboard runtime missing");
@@ -308,13 +297,9 @@ test("vault intelligence returns the approved index and document while denying u
   await page.getByRole("button", { name: "Stop dashboard" }).click();
   await expect(page.getByRole("heading", { name: "Dashboard stopped" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
-  expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children.length)).toBe(
-    0,
-  );
+  await expect.poll(() => guestPresent(app)).toBe(false);
   await page.getByRole("button", { name: "Retry" }).click();
-  await expect
-    .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children.length))
-    .toBe(1);
+  await expect.poll(() => guestPresent(app)).toBe(true);
 
   const oldRuntimeId = await app.evaluate(
     ({ webContents }) =>

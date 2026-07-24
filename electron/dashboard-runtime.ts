@@ -2,13 +2,11 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import {
   BrowserWindow,
-  WebContentsView,
-  nativeTheme,
   session,
   type IpcMainInvokeEvent,
-  type Rectangle,
   type Session,
   type WebContents,
+  type WebPreferences,
 } from "electron";
 import type { DashboardManifest, DashboardSecretDeclaration } from "../src/dashboard-contracts";
 import {
@@ -18,6 +16,7 @@ import {
   type DashboardEffectivePermissions,
   type DashboardInfo,
   type DashboardOpenExternalLinkResponse,
+  type DashboardRuntimeDescriptor,
   type DashboardState,
 } from "../src/dashboard-contracts";
 import {
@@ -32,15 +31,11 @@ import {
   isExactDashboardOriginRequest,
   dashboardMainFrameIfAlive,
   validateDashboardApiArgument,
-  validateDashboardBounds,
   type DashboardApiOperation,
 } from "./dashboard-runtime-policy";
 import { DashboardExternalLinkPromptGate } from "./dashboard-external-link-flow";
 
-const TRUSTED_HEADER_HEIGHT = 56;
-const SAFE_UNREGISTERED_SIDEBAR_WIDTH = 512;
 export const DASHBOARD_EXPENSIVE_READ_MAX_PER_MINUTE = 30;
-const DASHBOARD_SNAPSHOT_QUALITY = 80;
 
 export type DashboardRuntimeSource = Readonly<{
   vaultId: string;
@@ -48,6 +43,8 @@ export type DashboardRuntimeSource = Readonly<{
   manifest: DashboardManifest;
   bundleDirectory: string;
 }>;
+
+export type { DashboardRuntimeDescriptor } from "../src/dashboard-contracts";
 
 export type DashboardRuntimeServices = Readonly<{
   permissions: (source: DashboardRuntimeSource, digest: string) => DashboardEffectivePermissions;
@@ -80,43 +77,37 @@ export type DashboardRuntimeStatus = "loading" | "ready" | "failed" | "unrespons
 type Runtime = {
   generation: symbol;
   runtimeId: string;
+  partition: string;
+  src: string;
   manifest: DashboardManifest;
   source: DashboardRuntimeSource;
   snapshot: DashboardAssetSnapshot;
   session: Session;
-  view: WebContentsView;
-  contents: WebContents;
-  senderId: number;
+  // Null until the trusted renderer mounts the `<webview>` and the guest
+  // attaches; the guest webContents is owned by the renderer element, not
+  // constructed here.
+  contents: WebContents | null;
+  senderId: number | null;
   active: boolean;
   loaded: boolean;
   attached: boolean;
-  bounds: Rectangle | null;
-  allowedBounds: Rectangle | null;
   status: DashboardRuntimeStatus;
-  suspended: boolean;
   expensiveReadInFlight: boolean;
   expensiveReadTimestamps: number[];
   externalLinkPromptGate: DashboardExternalLinkPromptGate;
   cleanups: Array<() => void>;
 };
 
-function removeChildView(window: BrowserWindow, runtime: Runtime): void {
-  if (!runtime.attached) return;
-  runtime.attached = false;
-  if (window.isDestroyed()) return;
-  try {
-    window.contentView.removeChildView(runtime.view);
-  } catch {
-    // The native view may already have been removed by BrowserWindow teardown.
-  }
-}
-
 export class DashboardRuntimeController {
   private runtime: Runtime | null = null;
   private lastFailure: { runtimeId: string; status: "failed"; attached: false } | null = null;
   private readonly authority = new Map<number, symbol>();
-  private readonly hostZoomListener: () => void;
-  private readonly nativeThemeListener: () => void;
+  private readonly willAttachListener: (
+    event: Electron.Event,
+    webPreferences: WebPreferences,
+    params: Record<string, string>,
+  ) => void;
+  private readonly didAttachListener: (event: Electron.Event, webContents: WebContents) => void;
 
   constructor(
     private readonly window: BrowserWindow,
@@ -124,183 +115,109 @@ export class DashboardRuntimeController {
     private readonly resolveSource: (vaultId: string, dashboardId: string) => DashboardRuntimeSource,
     private readonly services: DashboardRuntimeServices,
   ) {
-    this.hostZoomListener = () => this.lockHostZoom();
-    this.lockHostZoom();
-    window.webContents.on("zoom-changed", this.hostZoomListener);
-    this.nativeThemeListener = () => {
-      const runtime = this.runtime;
-      if (!runtime?.active || runtime.contents.isDestroyed()) return;
-      this.applyViewBackground(runtime.view);
+    // The dashboard runs as an in-renderer `<webview>`, so guest creation is
+    // driven by the trusted renderer's DOM. Main keeps authority by hardening the
+    // guest at `will-attach-webview` and binding it at `did-attach-webview`; a
+    // guest whose preferences, partition, or src were not established here is
+    // denied before it attaches.
+    this.willAttachListener = (event, webPreferences, params) => {
+      if (!this.authorizeAttach(webPreferences, params)) event.preventDefault();
     };
-    nativeTheme.on("updated", this.nativeThemeListener);
+    this.didAttachListener = (_event, contents) => this.bindGuest(contents);
+    this.window.webContents.on("will-attach-webview", this.willAttachListener);
+    this.window.webContents.on("did-attach-webview", this.didAttachListener);
   }
 
-  async open(vaultId: string, dashboardId: string): Promise<void> {
+  /**
+   * Prepares an isolated runtime for the requested dashboard and returns the
+   * descriptor the renderer needs to mount its `<webview>`. No guest webContents
+   * exists yet: the renderer mounts the element, and the guest attaches through
+   * the hardened attach hooks. Any previously running dashboard is torn down
+   * first, invalidating its authority before this returns.
+   */
+  prepare(vaultId: string, dashboardId: string): DashboardRuntimeDescriptor {
     this.teardown();
     this.lastFailure = null;
     const source = this.resolveSource(vaultId, dashboardId);
     const snapshot = createDashboardAssetSnapshot(source.bundleDirectory);
     const runtimeId = randomUUID();
-    const isolatedSession = session.fromPartition(`dashboard-${runtimeId}`, { cache: false });
-    const view = new WebContentsView({
-      webPreferences: {
-        preload: this.preloadPath,
-        nodeIntegration: false,
-        contextIsolation: true,
-        sandbox: true,
-        session: isolatedSession,
-        webSecurity: true,
-        allowRunningInsecureContent: false,
-        spellcheck: false,
-      },
-    });
-    this.applyViewBackground(view);
-    const contents = view.webContents;
+    const partition = `dashboard-${runtimeId}`;
+    const src = `${DASHBOARD_SCHEME}://${runtimeId}/${source.manifest.entrypoint}`;
+    const isolatedSession = session.fromPartition(partition, { cache: false });
     const runtime: Runtime = {
       generation: Symbol(runtimeId),
       runtimeId,
+      partition,
+      src,
       manifest: source.manifest,
       source,
       snapshot,
       session: isolatedSession,
-      view,
-      contents,
-      senderId: contents.id,
+      contents: null,
+      senderId: null,
       active: true,
       loaded: false,
       attached: false,
-      bounds: null,
-      allowedBounds: null,
       status: "loading",
-      suspended: false,
       expensiveReadInFlight: false,
       expensiveReadTimestamps: [],
       externalLinkPromptGate: new DashboardExternalLinkPromptGate(),
       cleanups: [],
     };
     this.runtime = runtime;
-    this.authority.set(contents.id, runtime.generation);
-
-    try {
-      this.installSessionPolicy(runtime);
-      this.installWebContentsPolicy(runtime);
-      await contents.loadURL(`${DASHBOARD_SCHEME}://${runtimeId}/${source.manifest.entrypoint}`);
-      if (!this.isCurrent(runtime)) return;
-      runtime.loaded = true;
-      runtime.status = "ready";
-      this.attachIfSafe(runtime);
-    } catch (error) {
-      // A switch, stop, crash, or window close deliberately destroys the old
-      // webContents while loadURL may still be pending. That stale rejection is
-      // expected and must not leak "Object has been destroyed" into trusted UI.
-      if (runtime.status === "failed") throw new Error("Dashboard failed to load.", { cause: error });
-      if (!this.isCurrent(runtime)) return;
-      runtime.status = "failed";
-      this.teardown("failed");
-      throw new Error("Dashboard failed to load.", { cause: error });
-    }
-  }
-
-  setBounds(value: unknown): void {
-    const runtime = this.runtime;
-    if (!runtime?.active || this.window.isDestroyed() || runtime.contents.isDestroyed()) return;
-    this.lockHostZoom();
-    if (this.window.webContents.getZoomFactor() !== 1 || this.window.webContents.getZoomLevel() !== 0) {
-      this.detach();
-      return;
-    }
-    const [contentWidth, contentHeight] = this.window.getContentSize();
-    const contentBounds = { x: 0, y: 0, width: contentWidth, height: contentHeight };
-    const allowedBounds = runtime.allowedBounds ?? {
-      x: Math.min(SAFE_UNREGISTERED_SIDEBAR_WIDTH, contentWidth),
-      y: Math.min(TRUSTED_HEADER_HEIGHT, contentHeight),
-      width: Math.max(0, contentWidth - SAFE_UNREGISTERED_SIDEBAR_WIDTH),
-      height: Math.max(0, contentHeight - TRUSTED_HEADER_HEIGHT),
-    };
-    const bounds = validateDashboardBounds(value, contentBounds, allowedBounds);
-    if (!bounds) {
-      runtime.bounds = null;
-      this.detach();
-      return;
-    }
-    runtime.bounds = bounds;
-    try {
-      runtime.view.setBounds(bounds);
-    } catch {
-      runtime.bounds = null;
-      this.detach();
-      return;
-    }
-    this.attachIfSafe(runtime);
-  }
-
-  setHostContentBounds(value: unknown): void {
-    const runtime = this.runtime;
-    if (!runtime?.active || this.window.isDestroyed()) return;
-    const [contentWidth, contentHeight] = this.window.getContentSize();
-    const contentBounds = { x: 0, y: 0, width: contentWidth, height: contentHeight };
-    const belowHeader = {
-      x: 0,
-      y: Math.min(TRUSTED_HEADER_HEIGHT, contentHeight),
-      width: contentWidth,
-      height: Math.max(0, contentHeight - TRUSTED_HEADER_HEIGHT),
-    };
-    runtime.allowedBounds = validateDashboardBounds(value, contentBounds, belowHeader);
-    if (!runtime.allowedBounds) {
-      runtime.bounds = null;
-      this.detach();
-    }
-  }
-
-  detach(): void {
-    const runtime = this.runtime;
-    if (!runtime) return;
-    removeChildView(this.window, runtime);
-    try {
-      if (!this.window.isDestroyed() && !this.window.webContents.isDestroyed()) this.window.webContents.focus();
-    } catch {
-      // The host may be destroyed between the checks and the native focus call.
-    }
+    this.installSessionPolicy(runtime);
+    return { runtimeId, partition, src };
   }
 
   /**
-   * A still of the dashboard, taken before it is detached so trusted UI can show
-   * it in place of the native view. Without it the region paints nothing while an
-   * overlay is open and the user sees a black hole where the dashboard was.
-   *
-   * The result is a bitmap of untrusted content, but it only ever replaces the
-   * same rectangle that content already occupied, and carries no script.
+   * Called from the host `will-attach-webview` hook. Returns whether the guest is
+   * the prepared runtime's; when it is, it forces the guest's webPreferences to
+   * the sandboxed dashboard profile. A mismatched partition/src, an
+   * already-attached runtime, or no active runtime is denied.
    */
-  async capture(): Promise<string | null> {
+  authorizeAttach(webPreferences: WebPreferences, params: Record<string, unknown>): boolean {
     const runtime = this.runtime;
-    if (!runtime?.active || runtime.suspended || runtime.contents.isDestroyed()) return null;
-    try {
-      const image = await runtime.contents.capturePage();
-      if (image.isEmpty()) return null;
-      // JPEG rather than PNG: this crosses IPC on every overlay open, and the
-      // still is dimmed behind a panel, so fidelity matters less than size.
-      return `data:image/jpeg;base64,${image.toJPEG(DASHBOARD_SNAPSHOT_QUALITY).toString("base64")}`;
-    } catch {
-      // Capture races teardown, occlusion, and GPU loss; a missing still is fine.
-      return null;
+    if (!runtime?.active || runtime.contents) return false;
+    if (params.partition !== runtime.partition || params.src !== runtime.src) return false;
+    webPreferences.preload = this.preloadPath;
+    webPreferences.nodeIntegration = false;
+    webPreferences.nodeIntegrationInSubFrames = false;
+    webPreferences.contextIsolation = true;
+    webPreferences.sandbox = true;
+    webPreferences.webSecurity = true;
+    webPreferences.allowRunningInsecureContent = false;
+    webPreferences.spellcheck = false;
+    webPreferences.webviewTag = false;
+    return true;
+  }
+
+  /**
+   * Called from the host `did-attach-webview` hook. Binds the guest webContents
+   * to the prepared runtime, grants it IPC authority, and installs the
+   * navigation/lifecycle policy. A guest that does not match the pending runtime
+   * — a race, a stale attach, or an unexpected embed — is closed immediately.
+   */
+  bindGuest(contents: WebContents): void {
+    const runtime = this.runtime;
+    if (!runtime?.active || runtime.contents) {
+      try {
+        if (!contents.isDestroyed()) contents.close();
+      } catch {
+        // Best-effort: an unexpected guest is destroyed, not adopted.
+      }
+      return;
     }
-  }
-
-  suspend(): string | null {
-    const runtime = this.runtime;
-    if (!runtime?.active) return null;
-    runtime.suspended = true;
-    runtime.bounds = null;
-    runtime.allowedBounds = null;
-    this.detach();
-    return runtime.runtimeId;
-  }
-
-  resume(runtimeId: unknown): void {
-    if (typeof runtimeId !== "string" || runtimeId.length > 100) throw new Error("Invalid dashboard runtime token.");
-    const runtime = this.runtime;
-    if (!runtime?.active || runtime.runtimeId !== runtimeId) throw new Error("Dashboard runtime is unavailable.");
-    runtime.suspended = false;
+    runtime.contents = contents;
+    runtime.senderId = contents.id;
+    runtime.attached = true;
+    this.authority.set(contents.id, runtime.generation);
+    this.installWebContentsPolicy(runtime);
+    if (contents.isLoadingMainFrame && !contents.isLoadingMainFrame()) {
+      // The guest can finish loading before this hook runs; treat an already
+      // settled main frame as ready so status does not stick on "loading".
+      runtime.loaded = true;
+      runtime.status = "ready";
+    }
   }
 
   stop(): void {
@@ -318,12 +235,12 @@ export class DashboardRuntimeController {
   dispose(): void {
     try {
       if (!this.window.isDestroyed() && !this.window.webContents.isDestroyed()) {
-        this.window.webContents.off("zoom-changed", this.hostZoomListener);
+        this.window.webContents.off("will-attach-webview", this.willAttachListener);
+        this.window.webContents.off("did-attach-webview", this.didAttachListener);
       }
     } catch {
       // BrowserWindow teardown can race listener cleanup.
     }
-    nativeTheme.off("updated", this.nativeThemeListener);
     this.teardown();
   }
 
@@ -439,22 +356,20 @@ export class DashboardRuntimeController {
         webContentsId: number;
         status: DashboardRuntimeStatus;
         attached: boolean;
-        bounds: Rectangle | null;
         digest: string;
       }>
-    | { runtimeId: string; webContentsId: -1; status: "failed"; attached: false; bounds: null; digest: "" }
+    | { runtimeId: string; webContentsId: -1; status: "failed"; attached: false; digest: "" }
     | null {
     const runtime = this.runtime;
     if (!runtime && this.lastFailure) {
-      return { ...this.lastFailure, webContentsId: -1, bounds: null, digest: "" };
+      return { ...this.lastFailure, webContentsId: -1, digest: "" };
     }
     return runtime
       ? {
           runtimeId: runtime.runtimeId,
-          webContentsId: runtime.senderId,
+          webContentsId: runtime.senderId ?? -1,
           status: runtime.status,
-          attached: runtime.attached,
-          bounds: runtime.bounds,
+          attached: runtime.attached && !!runtime.contents && !runtime.contents.isDestroyed(),
           digest: runtime.snapshot.digest,
         }
       : null;
@@ -466,7 +381,7 @@ export class DashboardRuntimeController {
 
   private authenticate(event: IpcMainInvokeEvent): Runtime {
     const runtime = this.runtime;
-    if (!runtime?.active) throw new Error("Untrusted dashboard API sender.");
+    if (!runtime?.active || !runtime.contents) throw new Error("Untrusted dashboard API sender.");
     const mainFrame = dashboardMainFrameIfAlive(runtime.contents);
     if (!mainFrame) {
       // Never let Electron's native destroyed-object error escape the bounded API contract.
@@ -538,45 +453,12 @@ export class DashboardRuntimeController {
     return { opened };
   }
 
-  private applyViewBackground(view: WebContentsView): void {
-    view.setBackgroundColor(nativeTheme.shouldUseDarkColors ? "#0a0a0a" : "#ffffff");
-  }
-
-  private lockHostZoom(): void {
-    if (this.window.isDestroyed()) return;
-    const host = this.window.webContents;
-    if (host.isDestroyed()) return;
-    host.setZoomFactor(1);
-    host.setZoomLevel(0);
-    void host.setVisualZoomLevelLimits(1, 1);
-  }
-
   private isCurrent(runtime: Runtime): boolean {
-    return runtime.active && this.runtime === runtime && !runtime.contents.isDestroyed();
+    return runtime.active && this.runtime === runtime && !!runtime.contents && !runtime.contents.isDestroyed();
   }
 
   private isCurrentIdentity(runtime: Runtime): boolean {
     return runtime.active && this.runtime === runtime;
-  }
-
-  private attachIfSafe(runtime: Runtime): void {
-    if (
-      this.window.isDestroyed() ||
-      !this.isCurrent(runtime) ||
-      runtime.status !== "ready" ||
-      !runtime.loaded ||
-      !runtime.bounds ||
-      runtime.suspended ||
-      runtime.attached
-    )
-      return;
-    try {
-      this.window.contentView.addChildView(runtime.view);
-      runtime.attached = true;
-      if (!runtime.contents.isDestroyed()) runtime.contents.focus();
-    } catch {
-      this.teardown();
-    }
   }
 
   private installSessionPolicy(runtime: Runtime): void {
@@ -608,10 +490,16 @@ export class DashboardRuntimeController {
 
   private installWebContentsPolicy(runtime: Runtime): void {
     const contents = runtime.contents;
+    if (!contents) return;
     contents.setWindowOpenHandler(() => ({ action: "deny" }));
     const prevent = (event: Electron.Event): void => event.preventDefault();
     const preventNavigation = (event: Electron.Event): void => event.preventDefault();
     const preventFrameNavigation = (event: Electron.Event): void => event.preventDefault();
+    const finished = (): void => {
+      if (!this.isCurrent(runtime)) return;
+      runtime.loaded = true;
+      if (runtime.status === "loading") runtime.status = "ready";
+    };
     const failed = (
       _event: Electron.Event,
       errorCode: number,
@@ -629,13 +517,10 @@ export class DashboardRuntimeController {
     const unresponsive = (): void => {
       if (!this.isCurrent(runtime)) return;
       runtime.status = "unresponsive";
-      this.detach();
     };
     const responsive = (): void => {
       if (!this.isCurrent(runtime) || runtime.status !== "unresponsive") return;
       runtime.status = "ready";
-      this.attachIfSafe(runtime);
-      if (this.isCurrentIdentity(runtime) && !runtime.attached) runtime.status = "unresponsive";
     };
     const destroyed = (): void => {
       // `destroyed` is emitted only after `contents.isDestroyed()` becomes true,
@@ -645,6 +530,7 @@ export class DashboardRuntimeController {
     contents.on("will-navigate", preventNavigation);
     contents.on("will-frame-navigate", preventFrameNavigation);
     contents.on("will-attach-webview", prevent);
+    contents.on("did-finish-load", finished);
     contents.on("did-fail-load", failed);
     contents.on("render-process-gone", gone);
     contents.on("unresponsive", unresponsive);
@@ -655,6 +541,7 @@ export class DashboardRuntimeController {
       contents.off("will-navigate", preventNavigation);
       contents.off("will-frame-navigate", preventFrameNavigation);
       contents.off("will-attach-webview", prevent);
+      contents.off("did-finish-load", finished);
       contents.off("did-fail-load", failed);
       contents.off("render-process-gone", gone);
       contents.off("unresponsive", unresponsive);
@@ -674,13 +561,12 @@ export class DashboardRuntimeController {
     runtime.status = terminalStatus;
     this.lastFailure =
       terminalStatus === "failed" ? { runtimeId: runtime.runtimeId, status: "failed", attached: false } : null;
-    this.authority.delete(runtime.senderId);
+    if (runtime.senderId !== null) this.authority.delete(runtime.senderId);
     runtime.expensiveReadInFlight = false;
     runtime.expensiveReadTimestamps = [];
     runtime.externalLinkPromptGate.cancel();
     this.services.releaseState(runtime.runtimeId);
     if (this.runtime === runtime) this.runtime = null;
-    removeChildView(this.window, runtime);
     for (const cleanup of runtime.cleanups.splice(0).reverse()) {
       try {
         cleanup();
@@ -689,10 +575,12 @@ export class DashboardRuntimeController {
       }
     }
     const contents = runtime.contents;
-    try {
-      if (!contents.isDestroyed()) contents.close({ waitForBeforeUnload: false });
-    } catch {
-      // Native destruction can win after isDestroyed() and before close().
+    if (contents) {
+      try {
+        if (!contents.isDestroyed()) contents.close({ waitForBeforeUnload: false });
+      } catch {
+        // Native destruction can win after isDestroyed() and before close().
+      }
     }
     try {
       if (!this.window.isDestroyed() && !this.window.webContents.isDestroyed()) this.window.webContents.focus();
