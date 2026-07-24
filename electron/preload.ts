@@ -25,6 +25,7 @@ const api: VaultApi = {
   openDashboard: (vaultId, dashboardId) => ipcRenderer.invoke("dashboard-runtime:open", vaultId, dashboardId),
   stopDashboard: () => ipcRenderer.invoke("dashboard-runtime:stop"),
   dashboardRuntimeStatus: () => ipcRenderer.invoke("dashboard-runtime:status"),
+  prepareDashboardTrustedFlow: () => ipcRenderer.invoke("dashboard-runtime:prepare-trusted-flow"),
   dashboardRuntimeAuthorityCountForTesting: () => ipcRenderer.invoke("dashboard-runtime:authority-count-for-testing"),
   dashboardPermissionDetails: (vaultId, dashboardId) =>
     ipcRenderer.invoke("dashboard-permissions:details", vaultId, dashboardId),

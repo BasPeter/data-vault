@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Copy, RefreshCw, Shield, Square } from "lucide-react";
 import type { DashboardManifest, DashboardRuntimeHostStatus } from "@/dashboard-contracts";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ export function DashboardHost({ vaultId, dashboard, version, onManageAccess, hid
   const hostRef = useRef<HTMLDivElement>(null);
   const webviewRef = useRef<HTMLElement | null>(null);
   const hiddenRef = useRef(hidden);
+  const previouslyHiddenRef = useRef(hidden);
   hiddenRef.current = hidden;
   const [status, setStatus] = useState<DashboardRuntimeHostStatus>(null);
   const [error, setError] = useState<string | null>(null);
@@ -86,11 +87,17 @@ export function DashboardHost({ vaultId, dashboard, version, onManageAccess, hid
   // Toggle guest visibility for trusted flows. Blurring on hide moves keyboard
   // focus off the guest — a `<webview>` is a separate focus context, so the
   // trusted overlay cannot be relied on to reclaim focus from it on its own.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = webviewRef.current;
     if (!element) return;
     element.style.display = hidden ? "none" : "";
-    if (hidden) element.blur();
+    if (hidden) {
+      element.blur();
+      hostRef.current?.focus({ preventScroll: true });
+    } else if (previouslyHiddenRef.current) {
+      hostRef.current?.focus({ preventScroll: true });
+    }
+    previouslyHiddenRef.current = hidden;
   }, [hidden, status]);
 
   const unavailable =
@@ -137,7 +144,12 @@ export function DashboardHost({ vaultId, dashboard, version, onManageAccess, hid
       </div>
       {/* bg-background is the floor: the webview paints over this region, so the
           area reads as the app background before the guest loads or after it stops. */}
-      <div ref={hostRef} data-testid="dashboard-host" className="bg-background absolute inset-x-0 bottom-0 top-11" />
+      <div
+        ref={hostRef}
+        data-testid="dashboard-host"
+        className="bg-background absolute inset-x-0 bottom-0 top-11"
+        tabIndex={-1}
+      />
       {unavailable && (
         <div className="bg-background absolute inset-x-0 bottom-0 top-11 z-10 grid place-items-center p-8 text-center">
           <div>

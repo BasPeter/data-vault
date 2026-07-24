@@ -224,6 +224,28 @@ export class DashboardRuntimeController {
     this.teardown();
   }
 
+  currentRuntimeId(): string | null {
+    return this.runtime?.active ? this.runtime.runtimeId : null;
+  }
+
+  destroyFocusedCurrentGuest(contents: WebContents): string {
+    const runtime = this.runtime;
+    if (!runtime?.active) throw new Error("Dashboard trusted flow is unavailable.");
+    if (runtime.contents !== contents) throw new Error("Dashboard trusted flow is unavailable.");
+    if (runtime.senderId !== contents.id) throw new Error("Dashboard trusted flow is unavailable.");
+    if (contents.isDestroyed()) throw new Error("Dashboard trusted flow is unavailable.");
+    if (contents.getType() !== "webview") throw new Error("Dashboard trusted flow is unavailable.");
+    if (contents.hostWebContents?.id !== this.window.webContents.id) {
+      throw new Error("Dashboard trusted flow is unavailable.");
+    }
+    if (this.authority.get(contents.id) !== runtime.generation) {
+      throw new Error("Dashboard trusted flow is unavailable.");
+    }
+    const runtimeId = runtime.runtimeId;
+    this.teardown();
+    return runtimeId;
+  }
+
   stopForVault(vaultId: string): void {
     if (this.runtime?.source.vaultId === vaultId) this.teardown();
   }

@@ -60,35 +60,40 @@ async function guestIdForRuntime(
 }
 
 async function expectOverlayAboveDashboard(page: Page, overlaySelector: string): Promise<void> {
-  const proof = await page.evaluate((selector) => {
-    const webview = document.querySelector<HTMLElement>("[data-testid=dashboard-webview]");
-    const overlay = [...document.querySelectorAll<HTMLElement>(selector)].find((candidate) => {
-      const rect = candidate.getBoundingClientRect();
-      return rect.width > 0 && rect.height > 0 && getComputedStyle(candidate).visibility !== "hidden";
-    });
-    if (!webview || !overlay) return null;
-    const guest = webview.getBoundingClientRect();
-    const trusted = overlay.getBoundingClientRect();
-    const left = Math.max(guest.left, trusted.left);
-    const right = Math.min(guest.right, trusted.right);
-    const top = Math.max(guest.top, trusted.top);
-    const bottom = Math.min(guest.bottom, trusted.bottom);
-    if (left >= right || top >= bottom) return { overlap: false };
-    const zIndex = (element: HTMLElement) => {
-      const value = Number.parseInt(getComputedStyle(element).zIndex, 10);
-      return Number.isFinite(value) ? value : 0;
-    };
-    return {
+  await expect
+    .poll(() =>
+      page.evaluate((selector) => {
+        const webview = document.querySelector<HTMLElement>("[data-testid=dashboard-webview]");
+        const overlay = [...document.querySelectorAll<HTMLElement>(selector)].find((candidate) => {
+          const rect = candidate.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 && getComputedStyle(candidate).visibility !== "hidden";
+        });
+        if (!webview || !overlay) return null;
+        const guest = webview.getBoundingClientRect();
+        const trusted = overlay.getBoundingClientRect();
+        const left = Math.max(guest.left, trusted.left);
+        const right = Math.min(guest.right, trusted.right);
+        const top = Math.max(guest.top, trusted.top);
+        const bottom = Math.min(guest.bottom, trusted.bottom);
+        if (left >= right || top >= bottom) return { overlap: false };
+        const x = left + (right - left) / 2;
+        const y = top + (bottom - top) / 2;
+        const painted = document.elementFromPoint(x, y);
+        const trustedPaint =
+          painted !== null &&
+          (overlay.contains(painted) || painted.closest<HTMLElement>('[data-slot$="-overlay"]') !== null);
+        return {
+          overlap: true,
+          trustedOwnsOverlapPoint: trustedPaint,
+          webviewDisplay: getComputedStyle(webview).display,
+        };
+      }, overlaySelector),
+    )
+    .toEqual({
       overlap: true,
-      overlayIsAboveByZIndex: zIndex(overlay) > zIndex(webview),
-      webviewDisplay: getComputedStyle(webview).display,
-    };
-  }, overlaySelector);
-  expect(proof).toEqual({
-    overlap: true,
-    overlayIsAboveByZIndex: true,
-    webviewDisplay: expect.not.stringMatching(/^none$/),
-  });
+      trustedOwnsOverlapPoint: true,
+      webviewDisplay: expect.not.stringMatching(/^none$/),
+    });
 }
 
 test("forces the sandbox profile on the guest and denies an unauthorized attach", async ({ appLaunch }) => {
@@ -224,7 +229,7 @@ test("git status, quick notes, and a dialog visibly layer over one live dashboar
   await page.keyboard.press("Escape");
 });
 
-test("real Manage access blocks guest focus and input while preserving the runtime", async ({ appLaunch }) => {
+test("trusted flows isolate retained and destructively remounted guests", async ({ appLaunch }) => {
   const { app, page, vaultDir } = appLaunch;
   await createBlankDashboard(page, vaultDir, "Consent hide");
   await page.reload();
@@ -233,7 +238,6 @@ test("real Manage access blocks guest focus and input while preserving the runti
   const beforeGuestId = await guestIdForRuntime(app, before.runtimeId);
   const dashboardBox = await page.getByTestId("dashboard-webview").boundingBox();
   expect(dashboardBox).not.toBeNull();
-
   await app.evaluate(async ({ webContents }, webContentsId) => {
     const contents = webContents.fromId(webContentsId);
     if (!contents) throw new Error("Dashboard web contents not found.");
@@ -245,9 +249,91 @@ test("real Manage access blocks guest focus and input while preserving the runti
     })()`);
   }, beforeGuestId);
 
-  await page.getByRole("button", { name: "Manage access" }).click();
+  await page.evaluate(() => {
+    window.prompt = () => {
+      const webview = document.querySelector<HTMLElement>('[data-testid="dashboard-webview"]')!;
+      (
+        window as typeof window & {
+          __promptIsolationProof?: {
+            display: string;
+            offsetParent: boolean;
+            guestFocused: boolean;
+          };
+        }
+      ).__promptIsolationProof = {
+        display: getComputedStyle(webview).display,
+        offsetParent: webview.offsetParent !== null,
+        guestFocused: document.activeElement === webview,
+      };
+      return null;
+    };
+  });
+  await page.getByRole("button", { name: "Consent hide dashboard menu" }).click();
+  await app.evaluate(({ BrowserWindow, webContents }) => {
+    const owner = BrowserWindow.getAllWindows()[0];
+    if (!owner) throw new Error("Dashboard host window not found.");
+    const originalGetFocused = webContents.getFocusedWebContents.bind(webContents);
+    webContents.getFocusedWebContents = () => {
+      webContents.getFocusedWebContents = originalGetFocused;
+      return owner.webContents;
+    };
+  });
+  await page.getByRole("menuitem", { name: "Rename" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as typeof window & {
+              __promptIsolationProof?: {
+                display: string;
+                offsetParent: boolean;
+                guestFocused: boolean;
+              };
+            }
+          ).__promptIsolationProof,
+      ),
+    )
+    .toEqual({ display: "none", offsetParent: false, guestFocused: false });
+  await expect(page.getByTestId("dashboard-webview")).not.toHaveCSS("display", "none");
+  expect(await page.evaluate(() => window.vaultApi.dashboardRuntimeStatus())).toEqual(
+    expect.objectContaining({ runtimeId: before.runtimeId, status: "ready", attached: true }),
+  );
+  expect(
+    await app.evaluate(async ({ webContents }, webContentsId) => {
+      const contents = webContents.fromId(webContentsId);
+      return contents?.executeJavaScript("globalThis.__consentProbe.marker");
+    }, beforeGuestId),
+  ).toBe("still-alive");
+
+  await page.getByTestId("dashboard-webview").focus();
+  await app.evaluate(({ webContents }, webContentsId) => {
+    const contents = webContents.fromId(webContentsId);
+    if (!contents) throw new Error("Dashboard web contents not found.");
+    contents.focus();
+  }, beforeGuestId);
+  await expect
+    .poll(() =>
+      app.evaluate(({ webContents }) => {
+        const focused = webContents.getFocusedWebContents();
+        return { id: focused?.id, type: focused?.getType() };
+      }),
+    )
+    .toEqual({ id: beforeGuestId, type: "webview" });
+  await page.getByRole("button", { name: "Manage access" }).evaluate((button) => button.click());
   const dialog = page.getByRole("dialog", { name: "Manage dashboard access" });
   await expect(dialog).toBeVisible();
+
+  // Privileged UI may appear only after the destroyed guest has already been
+  // replaced by one different, attached, ready runtime. The replacement mounts
+  // hidden, so it contributes neither pixels nor an input target.
+  const replacement = await page.evaluate(() => window.vaultApi.dashboardRuntimeStatus());
+  expect(replacement).toEqual(expect.objectContaining({ status: "ready", attached: true }));
+  expect(replacement?.runtimeId).not.toBe(before.runtimeId);
+  expect(await guestCount(app)).toBe(1);
+  const replacementGuestId = await guestIdForRuntime(app, replacement!.runtimeId);
+  expect(replacementGuestId).not.toBe(beforeGuestId);
+  await expect(page.getByTestId("dashboard-webview")).toHaveCSS("display", "none");
 
   const hidden = await page.evaluate(() => {
     const webview = document.querySelector<HTMLElement>('[data-testid="dashboard-webview"]')!;
@@ -264,45 +350,58 @@ test("real Manage access blocks guest focus and input while preserving the runti
   expect(dialogBox).not.toBeNull();
   await page.mouse.click(dialogBox!.x + dialogBox!.width / 2, dialogBox!.y + dialogBox!.height / 2);
   await page.keyboard.press("x");
-  await page.evaluate(() => document.querySelector<HTMLElement>('[data-testid="dashboard-webview"]')!.focus());
-  expect(
-    await app.evaluate(async ({ webContents }, webContentsId) => {
-      const contents = webContents.fromId(webContentsId);
-      return contents?.executeJavaScript("globalThis.__consentProbe");
-    }, beforeGuestId),
-  ).toEqual({ focus: 0, key: 0, pointer: 0, marker: "still-alive" });
   expect(
     await page.evaluate(({ x, y }) => document.elementFromPoint(x + 1, y + 1)?.tagName, {
       x: dashboardBox!.x,
       y: dashboardBox!.y,
     }),
   ).not.toBe("WEBVIEW");
+  expect(
+    await app.evaluate(async ({ webContents }, webContentsId) => {
+      const contents = webContents.fromId(webContentsId);
+      return {
+        title: await contents?.executeJavaScript("document.title"),
+        markerType: await contents?.executeJavaScript("typeof globalThis.__consentProbe"),
+      };
+    }, replacementGuestId),
+  ).toEqual({ title: "layer", markerType: "undefined" });
 
-  // Leave the trusted flow: restore visibility. Same runtime, still responsive —
-  // no reload, no lost in-memory state.
+  // Cancel only unhides the already-ready replacement. It must not schedule a
+  // second remount, and an immediate second Manage action must be usable.
   await page.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toBeHidden();
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () => getComputedStyle(document.querySelector<HTMLElement>('[data-testid="dashboard-webview"]')!).display,
-      ),
-    )
-    .not.toBe("none");
-  expect(await page.evaluate(() => window.vaultApi.dashboardRuntimeStatus())).toEqual(
-    expect.objectContaining({
-      status: "ready",
-      attached: true,
-      runtimeId: before.runtimeId,
-    }),
-  );
+  await expect(page.getByTestId("dashboard-webview")).not.toHaveCSS("display", "none");
+  const afterCancel = await readyStatus(page);
+  expect(afterCancel.runtimeId).toBe(replacement!.runtimeId);
+  expect(await guestIdForRuntime(app, afterCancel.runtimeId)).toBe(replacementGuestId);
   expect(await guestCount(app)).toBe(1);
-  const stillResponsive = await app.evaluate(async ({ webContents }, webContentsId) => {
-    const contents = webContents.fromId(webContentsId);
-    return {
-      title: await contents?.executeJavaScript("document.title"),
-      marker: await contents?.executeJavaScript("globalThis.__consentProbe.marker"),
-    };
-  }, beforeGuestId);
-  expect(stillResponsive).toEqual({ title: "layer", marker: "still-alive" });
+
+  await page.getByRole("button", { name: "Manage access" }).evaluate((button) => button.click());
+  await expect(dialog).toBeVisible();
+  await expect(page.getByText(/controls what .*Consent hide.* can read/)).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByTestId("dashboard-host")).toBeFocused();
+  expect(await page.evaluate(() => document.activeElement?.tagName)).not.toBe("WEBVIEW");
+});
+
+test("trusted flow fails closed when main cannot acknowledge focus transfer", async ({ appLaunch }) => {
+  const { app, page, vaultDir } = appLaunch;
+  await createBlankDashboard(page, vaultDir, "Rejected consent");
+  await page.reload();
+  await page.getByRole("button", { name: "Open Rejected consent dashboard" }).click();
+  await readyStatus(page);
+
+  await app.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler("dashboard-runtime:prepare-trusted-flow");
+    ipcMain.handle("dashboard-runtime:prepare-trusted-flow", () => {
+      throw new Error("Rejected for trusted-flow test.");
+    });
+  });
+
+  await page.getByRole("button", { name: "Manage access" }).evaluate((button) => button.click());
+  await expect(page.getByRole("dialog", { name: "Manage dashboard access" })).toBeHidden();
+  await expect(page.getByRole("alert")).toContainText("Dashboard trusted flow is unavailable.");
+  await expect(page.getByTestId("dashboard-webview")).toHaveCSS("display", "none");
+  expect(await page.evaluate(() => document.activeElement?.tagName)).not.toBe("WEBVIEW");
 });

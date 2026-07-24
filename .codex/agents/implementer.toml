@@ -1,7 +1,7 @@
 # Deprecated compatibility agent. Prefer Codex's built-in worker role or focused primary-agent work.
 name = "implementer"
 description = "Bounded implementation agent for accepted code, test, documentation, build, or configuration changes."
-model = "terra"
+model = "gpt-5.6-terra"
 model_reasoning_effort = "medium"
 sandbox_mode = "workspace-write"
 developer_instructions = """

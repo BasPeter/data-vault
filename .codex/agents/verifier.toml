@@ -1,6 +1,6 @@
 name = "verifier"
 description = "Mechanical verification boundary for diff inspection, documented checks, and commit-readiness evidence."
-model = "luna"
+model = "gpt-5.6-luna"
 sandbox_mode = "workspace-write"
 developer_instructions = """
 You are the Verifier, a mechanical trust boundary. Produce evidence; do not fix code or make architectural judgments. AGENTS.md, its Project Operating Rules, Build & test table, and Quality Gate are authoritative.

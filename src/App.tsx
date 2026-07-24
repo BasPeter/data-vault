@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import {
   Database,
   FileDown,
@@ -34,6 +35,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from "@/com
 import { useTheme } from "@/hooks/use-theme";
 import { cn } from "@/lib/utils";
 import { parseStoredAppView, safeAppView, type AppView } from "@/app-view";
+import { prepareDashboardTrustedFlow } from "@/dashboard-trusted-flow";
 import type { DashboardCreateInput, DashboardListEntry, DashboardManifest } from "@/dashboard-contracts";
 import type { DocumentOpenRequest, Manifest, TreeNode, VaultFormat, VaultSummary } from "@/types";
 
@@ -80,6 +82,13 @@ type DocumentTab = {
   id: string;
 };
 
+const DASHBOARD_REMOUNT_TIMEOUT_MS = 5_000;
+const DASHBOARD_REMOUNT_POLL_MS = 50;
+
+function waitForDashboardRemountPoll(): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, DASHBOARD_REMOUNT_POLL_MS));
+}
+
 export default function App() {
   const { theme, toggle } = useTheme();
   const [vaults, setVaults] = useState<VaultSummary[]>([]);
@@ -95,6 +104,8 @@ export default function App() {
   const tabsInitializedRef = useRef(false);
   const [view, setView] = useState<AppView>({ kind: "document" });
   const [dashboards, setDashboards] = useState<DashboardListEntry[]>([]);
+  const viewRef = useRef(view);
+  viewRef.current = view;
   const [createDashboardOpen, setCreateDashboardOpen] = useState(false);
   const [secretsOpen, setSecretsOpen] = useState(false);
   const [missingSecrets, setMissingSecrets] = useState<string[]>([]);
@@ -104,6 +115,7 @@ export default function App() {
   // intercept, or hold focus during the flow.
   const [trustedFlowActive, setTrustedFlowActive] = useState(false);
   const viewInitializedVaultRef = useRef<string | null>(null);
+  const trustedFlowAttemptRef = useRef<object | null>(null);
   const [version, setVersion] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -406,13 +418,56 @@ export default function App() {
   );
 
   const beginTrustedFlow = useCallback(async () => {
-    setTrustedFlowActive(true);
+    const initialVaultId = vaultIdRef.current;
+    const initialView = viewRef.current;
+    const token = {};
+    if (trustedFlowAttemptRef.current !== null) return false;
+    trustedFlowAttemptRef.current = token;
+
+    const contextIsCurrent = () =>
+      trustedFlowAttemptRef.current === token &&
+      vaultIdRef.current === initialVaultId &&
+      viewRef.current.kind === initialView.kind &&
+      (initialView.kind !== "dashboard" ||
+        (viewRef.current.kind === "dashboard" && viewRef.current.dashboardId === initialView.dashboardId));
+
+    try {
+      await prepareDashboardTrustedFlow({
+        prepare: () => window.vaultApi.prepareDashboardTrustedFlow(),
+        hide: () => flushSync(() => setTrustedFlowActive(true)),
+        remount: () => flushSync(() => setVersion((value) => value + 1)),
+        status: () => window.vaultApi.dashboardRuntimeStatus(),
+        contextIsCurrent,
+        canRemount: () => initialVaultId !== null && initialView.kind === "dashboard",
+        replacementIsHiddenAndInert: () => {
+          const replacement = document.querySelector<HTMLElement>('[data-testid="dashboard-webview"]');
+          return (
+            replacement !== null &&
+            getComputedStyle(replacement).display === "none" &&
+            replacement.offsetParent === null &&
+            document.activeElement !== replacement
+          );
+        },
+        focusHost: () =>
+          document.querySelector<HTMLElement>('[data-testid="dashboard-host"]')?.focus({ preventScroll: true }),
+        now: () => Date.now(),
+        wait: waitForDashboardRemountPoll,
+        timeoutMs: DASHBOARD_REMOUNT_TIMEOUT_MS,
+      });
+      return true;
+    } catch {
+      flushSync(() => setTrustedFlowActive(true));
+      setError("Dashboard trusted flow is unavailable.");
+      return false;
+    } finally {
+      if (trustedFlowAttemptRef.current === token) trustedFlowAttemptRef.current = null;
+    }
   }, []);
 
   const endTrustedFlow = useCallback(async () => {
-    setTrustedFlowActive(false);
+    flushSync(() => setTrustedFlowActive(false));
+    document.querySelector<HTMLElement>('[data-testid="dashboard-host"]')?.focus({ preventScroll: true });
   }, []);
-
   const reloadDashboards = useCallback(async () => {
     if (!vaultId) return [];
     const next = await window.vaultApi.dashboards(vaultId);
@@ -482,7 +537,7 @@ export default function App() {
   const renameDashboard = useCallback(
     async (dashboard: DashboardManifest) => {
       if (!vaultId) return;
-      await beginTrustedFlow();
+      if (!(await beginTrustedFlow())) return;
       const title = window.prompt("Dashboard name", dashboard.title)?.trim();
       try {
         if (title && title !== dashboard.title) {
@@ -521,7 +576,7 @@ export default function App() {
   const removeDashboard = useCallback(
     async (dashboard: DashboardManifest) => {
       if (!vaultId) return;
-      await beginTrustedFlow();
+      if (!(await beginTrustedFlow())) return;
       try {
         if (!window.confirm(`Remove “${dashboard.title}”? Its bundle will be moved to the dashboard trash.`)) return;
         const removal = await window.vaultApi.removeDashboard(vaultId, dashboard.id);
@@ -573,7 +628,9 @@ export default function App() {
         activeDashboardId={view.kind === "dashboard" ? view.dashboardId : null}
         onSelectDashboard={(dashboardId) => setView({ kind: "dashboard", dashboardId })}
         onCreateDashboard={() => {
-          void beginTrustedFlow().then(() => setCreateDashboardOpen(true));
+          void beginTrustedFlow().then((prepared) => {
+            if (prepared) setCreateDashboardOpen(true);
+          });
         }}
         onRenameDashboard={(dashboard) => {
           void renameDashboard(dashboard);
@@ -588,7 +645,9 @@ export default function App() {
           void relocateDashboard(dashboard);
         }}
         onManageSecrets={() => {
-          void beginTrustedFlow().then(() => setSecretsOpen(true));
+          void beginTrustedFlow().then((prepared) => {
+            if (prepared) setSecretsOpen(true);
+          });
         }}
       />
       <SidebarInset>
@@ -684,7 +743,9 @@ export default function App() {
             <Button
               size="sm"
               onClick={() => {
-                void beginTrustedFlow().then(() => setSecretsOpen(true));
+                void beginTrustedFlow().then((prepared) => {
+                  if (prepared) setSecretsOpen(true);
+                });
               }}
             >
               Set {missingSecrets.length === 1 ? "it" : "them"}
@@ -704,7 +765,9 @@ export default function App() {
                   version={version}
                   hidden={trustedFlowActive}
                   onManageAccess={() => {
-                    void beginTrustedFlow().then(() => setPermissionDashboard(dashboard));
+                    void beginTrustedFlow().then((prepared) => {
+                      if (prepared) setPermissionDashboard(dashboard);
+                    });
                   }}
                 />
               ) : (

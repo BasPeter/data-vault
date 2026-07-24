@@ -2,7 +2,7 @@
 
 ### Requirement: Renderer Sandboxing
 
-The renderer SHALL run with `nodeIntegration: false`, `contextIsolation: true`, and `sandbox: true`. The renderer window MAY enable `webviewTag: true` solely to host the dashboard sandbox; when it does, every guest `<webview>` SHALL be created only by trusted host code, and the main process SHALL, at guest attach time, force each guest's `webPreferences` to the sandboxed dashboard profile (`nodeIntegration: false`, `contextIsolation: true`, `sandbox: true`, no `nodeIntegrationInSubFrames`, the dashboard preload, and the isolated non-persistent session) and deny any guest whose preferences, preload, partition, or `src` were not established by trusted host code.
+The renderer SHALL run with `nodeIntegration: false`, `contextIsolation: true`, and `sandbox: true`. The renderer window MAY enable `webviewTag: true` solely to host the dashboard sandbox. The renderer SHALL set only the exact `src` and isolated `partition` from a current main-issued runtime descriptor and SHALL set no preload or preference attributes. At guest attach time, main SHALL validate descriptor identity, reject stale, unexpected, or mismatched `src`/`partition` values, and overwrite the preload and all guest `webPreferences` to the sandboxed dashboard profile (`nodeIntegration: false`, `contextIsolation: true`, `sandbox: true`, no `nodeIntegrationInSubFrames`, the dashboard preload, and the isolated non-persistent session).
 
 #### Scenario: Renderer window is created
 
@@ -12,7 +12,7 @@ The renderer SHALL run with `nodeIntegration: false`, `contextIsolation: true`, 
 #### Scenario: A dashboard guest webview is attached
 
 - **WHEN** a `<webview>` guest attaches to the renderer for a dashboard
-- **THEN** the main process SHALL override the guest's `webPreferences` to the sandboxed dashboard profile with Node.js disabled, context isolation enabled, sandboxing enabled, the dashboard preload, and the isolated non-persistent session, and SHALL destroy any guest not originating from trusted host attributes
+- **THEN** main SHALL accept only the current descriptor's exact `src` and `partition`, reject stale, unexpected, or mismatched guests, and overwrite the preload and all preferences with the sandboxed dashboard profile
 
 ### Requirement: Executable dashboards remain untrusted and isolated
 
@@ -30,12 +30,12 @@ All dashboard manifests, assets, state, and JavaScript SHALL be treated as untru
 
 ### Requirement: Permission consent is host-initiated and visually isolated
 
-Privileged dashboard consent SHALL begin only from an affirmative user action in recognizable trusted application chrome, and the dashboard view SHALL be visually removed or covered — hidden, destroyed, or occluded by a trusted host-owned surface that disables the dashboard's input — for the complete permission, document-scope, and document-selection flow, so the dashboard is unable to overlay, intercept, or capture focus during the flow; consent for all-documents scope SHALL explicitly state that future documents are included until the grant is changed or revoked.
+Privileged dashboard consent SHALL begin only from affirmative trusted chrome. The retained path SHALL confirm exact trusted-host global focus, then hide/remove input before UI. If validated fallback destroys the guest, main has already confirmed exact host focus. The renderer SHALL hide the slot/input and remount exactly once with `display:none` and input disabled from creation, without calling `prepareDashboardTrustedFlow` again. A second destructive-capable preparation is prohibited. UI SHALL open and receive DOM focus only after a different runtime ID is attached and ready in the unchanged context and verified still hidden/input-inert. Timeout, context mismatch, or an unhidden/input-active replacement SHALL abort closed.
 
 #### Scenario: Permission management opens
 
 - **WHEN** the user activates Manage access in trusted host UI
-- **THEN** the application removes or fully occludes the dashboard pixels and disables the dashboard's input before presenting capability details, document scope, or document selection
+- **THEN** `retained` synchronously hides before UI, while `destroyed` synchronously hides and remounts one hidden replacement before UI; permission details open only for a different attached, ready, unfocused-guest runtime in the unchanged context, otherwise the flow aborts closed
 
 #### Scenario: User considers all-documents scope
 

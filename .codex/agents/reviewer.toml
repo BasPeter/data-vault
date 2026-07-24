@@ -1,6 +1,6 @@
 name = "reviewer"
 description = "Independent read-only review gate for architecture, risky changes, public APIs, persistence, security, data loss, and maintainability."
-model = "terra"
+model = "gpt-5.6-terra"
 model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 developer_instructions = """

@@ -183,6 +183,8 @@ test("vault intelligence returns the approved index and document while denying u
   await expect(page.getByRole("dialog", { name: "Manage dashboard access" })).toHaveCount(0);
   await expect.poll(() => dashboardHidden(page)).toBe(false);
 
+  // No readiness delay: closing consent must leave the same ready runtime
+  // immediately available to a second trusted-flow action.
   await page.getByRole("button", { name: "Manage access" }).click();
   await expect(page.getByRole("dialog", { name: "Manage dashboard access" })).toBeVisible();
   await page.getByText("Vault index", { exact: true }).click();

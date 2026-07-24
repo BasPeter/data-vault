@@ -147,6 +147,11 @@ export type DashboardRuntimeDescriptor = {
   src: string;
 };
 
+export type DashboardTrustedFlowPreparation = {
+  disposition: "retained" | "destroyed";
+  runtimeId: string | null;
+};
+
 export type DashboardJsonPrimitive = boolean | number | string | null;
 export type DashboardJsonValue = DashboardJsonPrimitive | DashboardJsonValue[] | { [key: string]: DashboardJsonValue };
 export type DashboardState = DashboardJsonValue;

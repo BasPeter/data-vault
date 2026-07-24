@@ -10,6 +10,7 @@ import type {
   DashboardRemoval,
   DashboardRuntimeDescriptor,
   DashboardRuntimeHostStatus,
+  DashboardTrustedFlowPreparation,
   DashboardStorageLocation,
 } from "./dashboard-contracts";
 
@@ -260,6 +261,7 @@ export type VaultApi = {
   openDashboard: (vaultId: string, dashboardId: string) => Promise<DashboardRuntimeDescriptor>;
   stopDashboard: () => Promise<void>;
   dashboardRuntimeStatus: () => Promise<DashboardRuntimeHostStatus>;
+  prepareDashboardTrustedFlow: () => Promise<DashboardTrustedFlowPreparation>;
   dashboardRuntimeAuthorityCountForTesting: () => Promise<number>;
   dashboardPermissionDetails: (vaultId: string, dashboardId: string) => Promise<DashboardPermissionDetails>;
   grantDashboardPermissions: (

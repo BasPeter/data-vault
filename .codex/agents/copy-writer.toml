@@ -1,7 +1,7 @@
 # Deprecated compatibility agent. Prefer a bounded built-in worker task when specialist copy work is needed.
 name = "copy_writer"
 description = "Specialist for bounded user-facing Electron/Node app descriptions, error messages, documentation, and UX copy."
-model = "terra"
+model = "gpt-5.6-terra"
 model_reasoning_effort = "low"
 sandbox_mode = "workspace-write"
 developer_instructions = """

@@ -463,6 +463,65 @@ describe("dashboard trusted UI", () => {
     expect(writeText).toHaveBeenCalledWith(handoff);
     expect(document.body.textContent).toContain("Copied");
   });
+
+  it("hides and blurs the guest synchronously, then returns focus to the host when shown", async () => {
+    window.vaultApi = {
+      openDashboard: vi.fn(async () => ({
+        runtimeId: "runtime",
+        src: "vault-dashboard://runtime/index.html",
+        partition: "dashboard-runtime",
+      })),
+      stopDashboard: vi.fn(async () => undefined),
+      dashboardRuntimeStatus: vi.fn(async () => ({ runtimeId: "runtime", status: "ready", attached: true })),
+    } as unknown as VaultApi;
+
+    await act(async () =>
+      root.render(
+        <DashboardHost vaultId="vault" dashboard={dashboard} version={0} hidden={false} onManageAccess={vi.fn()} />,
+      ),
+    );
+    await act(async () => Promise.resolve());
+    const webview = document.body.querySelector<HTMLElement>('[data-testid="dashboard-webview"]')!;
+    webview.tabIndex = 0;
+    webview.focus();
+    expect(document.activeElement).toBe(webview);
+
+    await act(async () =>
+      root.render(<DashboardHost vaultId="vault" dashboard={dashboard} version={0} hidden onManageAccess={vi.fn()} />),
+    );
+    expect(webview.style.display).toBe("none");
+    expect(document.activeElement).not.toBe(webview);
+
+    await act(async () =>
+      root.render(
+        <DashboardHost vaultId="vault" dashboard={dashboard} version={0} hidden={false} onManageAccess={vi.fn()} />,
+      ),
+    );
+    expect(webview.style.display).toBe("");
+    expect(document.activeElement).toBe(document.body.querySelector('[data-testid="dashboard-host"]'));
+  });
+
+  it("creates a replacement webview hidden and outside the active input surface", async () => {
+    window.vaultApi = {
+      openDashboard: vi.fn(async () => ({
+        runtimeId: "replacement",
+        src: "vault-dashboard://replacement/index.html",
+        partition: "dashboard-runtime",
+      })),
+      stopDashboard: vi.fn(async () => undefined),
+      dashboardRuntimeStatus: vi.fn(async () => ({ runtimeId: "replacement", status: "ready", attached: true })),
+    } as unknown as VaultApi;
+
+    await act(async () =>
+      root.render(<DashboardHost vaultId="vault" dashboard={dashboard} version={1} hidden onManageAccess={vi.fn()} />),
+    );
+    await act(async () => Promise.resolve());
+
+    const webview = document.body.querySelector<HTMLElement>('[data-testid="dashboard-webview"]')!;
+    expect(webview.style.display).toBe("none");
+    expect(webview.offsetParent).toBeNull();
+    expect(document.activeElement).not.toBe(webview);
+  });
 });
 
 describe("dashboard secrets panel", () => {

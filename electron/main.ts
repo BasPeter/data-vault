@@ -9,6 +9,7 @@ import {
   nativeTheme,
   protocol,
   shell,
+  webContents,
   type IpcMainInvokeEvent,
 } from "electron";
 import { VaultService } from "./vault";
@@ -559,6 +560,39 @@ function registerIpc(): void {
     assertTrusted(event);
     const status = dashboardRuntime?.getStatusForTesting();
     return status ? { runtimeId: status.runtimeId, status: status.status, attached: status.attached } : null;
+  });
+  ipcMain.handle("dashboard-runtime:prepare-trusted-flow", async (event) => {
+    assertTrusted(event);
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    if (!owner || owner !== mainWindow || owner.isDestroyed() || owner.webContents.isDestroyed() || !dashboardRuntime) {
+      throw new Error("Dashboard trusted flow is unavailable.");
+    }
+    owner.blurWebView();
+    owner.focus();
+    owner.webContents.focus();
+    const deadline = Date.now() + 500;
+    while (Date.now() < deadline) {
+      owner.blurWebView();
+      owner.webContents.focus();
+      if (webContents.getFocusedWebContents() === owner.webContents) {
+        return { disposition: "retained", runtimeId: dashboardRuntime.currentRuntimeId() } as const;
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    }
+    const focused = webContents.getFocusedWebContents();
+    if (!focused) throw new Error("Dashboard trusted flow is unavailable.");
+    const runtimeId = dashboardRuntime.destroyFocusedCurrentGuest(focused);
+    owner.focus();
+    owner.webContents.focus();
+    const fallbackDeadline = Date.now() + 500;
+    while (Date.now() < fallbackDeadline) {
+      owner.webContents.focus();
+      if (webContents.getFocusedWebContents() === owner.webContents) {
+        return { disposition: "destroyed", runtimeId } as const;
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error("Dashboard trusted flow is unavailable.");
   });
   ipcMain.handle("dashboard-runtime:authority-count-for-testing", (event) => {
     assertTrusted(event);

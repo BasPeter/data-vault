@@ -1,7 +1,7 @@
 ## 1. Main-process guest hardening
 
 - [x] 1.1 Enable `webviewTag: true` on the dashboard-hosting `BrowserWindow` in `electron/main.ts`, scoped to that single window.
-- [x] 1.2 Add a `will-attach-webview` handler on the host `webContents` that overwrites each guest's `webPreferences` to the sandboxed dashboard profile (`nodeIntegration: false`, `contextIsolation: true`, `sandbox: true`, dashboard preload, isolated non-persistent session) and rejects guests whose `preload`, `partition`, or `src` were not set by trusted host code.
+- [x] 1.2 Add a `will-attach-webview` handler on the host `webContents` that validates the current main-issued descriptor, rejects stale, unexpected, or mismatched `src`/`partition` values, and overwrites the preload and all guest `webPreferences` to the sandboxed dashboard profile.
 - [x] 1.3 Add a `did-attach-webview` handler that hands the guest `webContents` to the runtime controller so it can install policies against the DOM-created guest instead of a controller-constructed view.
 
 ## 2. Runtime controller rework
@@ -41,7 +41,14 @@
 ## 7. Verification
 
 - [x] 7.1 Run `npm run typecheck`, `npm run lint`, and `npm run format:check`. (All green; also `npm run build` succeeds.)
-- [x] 7.2 Run the narrow dashboard unit tests, then `npm run test`. (314 unit tests pass.)
+- [x] 7.2 Run the narrow dashboard unit tests, then `npm run test`. (313 unit tests pass.)
 - [x] 7.3 Run `npm run test:e2e`. (17 Playwright tests pass.)
 - [x] 7.4 Re-verify `dashboard-secrets` and `dashboard-external-links` invariants hold under the new layering. (111 focused invariant tests pass.)
-- [ ] 7.5 Reviewer sign-off on the security-requirement changes before archiving.
+
+## 8. Reviewer remediation
+
+- [x] 8.1 Align proposal, design, architecture, security, custom-dashboard, and task artifacts on ownership, attachment, and privileged-consent ordering.
+- [x] 8.2 Keep retained focus-ack then hide; for validated `destroyed`, do not prepare again: hide slot/input, remount exactly once with `display:none` and input disabled from creation, await a different attached, ready same-context replacement verified hidden/input-inert, then open trusted UI with DOM focus; timeout/context mismatch/unhidden replacement aborts closed.
+- [x] 8.3 Test retained and destroyed paths, assert exactly one preparation call, prove a second destructive-capable preparation is prohibited, verify hidden/input-disabled replacement creation and different attached/ready gating, then DOM focus on trusted UI; cover timeout/context mismatch/unhidden replacement fail-closed behavior. (Focused trusted-flow and DashboardHost tests: 25 pass.)
+- [x] 8.4 Rerun relevant narrow checks and the full quality gates after the trusted-flow focus-transfer changes. (Focused 28/28, typecheck, lint, format, 327 unit tests, build, 18 e2e tests, and diff checks pass; existing warnings only.)
+- [x] 8.5 Obtain Reviewer sign-off before archiving. (Independent risky/security/architecture review: APPROVED; commit readiness: READY.)
