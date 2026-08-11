@@ -85,6 +85,7 @@ describe("SkillService", () => {
   it("renders the vault format guide and each registered vault", () => {
     const skill = new SkillService(temporaryDirectory()).render([vaultA, vaultB]);
     expect(skill).toContain("name: vault-guide");
+    expect(skill).toContain("skill version 12");
     expect(skill).toContain("across the user's local Data Vault knowledge repositories");
     expect(skill).toContain("## Vault format");
     expect(skill).toContain("Knowledge");
@@ -130,8 +131,8 @@ describe("SkillService", () => {
   it("publishes the bumped vault guide version and canonical fingerprint", () => {
     const service = new SkillService(temporaryDirectory());
 
-    expect(service.status([]).version).toBe("11");
-    expect(service.render([])).toContain("skill version 11");
+    expect(service.status([]).version).toBe("12");
+    expect(service.render([])).toContain("skill version 12");
     expect(service.fingerprint([])).toMatch(/^[a-f0-9]{64}$/);
   });
 
@@ -256,15 +257,25 @@ describe("SkillService", () => {
     expect(fs.existsSync(codexSkill(home))).toBe(false);
   });
 
-  it("tells the writer to link documents and invoke the reviewer", () => {
+  it("tells the writer to link, tag, and review documents", () => {
     const skill = new SkillService(temporaryDirectory()).render([vaultA]);
     expect(skill).toContain("## Linking documents");
+    expect(skill).toContain("## Tagging documents");
+    expect(skill).toContain("Tags are a search and navigation contract.");
+    expect(skill).toContain("Give every new document meaningful, non-empty tags.");
+    expect(skill).toContain("For every edited\n  document, review and correct its tags.");
+    expect(skill).toContain("durable subjects, projects, and document types");
+    expect(skill).toContain("reuse their canonical vocabulary");
+    expect(skill).toContain("Use lowercase and the vault's existing tag-format conventions.");
+    expect(skill).toContain("Deduplicate\n  tags, remove stale ones");
+    expect(skill).toContain("generic, date-only, speculative,\n  near-duplicate tags");
     expect(skill).toContain("## After making changes");
     expect(skill).toContain("data-vault://open?path=");
     expect(skill).toContain("Windows PowerShell:");
     expect(skill).toContain("macOS:");
     expect(skill).toContain("Linux:");
     expect(skill).toContain("xdg-open");
+    expect(skill).toContain("Before invoking the reviewer, set or review the document's tags.");
     expect(skill).toContain("document-reviewer");
     expect(skill).toContain("less public");
   });

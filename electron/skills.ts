@@ -13,7 +13,7 @@ import type {
 
 // Bump a skill's version when its SKILL.md template or guidance changes so that
 // installed copies are reported as outdated and re-installed.
-const VAULT_GUIDE_VERSION = "11";
+const VAULT_GUIDE_VERSION = "12";
 const DOCUMENT_REVIEWER_VERSION = "5";
 const VAULT_DASHBOARD_GUIDE_VERSION = "1";
 const SKILL_FILE = "SKILL.md";
@@ -268,6 +268,18 @@ ${vaults_}
   published one. If you cannot establish that the source vault is less public
   than the target, do not create the cross-vault link — ask the user first.
 
+## Tagging documents
+
+Tags are a search and navigation contract.
+
+- Give every new document meaningful, non-empty tags. For every edited
+  document, review and correct its tags.
+- Infer tags from durable subjects, projects, and document types. Inspect
+  nearby and relevant documents, then reuse their canonical vocabulary.
+- Use lowercase and the vault's existing tag-format conventions. Deduplicate
+  tags, remove stale ones, and avoid generic, date-only, speculative,
+  near-duplicate tags.
+
 ## After making changes
 
 - To show a document in the Data Vault app after creating or editing it, open
@@ -297,6 +309,7 @@ ${vaults_}
   If Data Vault is already running, it opens or focuses a tab for that document.
   If it is not running, the app starts and opens the document once the vault is
   loaded. Only use paths inside a registered vault's documents directory.
+- Before invoking the reviewer, set or review the document's tags.
 - Always invoke the \`document-reviewer\` skill after creating or editing
   documents, and resolve its structural findings before committing.
 `;
