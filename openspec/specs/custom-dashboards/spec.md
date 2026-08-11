@@ -145,7 +145,12 @@ The application SHALL present capability requests and effective grants in plain 
 #### Scenario: User manages dashboard access
 
 - **WHEN** the user initiates permission management from trusted application chrome
-- **THEN** the application hides or detaches the dashboard view, disables its input, moves focus to recognizable host-owned UI, and keeps the dashboard unable to overlay or intercept the flow through approval, cancellation, scope choice, or document selection
+- **THEN** `retained` hides before UI; after validated `destroyed`, without preparing again, the renderer remounts once with `display:none` and input disabled, and opens permission UI with DOM focus only after the different attached, ready same-context replacement remains hidden/input-inert
+
+#### Scenario: Replacement runtime is not ready
+
+- **WHEN** hidden replacement readiness times out, the context changes, or the replacement is not hidden/input-inert
+- **THEN** permission UI does not open and the flow aborts closed without calling preparation again or creating a stale or duplicate remount
 
 #### Scenario: Dashboard repeatedly requests denied access
 

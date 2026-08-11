@@ -10,14 +10,17 @@ one requires explicit user sign-off, not agent judgment.
 
 ### Requirement: Renderer Sandboxing
 
-The renderer SHALL run with `nodeIntegration: false`, `contextIsolation:
-true`, and `sandbox: true`.
+The renderer SHALL run with `nodeIntegration: false`, `contextIsolation: true`, and `sandbox: true`. The renderer window MAY enable `webviewTag: true` solely to host the dashboard sandbox. The renderer SHALL set only the exact `src` and isolated `partition` from a current main-issued runtime descriptor and SHALL set no preload or preference attributes. At guest attach time, main SHALL validate descriptor identity, reject stale, unexpected, or mismatched `src`/`partition` values, and overwrite the preload and all guest `webPreferences` to the sandboxed dashboard profile (`nodeIntegration: false`, `contextIsolation: true`, `sandbox: true`, no `nodeIntegrationInSubFrames`, the dashboard preload, and the isolated non-persistent session).
 
 #### Scenario: Renderer window is created
 
 - **WHEN** the app creates a `BrowserWindow` for the renderer
-- **THEN** its `webPreferences` SHALL set `nodeIntegration: false`,
-  `contextIsolation: true`, and `sandbox: true`
+- **THEN** its `webPreferences` SHALL set `nodeIntegration: false`, `contextIsolation: true`, and `sandbox: true`
+
+#### Scenario: A dashboard guest webview is attached
+
+- **WHEN** a `<webview>` guest attaches to the renderer for a dashboard
+- **THEN** main SHALL accept only the current descriptor's exact `src` and `partition`, reject stale, unexpected, or mismatched guests, and overwrite the preload and all preferences with the sandboxed dashboard profile
 
 ### Requirement: Narrow Preload Surface
 
@@ -212,12 +215,12 @@ be treated as untrusted input, regardless of its source.
 
 ### Requirement: Executable dashboards remain untrusted and isolated
 
-All dashboard manifests, assets, state, and JavaScript SHALL be treated as untrusted external vault input and SHALL execute only in a dedicated sandboxed web contents with Node.js disabled, context isolation enabled, sandboxing enabled, a non-persistent isolated session, and no application preload or `window.vaultApi`.
+All dashboard manifests, assets, state, and JavaScript SHALL be treated as untrusted external vault input and SHALL execute only in a dedicated sandboxed guest web contents with Node.js disabled, context isolation enabled, sandboxing enabled, a non-persistent isolated session, and no application preload or `window.vaultApi`. When the guest is embedded as an in-renderer `<webview>` (an out-of-process child frame of the host renderer), it SHALL remain a distinct web contents that cannot reach the host renderer's DOM, scripts, `window.vaultApi`, cookies, or storage, and the main process SHALL retain lifecycle, session-policy, navigation-denial, IPC-authentication, and teardown authority over that guest web contents.
 
 #### Scenario: Dashboard script inspects its environment
 
 - **WHEN** arbitrary dashboard JavaScript executes
-- **THEN** it cannot access Node.js, Electron, raw IPC, the application DOM, application cookies/storage, `window.vaultApi`, filesystem paths, Git, credentials, dialogs, child processes, or another dashboard context
+- **THEN** it cannot access Node.js, Electron, raw IPC, the application DOM, application cookies/storage, `window.vaultApi`, filesystem paths, Git, credentials, dialogs, child processes, the host renderer's DOM or scripts, or another dashboard context
 
 #### Scenario: Normal document contains dashboard-like code
 
@@ -259,12 +262,12 @@ Dashboard manifests MAY request fixed capability identifiers, but only trusted a
 
 ### Requirement: Permission consent is host-initiated and visually isolated
 
-Privileged dashboard consent SHALL begin only from an affirmative user action in recognizable trusted application chrome, and the dashboard view SHALL be hidden or detached, input-disabled, and unable to overlay or capture focus for the complete permission, document-scope, and document-selection flow; consent for all-documents scope SHALL explicitly state that future documents are included until the grant is changed or revoked.
+Privileged dashboard consent SHALL begin only from affirmative trusted chrome. The retained path SHALL confirm exact trusted-host global focus, then hide/remove input before UI. If validated fallback destroys the guest, main has already confirmed exact host focus. The renderer SHALL hide the slot/input and remount exactly once with `display:none` and input disabled from creation, without calling `prepareDashboardTrustedFlow` again. A second destructive-capable preparation is prohibited. UI SHALL open and receive DOM focus only after a different runtime ID is attached and ready in the unchanged context and verified still hidden/input-inert. Timeout, context mismatch, or an unhidden/input-active replacement SHALL abort closed.
 
 #### Scenario: Permission management opens
 
 - **WHEN** the user activates Manage access in trusted host UI
-- **THEN** the application removes dashboard pixels and input from the consent surface before presenting capability details, document scope, or document selection
+- **THEN** `retained` synchronously hides before UI, while `destroyed` synchronously hides and remounts one hidden replacement before UI; permission details open only for a different attached, ready, unfocused-guest runtime in the unchanged context, otherwise the flow aborts closed
 
 #### Scenario: User considers all-documents scope
 
@@ -278,7 +281,7 @@ Privileged dashboard consent SHALL begin only from an affirmative user action in
 
 ### Requirement: Dashboard navigation and ambient browser authority are denied
 
-Dashboard web contents SHALL enforce `default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; child-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'` without `unsafe-inline` or `unsafe-eval`, SHALL send `X-Content-Type-Options: nosniff`, SHALL allow only `text/html`, `text/css`, `text/javascript`, `application/json`, `image/png`, `image/jpeg`, `image/gif`, `image/webp`, `font/woff`, and `font/woff2`, and SHALL independently deny all session requests except contained assets from the active mapped custom origin. An authenticated dashboard MAY request one strict-policy-valid external HTTPS URL only through the fixed dashboard API and only after explicit host-owned per-request confirmation that displays the complete canonical URL; it SHALL NOT gain in-dashboard navigation, popup, download, ambient browser, or protocol-handler authority. A pending confirmation SHALL be cancelled if its runtime ends or changes generation, and main SHALL re-authenticate the same sender, frame, runtime, and generation immediately before an affirmed request launches.
+Dashboard web contents SHALL enforce `default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; child-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'` without `unsafe-inline` or `unsafe-eval`, SHALL send `X-Content-Type-Options: nosniff`, SHALL allow only `text/html`, `text/css`, `text/javascript`, `application/json`, `image/png`, `image/jpeg`, `image/gif`, `image/webp`, `font/woff`, and `font/woff2`, and SHALL independently deny all session requests except contained assets from the active mapped custom origin. The main process SHALL enforce navigation, popup, download, and permission denial on the guest web contents obtained through the host's guest-attach hooks, regardless of whether the guest is a main-owned view or an in-renderer `<webview>`. An authenticated dashboard MAY request one strict-policy-valid external HTTPS URL only through the fixed dashboard API and only after explicit host-owned per-request confirmation that displays the complete canonical URL; it SHALL NOT gain in-dashboard navigation, popup, download, ambient browser, or protocol-handler authority. A pending confirmation SHALL be cancelled if its runtime ends or changes generation, and main SHALL re-authenticate the same sender, frame, runtime, and generation immediately before an affirmed request launches.
 
 #### Scenario: Dashboard attempts network exfiltration
 
@@ -294,6 +297,11 @@ Dashboard web contents SHALL enforce `default-src 'none'; script-src 'self'; sty
 
 - **WHEN** an asset URL contains invalid encoding, nested encoding, NULs, backslashes, absolute forms, or dot segments after exactly one percent-decoding pass
 - **THEN** the protocol rejects it before MIME selection or filesystem access
+
+#### Scenario: Dashboard attempts in-frame navigation
+
+- **WHEN** dashboard code, a link, a form, or a redirect attempts to navigate the guest web contents or open a popup
+- **THEN** the main process denies the navigation and popup through the guest-attach hooks and the dashboard remains on its mapped custom origin
 
 #### Scenario: Dashboard requests an external HTTPS link
 
