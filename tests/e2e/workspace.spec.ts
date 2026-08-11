@@ -55,6 +55,8 @@ test("uses the workspace features in one session", async ({ appLaunch }, testInf
     await expect(page.getByRole("tab", { name: "Meeting Notes" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Meeting Notes", level: 1 })).toBeVisible();
     await page.getByRole("tab", { name: "Overview" }).click();
+    await expect(page.getByRole("button", { name: "Overview", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("button", { name: "Meeting Notes", exact: true })).not.toHaveAttribute("aria-current");
     await expect(page.getByText("knowledge", { exact: true })).toBeVisible();
     await expect(page.locator(".doc-content svg").first()).toBeVisible();
     const diagrams = page.locator(".doc-content .mermaid");
