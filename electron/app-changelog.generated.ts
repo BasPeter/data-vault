@@ -2,13 +2,29 @@
 import type { AppChangelog } from "../src/types";
 
 export const APP_CHANGELOG = {
-  "generatedAt": "2026-08-11T10:52:53+02:00",
+  "generatedAt": "2026-08-11T12:53:16+02:00",
   "repositoryUrl": "https://github.com/BasPeter/data-vault.git",
   "releases": [
     {
-      "version": "0.18.0",
-      "date": "2026-08-11T10:52:53+02:00",
+      "version": "0.19.0",
+      "date": "2026-08-11T12:53:16+02:00",
       "commits": [
+        {
+          "hash": "8b09ce5d82bb9e041498139d69c4027188589bda",
+          "shortHash": "8b09ce5",
+          "subject": "feat(tags): add tag word cloud view"
+        }
+      ]
+    },
+    {
+      "version": "0.18.0",
+      "date": "2026-08-11T11:11:54+02:00",
+      "commits": [
+        {
+          "hash": "1ff07ae66c6df280d218b89791914f0a55c8c9ee",
+          "shortHash": "1ff07ae",
+          "subject": "chore(release): prepare 0.18.0"
+        },
         {
           "hash": "9bc1239cdc4beee899e1f90ae3f14a0ad10ac0b4",
           "shortHash": "9bc1239",
