@@ -11,6 +11,7 @@ import {
   Plus,
   Target,
 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { AgentSkillsPanel } from "@/components/agent-skills-panel";
 import { UpdateButton } from "@/components/update-button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -28,14 +29,16 @@ import {
   SidebarGroup,
   SidebarGroupLabel,
   SidebarHeader,
+  SidebarInput,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSub,
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import type { DashboardListEntry, DashboardManifest } from "@/dashboard-contracts";
-import type { TreeNode, VaultSummary } from "@/types";
+import type { DocNode, TreeNode, VaultSummary } from "@/types";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -70,6 +73,175 @@ const dashboardColors = {
   purple: "bg-purple-500/15 text-purple-700 dark:text-purple-300",
   slate: "bg-slate-500/15 text-slate-700 dark:text-slate-300",
 } as const;
+
+type IndexedDoc = {
+  doc: DocNode;
+  path: string[];
+  index: number;
+  normalizedTags: string[];
+};
+
+type SearchResult = IndexedDoc & { score: number; matchedTags: string[] };
+
+function createSearchIndex(tree: TreeNode[]) {
+  const documents: IndexedDoc[] = [];
+  const suggestions: string[] = [];
+  const knownSuggestions = new Set<string>();
+
+  const visit = (nodes: TreeNode[], path: string[]) => {
+    for (const node of nodes) {
+      if (node.type === "folder") {
+        visit(node.children, [...path, node.label]);
+        continue;
+      }
+
+      const normalizedTags = [...new Set(node.tags.map((tag) => tag.toLowerCase()))];
+      documents.push({ doc: node, path, index: documents.length, normalizedTags });
+      for (const tag of node.tags) {
+        const normalizedTag = tag.toLowerCase();
+        if (!knownSuggestions.has(normalizedTag)) {
+          knownSuggestions.add(normalizedTag);
+          suggestions.push(tag);
+        }
+      }
+    }
+  };
+
+  visit(tree, []);
+  return { documents, suggestions };
+}
+
+function uniqueTokens(tokens: string[]) {
+  const seen = new Set<string>();
+  return tokens.flatMap((token) => {
+    const normalizedToken = token.trim().toLowerCase();
+    if (!normalizedToken || seen.has(normalizedToken)) return [];
+    seen.add(normalizedToken);
+    return [normalizedToken];
+  });
+}
+
+function addTokens(tokens: string[], value: string) {
+  const knownTokens = new Set(tokens.map((token) => token.toLowerCase()));
+  return value.split(",").reduce((nextTokens, fragment) => {
+    const token = fragment.trim();
+    const normalizedToken = token.toLowerCase();
+    if (!token || knownTokens.has(normalizedToken)) return nextTokens;
+    knownTokens.add(normalizedToken);
+    return [...nextTokens, token];
+  }, tokens);
+}
+
+function scoreResults(index: IndexedDoc[], tokens: string[]): SearchResult[] {
+  const queryTokens = uniqueTokens(tokens);
+  return index
+    .flatMap((entry) => {
+      const score = queryTokens.filter((token) => entry.normalizedTags.some((tag) => tag.includes(token))).length;
+      if (!score) return [];
+      const matchedTags = entry.doc.tags.filter((tag, position) => {
+        const normalizedTag = tag.toLowerCase();
+        return (
+          entry.doc.tags.findIndex((candidate) => candidate.toLowerCase() === normalizedTag) === position &&
+          queryTokens.some((token) => normalizedTag.includes(token))
+        );
+      });
+      return [{ ...entry, score, matchedTags }];
+    })
+    .sort((left, right) => {
+      const leftFullMatch = left.score === queryTokens.length;
+      const rightFullMatch = right.score === queryTokens.length;
+      if (leftFullMatch !== rightFullMatch) return leftFullMatch ? -1 : 1;
+      if (!leftFullMatch && left.score !== right.score) return right.score - left.score;
+      return left.index - right.index;
+    });
+}
+
+function SidebarTagSearch({
+  tokens,
+  input,
+  suggestions,
+  highlightedIndex,
+  onInputChange,
+  onInputKeyDown,
+  onPaste,
+  onRemoveToken,
+  onSelectSuggestion,
+}: {
+  tokens: string[];
+  input: string;
+  suggestions: string[];
+  highlightedIndex: number | null;
+  onInputChange: (value: string) => void;
+  onInputKeyDown: React.KeyboardEventHandler<HTMLInputElement>;
+  onPaste: React.ClipboardEventHandler<HTMLInputElement>;
+  onRemoveToken: (token: string) => void;
+  onSelectSuggestion: (suggestion: string) => void;
+}) {
+  const { state } = useSidebar();
+
+  if (state === "collapsed") return null;
+
+  return (
+    <div className="app-no-drag rounded-md border bg-transparent p-1">
+      <div className="relative">
+        <SidebarInput
+          className="w-full border-0 bg-black text-white placeholder:text-white focus-visible:border-0 focus-visible:ring-0"
+          aria-label="Search document tags"
+          aria-autocomplete="list"
+          aria-controls="sidebar-tag-suggestions"
+          aria-expanded={suggestions.length > 0}
+          aria-activedescendant={highlightedIndex === null ? undefined : `sidebar-tag-suggestion-${highlightedIndex}`}
+          placeholder="Search"
+          role="combobox"
+          value={input}
+          onChange={(event) => onInputChange(event.target.value)}
+          onKeyDown={onInputKeyDown}
+          onPaste={onPaste}
+        />
+        {suggestions.length > 0 && (
+          <div
+            id="sidebar-tag-suggestions"
+            role="listbox"
+            className="absolute left-0 top-full z-10 mt-1 w-full rounded border bg-popover p-1"
+          >
+            {suggestions.map((suggestion, index) => (
+              <button
+                id={`sidebar-tag-suggestion-${index}`}
+                key={suggestion.toLowerCase()}
+                role="option"
+                tabIndex={-1}
+                aria-selected={highlightedIndex === index}
+                className={cn(
+                  "block w-full rounded px-2 py-1 text-left text-sm",
+                  highlightedIndex === index && "bg-accent",
+                )}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => onSelectSuggestion(suggestion)}
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      {tokens.length > 0 && (
+        <div data-tag-chip-row className="flex flex-wrap gap-1 pt-1">
+          {tokens.map((token) => (
+            <span
+              key={token.toLowerCase()}
+              className="flex items-center gap-1 rounded bg-sidebar-accent px-2 py-1 text-xs"
+            >
+              {token}
+              <button aria-label={`Remove ${token}`} onClick={() => onRemoveToken(token)}>
+                x
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function TreeItems({
   nodes,
@@ -106,7 +278,13 @@ function TreeItems({
           <SidebarMenuItem key={node.id}>
             <ContextMenu>
               <ContextMenuTrigger asChild>
-                <SidebarMenuButton isActive={activeId === node.id} onClick={() => onSelect(node.id)}>
+                <SidebarMenuButton
+                  isActive={activeId === node.id}
+                  aria-current={activeId === node.id ? "page" : undefined}
+                  data-document-active={activeId === node.id ? "true" : undefined}
+                  className={cn(activeId === node.id && "border-l-2 border-sidebar-primary font-semibold")}
+                  onClick={() => onSelect(node.id)}
+                >
                   <FileText />
                   <span>{node.label}</span>
                 </SidebarMenuButton>
@@ -121,6 +299,63 @@ function TreeItems({
           </SidebarMenuItem>
         ),
       )}
+    </SidebarMenu>
+  );
+}
+
+function SearchResultItems({
+  results,
+  totalTokens,
+  activeId,
+  onSelect,
+  onCopyPath,
+}: {
+  results: SearchResult[];
+  totalTokens: number;
+  activeId: string | null;
+  onSelect: (id: string) => void;
+  onCopyPath: (id: string) => void;
+}) {
+  return (
+    <SidebarMenu aria-label="Ranked document results">
+      {results.map((result) => (
+        <SidebarMenuItem key={result.doc.id}>
+          <ContextMenu>
+            <ContextMenuTrigger asChild>
+              <SidebarMenuButton
+                isActive={activeId === result.doc.id}
+                aria-current={activeId === result.doc.id ? "page" : undefined}
+                data-document-active={activeId === result.doc.id ? "true" : undefined}
+                data-search-result="true"
+                className={cn(
+                  "h-auto min-h-12 items-start py-2 [&>div:last-child]:truncate-none",
+                  activeId === result.doc.id && "border-l-2 border-sidebar-primary font-semibold",
+                )}
+                onClick={() => onSelect(result.doc.id)}
+              >
+                <FileText />
+                <div className="min-w-0 flex-1">
+                  <span className="block truncate leading-tight">{result.doc.label}</span>
+                  {result.path.length > 0 && (
+                    <span className="text-muted-foreground block truncate text-xs leading-tight">
+                      {result.path.join(" / ")}
+                    </span>
+                  )}
+                  <span className="text-muted-foreground block truncate text-xs leading-tight">
+                    {result.score}/{totalTokens} · {result.matchedTags.join(", ")}
+                  </span>
+                </div>
+              </SidebarMenuButton>
+            </ContextMenuTrigger>
+            <ContextMenuContent>
+              <ContextMenuItem onSelect={() => onCopyPath(result.doc.id)}>
+                <Copy />
+                Copy path
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
+        </SidebarMenuItem>
+      ))}
     </SidebarMenu>
   );
 }
@@ -142,6 +377,84 @@ export function AppSidebar({
   onRelocateDashboard,
   onManageSecrets,
 }: Props) {
+  const { state } = useSidebar();
+  const searchIndex = useMemo(() => createSearchIndex(tree), [tree]);
+  const [tokens, setTokens] = useState<string[]>([]);
+  const [input, setInput] = useState("");
+  const [suggestionsOpen, setSuggestionsOpen] = useState(true);
+  const [highlightedIndex, setHighlightedIndex] = useState<number | null>(null);
+  const activeTokens = uniqueTokens([...tokens, input]);
+  const committedTokens = new Set(tokens.map((token) => token.toLowerCase()));
+  const suggestions =
+    suggestionsOpen && input.trim()
+      ? searchIndex.suggestions.filter(
+          (suggestion) =>
+            suggestion.toLowerCase().includes(input.trim().toLowerCase()) &&
+            !committedTokens.has(suggestion.toLowerCase()),
+        )
+      : [];
+  const results = activeTokens.length ? scoreResults(searchIndex.documents, activeTokens) : [];
+  const isSearching = activeTokens.length > 0;
+  const activeSuggestionIndex = highlightedIndex !== null && suggestions[highlightedIndex] ? highlightedIndex : null;
+
+  useEffect(() => {
+    if (activeSuggestionIndex !== highlightedIndex) {
+      setHighlightedIndex(activeSuggestionIndex);
+    }
+  }, [activeSuggestionIndex, highlightedIndex]);
+
+  const commit = (value: string) => {
+    setTokens((currentTokens) => addTokens(currentTokens, value));
+    setInput("");
+    setSuggestionsOpen(false);
+    setHighlightedIndex(null);
+  };
+  const removeToken = (token: string) => {
+    setTokens((currentTokens) =>
+      currentTokens.filter((currentToken) => currentToken.toLowerCase() !== token.toLowerCase()),
+    );
+  };
+  const selectSuggestion = (suggestion: string) => commit(suggestion);
+  const handleKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (event) => {
+    if (event.key === "ArrowDown" && suggestions.length) {
+      event.preventDefault();
+      setSuggestionsOpen(true);
+      setHighlightedIndex((currentIndex) => (currentIndex === null ? 0 : (currentIndex + 1) % suggestions.length));
+      return;
+    }
+    if (event.key === "ArrowUp" && suggestions.length) {
+      event.preventDefault();
+      setSuggestionsOpen(true);
+      setHighlightedIndex((currentIndex) =>
+        currentIndex === null ? suggestions.length - 1 : (currentIndex - 1 + suggestions.length) % suggestions.length,
+      );
+      return;
+    }
+    if (
+      (event.key === "Enter" || event.key === "Tab") &&
+      activeSuggestionIndex !== null &&
+      suggestions[activeSuggestionIndex]
+    ) {
+      event.preventDefault();
+      selectSuggestion(suggestions[activeSuggestionIndex]);
+      return;
+    }
+    if (event.key === "Enter" || event.key === ",") {
+      event.preventDefault();
+      commit(input);
+      return;
+    }
+    if (event.key === "Escape" && suggestions.length) {
+      event.preventDefault();
+      setSuggestionsOpen(false);
+      setHighlightedIndex(null);
+      return;
+    }
+    if (event.key === "Backspace" && !input && tokens.length) {
+      setTokens((currentTokens) => currentTokens.slice(0, -1));
+    }
+  };
+
   return (
     <Sidebar>
       <SidebarHeader
@@ -154,6 +467,36 @@ export function AppSidebar({
             <span className="text-muted-foreground text-xs">Data Vault</span>
           </div>
         </div>
+        <SidebarTagSearch
+          tokens={tokens}
+          input={input}
+          suggestions={suggestions}
+          highlightedIndex={activeSuggestionIndex}
+          onInputChange={(value) => {
+            setInput(value);
+            setSuggestionsOpen(true);
+            setHighlightedIndex(null);
+          }}
+          onInputKeyDown={handleKeyDown}
+          onPaste={(event) => {
+            const pastedText = event.clipboardData.getData("text");
+            const selectionStart = event.currentTarget.selectionStart ?? input.length;
+            const selectionEnd = event.currentTarget.selectionEnd ?? selectionStart;
+            const prospectiveInput = `${input.slice(0, selectionStart)}${pastedText}${input.slice(selectionEnd)}`;
+            event.preventDefault();
+            const fragments = prospectiveInput.split(",");
+            if (fragments.length > 1) {
+              setTokens((currentTokens) => addTokens(currentTokens, fragments.slice(0, -1).join(",")));
+              setInput(fragments.at(-1)!.trim());
+            } else {
+              setInput(prospectiveInput);
+            }
+            setSuggestionsOpen(true);
+            setHighlightedIndex(null);
+          }}
+          onRemoveToken={removeToken}
+          onSelectSuggestion={selectSuggestion}
+        />
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
@@ -270,10 +613,24 @@ export function AppSidebar({
         </SidebarGroup>
         <SidebarGroup>
           <SidebarGroupLabel>Documents</SidebarGroupLabel>
-          {tree.length ? (
-            <TreeItems nodes={tree} activeId={activeId} onSelect={onSelect} onCopyPath={onCopyPath} />
+          {state === "collapsed" || !isSearching ? (
+            tree.length ? (
+              <TreeItems nodes={tree} activeId={activeId} onSelect={onSelect} onCopyPath={onCopyPath} />
+            ) : (
+              <p className="text-muted-foreground px-2 py-1 text-xs">No documents found.</p>
+            )
+          ) : results.length ? (
+            <SearchResultItems
+              results={results}
+              totalTokens={activeTokens.length}
+              activeId={activeId}
+              onSelect={onSelect}
+              onCopyPath={onCopyPath}
+            />
           ) : (
-            <p className="text-muted-foreground px-2 py-1 text-xs">No documents found.</p>
+            <p role="status" className="text-muted-foreground px-2 py-1 text-xs">
+              No documents match these tags.
+            </p>
           )}
         </SidebarGroup>
       </SidebarContent>
