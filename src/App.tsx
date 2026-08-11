@@ -10,6 +10,7 @@ import {
   Network,
   Plus,
   RefreshCw,
+  Tags,
 } from "lucide-react";
 import { GithubConnectDialog } from "@/components/github-connect-dialog";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -21,6 +22,7 @@ import { DocumentPicker } from "@/components/document-picker";
 import { DocumentTabs } from "@/components/document-tabs";
 import { DocumentView } from "@/components/document-view";
 import { GraphView } from "@/components/graph-view";
+import { TagCloud } from "@/components/tag-cloud";
 import { GuidedTour } from "@/components/guided-tour";
 import { QuickNotesPanel } from "@/components/quick-notes-panel";
 import { VaultSwitcher } from "@/components/vault-switcher";
@@ -681,9 +683,11 @@ export default function App() {
           <span className="text-muted-foreground min-w-0 flex-1 truncate text-sm">
             {view.kind === "graph"
               ? "Graph"
-              : view.kind === "dashboard"
-                ? dashboards.find(({ id }) => id === view.dashboardId)?.title
-                : title}
+              : view.kind === "tag-cloud"
+                ? "Tag cloud"
+                : view.kind === "dashboard"
+                  ? dashboards.find(({ id }) => id === view.dashboardId)?.title
+                  : title}
           </span>
           <div className="app-no-drag app-header-actions flex shrink-0 items-center gap-1">
             <VaultChangesIndicator vaultId={vaultId} repositoryPath={vault.repositoryPath} version={version} />
@@ -723,6 +727,17 @@ export default function App() {
             >
               <Network />
             </Button>
+            <Button
+              className="app-header-primary-action"
+              variant={view.kind === "tag-cloud" ? "secondary" : "ghost"}
+              size="icon"
+              title="Tag cloud"
+              aria-label="Tag cloud"
+              aria-pressed={view.kind === "tag-cloud"}
+              onClick={() => setView(view.kind === "tag-cloud" ? { kind: "document" } : { kind: "tag-cloud" })}
+            >
+              <Tags />
+            </Button>
             <div className="app-header-secondary-action">
               <GuidedTour />
             </div>
@@ -755,6 +770,8 @@ export default function App() {
         <main className="min-h-0 flex-1">
           {view.kind === "graph" ? (
             <GraphView vaultId={vaultId} activeId={activeId} onSelect={openDocument} version={version} />
+          ) : view.kind === "tag-cloud" ? (
+            <TagCloud tree={manifest.tree} />
           ) : view.kind === "dashboard" ? (
             (() => {
               const dashboard = dashboards.find(({ id }) => id === view.dashboardId);
