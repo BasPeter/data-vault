@@ -2,9 +2,45 @@
 import type { AppChangelog } from "../src/types";
 
 export const APP_CHANGELOG = {
-  "generatedAt": "2026-08-11T09:29:33+02:00",
+  "generatedAt": "2026-08-11T10:52:53+02:00",
   "repositoryUrl": "https://github.com/BasPeter/data-vault.git",
   "releases": [
+    {
+      "version": "0.18.0",
+      "date": "2026-08-11T10:52:53+02:00",
+      "commits": [
+        {
+          "hash": "9bc1239cdc4beee899e1f90ae3f14a0ad10ac0b4",
+          "shortHash": "9bc1239",
+          "subject": "chore(release): update generated app changelog"
+        },
+        {
+          "hash": "b1683f1d958bdb126ccedf60575fd5e5b680448e",
+          "shortHash": "b1683f1",
+          "subject": "feat(skills): add vault document tagging guidance"
+        },
+        {
+          "hash": "2523657f86638a4d428825bf8a52ce36d426094c",
+          "shortHash": "2523657",
+          "subject": "chore(openspec): archive sidebar document selection"
+        },
+        {
+          "hash": "41556627c1360c6fb992c1a3b41e1badba124066",
+          "shortHash": "4155662",
+          "subject": "test(sidebar): verify active document selection"
+        },
+        {
+          "hash": "4f4f04f8b9af8118aa885b78c2150177e69f2529",
+          "shortHash": "4f4f04f",
+          "subject": "chore(openspec): archive dashboard webview change"
+        },
+        {
+          "hash": "d96db809d4c5510f718edae437c2e7f389e1c3a1",
+          "shortHash": "d96db80",
+          "subject": "feat(sidebar): add tag search"
+        }
+      ]
+    },
     {
       "version": "0.17.3",
       "date": "2026-07-24T16:36:25+02:00",
