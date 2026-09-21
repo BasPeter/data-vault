@@ -2,13 +2,39 @@
 import type { AppChangelog } from "../src/types";
 
 export const APP_CHANGELOG = {
-  "generatedAt": "2026-08-11T12:53:16+02:00",
+  "generatedAt": "2026-09-21T15:18:42+02:00",
   "repositoryUrl": "https://github.com/BasPeter/data-vault.git",
   "releases": [
     {
-      "version": "0.19.0",
-      "date": "2026-08-11T12:53:16+02:00",
+      "version": "0.19.1",
+      "date": "2026-09-21T15:18:42+02:00",
       "commits": [
+        {
+          "hash": "3e3034be97afbff8b0b2b8fb779b61d3e67187e2",
+          "shortHash": "3e3034b",
+          "subject": "fix(skills): require native containment for pi providers"
+        },
+        {
+          "hash": "0827790e54e1b15b3983dff3a4d311e3664d9d23",
+          "shortHash": "0827790",
+          "subject": "chore(agents): add skill export for pi harness"
+        },
+        {
+          "hash": "9be43a00b17dfa73382dfa8dc36d12a2b0a634a8",
+          "shortHash": "9be43a0",
+          "subject": "chore(agents): update openspec assistant assets"
+        }
+      ]
+    },
+    {
+      "version": "0.19.0",
+      "date": "2026-08-11T12:59:58+02:00",
+      "commits": [
+        {
+          "hash": "3f230c9879e236f684c863b88256aef56e45db6a",
+          "shortHash": "3f230c9",
+          "subject": "chore(release): prepare 0.19.0"
+        },
         {
           "hash": "8b09ce5d82bb9e041498139d69c4027188589bda",
           "shortHash": "8b09ce5",
