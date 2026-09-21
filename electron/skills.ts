@@ -19,9 +19,13 @@ const DOCUMENT_REVIEWER_VERSION = "5";
 const VAULT_DASHBOARD_GUIDE_VERSION = "1";
 const SKILL_FILE = "SKILL.md";
 
-// Native bindings are used when available. Windows arm64 falls back to the
-// helper's documented best-effort implementation rather than disabling skills.
-configureFsSafeNative({ mode: "auto" });
+// POSIX installations require fs-safe's native containment support. Windows
+// uses fs-safe's documented best-effort fallback when native support is absent.
+export function fsSafeNativeModeForPlatform(platform: NodeJS.Platform): "auto" | "require" {
+  return platform === "win32" ? "auto" : "require";
+}
+
+configureFsSafeNative({ mode: fsSafeNativeModeForPlatform(process.platform) });
 
 // Emit a YAML frontmatter description as a double-quoted scalar. Prose
 // descriptions may contain a colon-space (e.g. "rules: format, ..."), which a

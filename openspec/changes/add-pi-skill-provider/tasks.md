@@ -13,4 +13,4 @@
 
 - [x] 3.1 Add focused installer tests for Pi’s fixed target, all generated skills, selected-only writes, failure isolation, freshness/tamper handling, and symlink-escape rejection for every provider root.
 - [x] 3.2 Update Agent Skills panel tests and E2E coverage for Pi and all three generated skills.
-- [ ] 3.3 Run the narrowest relevant tests, lint/format/type checks, and a build as applicable; obtain independent Reviewer approval because the security allowlist changes.
+- [x] 3.3 Run the narrowest relevant tests, lint/format/type checks, and a build as applicable; obtain independent Reviewer approval because the security allowlist changes.
