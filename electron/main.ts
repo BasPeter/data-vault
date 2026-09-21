@@ -24,6 +24,17 @@ import { DashboardSecretStore } from "./dashboard-secrets";
 import { performDashboardSecureFetch } from "./dashboard-secure-fetch";
 import { DASHBOARD_SCHEME, DASHBOARD_SCHEME_PRIVILEGES } from "./dashboard-runtime-assets";
 import { GitHubService } from "./github";
+import { OpenCodeClient, OpenCodeClientError } from "./opencode-client";
+import { OpenCodeCredentialStore, OpenCodeSetupService } from "./opencode-credentials";
+import { OpenCodeController } from "./opencode-controller";
+import { registerOpenCodeIpc } from "./opencode-ipc";
+import { OpenCodeEventStreamClient } from "./opencode-stream-client";
+import { OpenCodeStreamController } from "./opencode-stream-controller";
+import { OpenCodeStreamIpc } from "./opencode-stream-ipc";
+import {
+  OPENCODE_1_18_16_FIXTURE_SCHEMA_SUPPORTED,
+  supportsOpenCodeStreaming,
+} from "./opencode-streaming-compatibility";
 import {
   changelog,
   checkForUpdates,
@@ -66,6 +77,9 @@ let mainWindow: BrowserWindow | null = null;
 let dashboardRuntime: DashboardRuntimeController | null = null;
 let dashboardPermissions: DashboardPermissionStore;
 let dashboardSecrets: DashboardSecretStore;
+let openCodeController: OpenCodeController;
+let openCodeStreamController: OpenCodeStreamController;
+const openCodeStreamIpc = new OpenCodeStreamIpc();
 let pendingOpenRequest: DocumentOpenRequest | null = null;
 const deferredOpenArgs: string[][] = [];
 const watchedVaults = new Map<string, string>();
@@ -427,6 +441,16 @@ function pruneWatchedVaults(): void {
 }
 
 function registerIpc(): void {
+  registerOpenCodeIpc({
+    ipcMain,
+    mainContents: () => mainWindow?.webContents ?? null,
+    controller: openCodeController,
+  });
+  openCodeStreamIpc.register({
+    ipcMain,
+    mainContents: () => mainWindow?.webContents ?? null,
+    controller: openCodeStreamController,
+  });
   const dashboardHandlers = createDashboardStorageHandlers(assertTrusted, () => service);
   ipcMain.handle("vault:list", (event) => {
     assertTrusted(event);
@@ -880,6 +904,7 @@ function createWindow(): void {
     },
   });
   mainWindow = window;
+  const mainFrame = window.webContents.mainFrame;
   dashboardRuntime = new DashboardRuntimeController(
     window,
     dashboardPreloadPath(__dirname),
@@ -949,9 +974,13 @@ function createWindow(): void {
   window.once("ready-to-show", () => window.show());
   window.on("close", () => dashboardRuntime?.stop());
   window.webContents.on("did-start-navigation", (_event, _url, _isInPlace, isMainFrame) => {
-    if (isMainFrame) dashboardRuntime?.stop();
+    if (isMainFrame) {
+      dashboardRuntime?.stop();
+      openCodeController.invalidate(mainFrame);
+    }
   });
   window.on("closed", () => {
+    openCodeController.invalidate(mainFrame);
     if (mainWindow === window) {
       dashboardRuntime?.dispose();
       dashboardRuntime = null;
@@ -988,6 +1017,53 @@ if (!singleInstanceLock) {
     service = new VaultService(app.getPath("userData"), (account, owner) => github.authHeaderValue(account, owner));
     dashboardPermissions = new DashboardPermissionStore(app.getPath("userData"));
     dashboardSecrets = new DashboardSecretStore(app.getPath("userData"));
+    const openCodeStore = new OpenCodeCredentialStore(app.getPath("userData"));
+    const openCodeSetup = new OpenCodeSetupService(openCodeStore);
+    openCodeStreamController = new OpenCodeStreamController({
+      delivery: (frame, delivery) => openCodeStreamIpc.deliver(frame, delivery, () => mainWindow?.webContents ?? null),
+      stream: (context, onCandidate, signal) => {
+        const credentials = openCodeStore.load();
+        if (!credentials) return Promise.reject(new OpenCodeClientError());
+        return new OpenCodeEventStreamClient(credentials).stream(context, onCandidate, signal);
+      },
+    });
+    openCodeController = new OpenCodeController({
+      setup: (input) => openCodeSetup.save(input),
+      removeSetup: () => openCodeStore.remove(),
+      client: (credentials) => new OpenCodeClient(credentials),
+      streamController: openCodeStreamController,
+      streamingSupported: async () => {
+        const credentials = openCodeStore.load();
+        if (!credentials) return false;
+        try {
+          return supportsOpenCodeStreaming(
+            await new OpenCodeClient(credentials).healthVersion(),
+            OPENCODE_1_18_16_FIXTURE_SCHEMA_SUPPORTED,
+          );
+        } catch {
+          return false;
+        }
+      },
+      configuration: async () => {
+        try {
+          openCodeStore.assertAvailable();
+        } catch {
+          return { state: "secure-storage-unavailable" };
+        }
+        const credentials = openCodeStore.load();
+        if (!credentials) return { state: "unconfigured" };
+        try {
+          await new OpenCodeClient(credentials).health();
+          return { state: "ready", credentials };
+        } catch (error) {
+          if (error instanceof OpenCodeClientError && error.code === "incompatible") return { state: "incompatible" };
+          if (error instanceof OpenCodeClientError && error.code === "authentication-failed") {
+            return { state: "authentication-failed" };
+          }
+          return { state: "unavailable" };
+        }
+      },
+    });
     // E2E runs launch against a throwaway `--user-data-dir`, but skills install to
     // the home directory, which the Chromium switch does not isolate. Redirect the
     // skills home into that same throwaway dir under test so automated runs never

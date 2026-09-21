@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { VaultApi } from "@/types";
+import type { VaultApi, VaultSummary } from "@/types";
 import App from "./App";
 
 vi.mock("@/components/app-sidebar", () => ({
@@ -78,6 +78,31 @@ afterEach(async () => {
 });
 
 describe("app view transitions", () => {
+  it("shows the chat action only after a vault shell has loaded", async () => {
+    let resolveVaults!: (vaults: VaultSummary[]) => void;
+    window.vaultApi.list = vi.fn(() => new Promise<VaultSummary[]>((resolve) => (resolveVaults = resolve)));
+    await act(async () => root.render(<App />));
+    expect(container.querySelector('button[aria-label="Open OpenCode chat"]')).toBeNull();
+
+    await act(async () => {
+      resolveVaults([{ id: "vault", name: "Vault", repositoryPath: "", format: "html" }]);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(container.querySelector('button[aria-label="Open OpenCode chat"]')).not.toBeNull();
+  });
+
+  it("does not show the chat action during onboarding", async () => {
+    window.vaultApi.list = vi.fn(async () => []);
+    await act(async () => {
+      root.render(<App />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(container.textContent).toContain("Open a data vault");
+    expect(container.querySelector('button[aria-label="Open OpenCode chat"]')).toBeNull();
+  });
+
   it("switches graph, dashboard, document, and tag-cloud views and toggles the active cloud back to documents", async () => {
     await act(async () => {
       root.render(<App />);

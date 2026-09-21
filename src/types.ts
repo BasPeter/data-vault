@@ -234,8 +234,57 @@ export type CreateRepoInput = {
   account: string;
 };
 
+export type OpenCodeSetupInput = {
+  port: number;
+  username: string;
+  password: string;
+  disclosureAccepted: boolean;
+};
+
+export type OpenCodeSession = { id: string; title: string; createdAt: string };
+export type OpenCodeMessage = { id: string; role: "user" | "assistant"; text: string; createdAt: string };
+export type OpenCodeStatus = { state: "busy" | "idle" };
+export type OpenCodeConfigurationStatus = {
+  state:
+    | "unconfigured"
+    | "ready"
+    | "unavailable"
+    | "incompatible"
+    | "authentication-failed"
+    | "secure-storage-unavailable";
+};
+export type OpenCodeStatusResult = OpenCodeStatus | OpenCodeConfigurationStatus;
+export type OpenCodeStreamDelta = {
+  kind: "delta";
+  generation: number;
+  sequence: number;
+  sessionId: string;
+  messageId: string;
+  text: string;
+};
+export type OpenCodeStreamControl = {
+  kind: "control";
+  generation: number;
+  sequence: number;
+  state: "connected" | "reconnecting" | "terminal" | "polling-fallback" | "ready";
+};
+export type OpenCodeStreamDelivery = OpenCodeStreamDelta | OpenCodeStreamControl;
+
 export type VaultApi = {
   platform: NodeJS.Platform;
+  openCodeSetup: (input: OpenCodeSetupInput) => Promise<void>;
+  removeOpenCodeSetup: () => Promise<void>;
+  openCodeStatus: (sessionId?: string) => Promise<OpenCodeStatusResult>;
+  listOpenCodeSessions: () => Promise<OpenCodeSession[]>;
+  createOpenCodeSession: (title?: string) => Promise<OpenCodeSession>;
+  listOpenCodeMessages: (sessionId: string) => Promise<OpenCodeMessage[]>;
+  sendOpenCodePrompt: (sessionId: string, prompt: string) => Promise<void>;
+  abortOpenCodePrompt: (sessionId: string) => Promise<void>;
+  startOpenCodeStream: () => Promise<void>;
+  stopOpenCodeStream: () => Promise<void>;
+  acknowledgeOpenCodeStream: (generation: number, sequence: number) => Promise<boolean>;
+  openCodeStreamReconciliationReady: (generation: number) => Promise<boolean>;
+  onOpenCodeStream: (listener: (delivery: OpenCodeStreamDelivery) => void) => () => void;
   list: () => Promise<VaultSummary[]>;
   chooseLocal: () => Promise<VaultSummary | null>;
   clone: (url: string) => Promise<VaultSummary>;

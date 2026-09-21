@@ -30,6 +30,7 @@ import { VaultChangesIndicator } from "@/components/vault-changes-indicator";
 import { VaultInitDialog } from "@/components/vault-init-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { UpdateButton } from "@/components/update-button";
+import { OpenCodeChatPopover } from "@/components/opencode-chat-popover";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -859,6 +860,7 @@ export default function App() {
             }
           }}
         />
+        <OpenCodeChatPopover />
       </SidebarInset>
     </SidebarProvider>
   );

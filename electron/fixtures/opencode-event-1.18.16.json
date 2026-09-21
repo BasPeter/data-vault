@@ -1,0 +1,68 @@
+{
+  "fixtureVersion": 1,
+  "source": {
+    "authenticated": true,
+    "opencodeVersion": "1.18.16",
+    "eventTransport": {
+      "method": "GET",
+      "route": "/event",
+      "status": 200,
+      "contentType": "text/event-stream",
+      "framing": "LF"
+    },
+    "promptAsync": {
+      "route": "/session/session_<redacted>/prompt_async",
+      "status": 204,
+      "messageID": "msg_<token>"
+    }
+  },
+  "optionalPreludeEventNames": ["server.connected", "session.created"],
+  "events": [
+    {
+      "event": "message.updated",
+      "data": {
+        "sessionID": "session_<redacted>",
+        "info": {
+          "id": "msg_<assistant>",
+          "role": "assistant",
+          "parentID": "msg_<token>"
+        }
+      }
+    },
+    {
+      "event": "message.part.delta",
+      "data": {
+        "sessionID": "session_<redacted>",
+        "messageID": "msg_<assistant>",
+        "partID": "part_<redacted>",
+        "field": "text",
+        "delta": "<redacted>",
+        "deltaLength": 2
+      }
+    },
+    {
+      "event": "session.status",
+      "data": {
+        "sessionID": "session_<redacted>",
+        "status": {
+          "type": "idle"
+        }
+      }
+    },
+    {
+      "event": "session.idle",
+      "data": {
+        "sessionID": "session_<redacted>"
+      }
+    }
+  ],
+  "redaction": {
+    "prompt": "omitted",
+    "output": "replaced-with-placeholder-and-length-only",
+    "provider": "omitted",
+    "credentials": "omitted",
+    "realIdentifiers": "replaced-with-placeholders"
+  },
+  "notObservedHere": ["CRLF framing", "multiline data", "comment keepalives"],
+  "syntheticParserCoverageRequired": ["CRLF framing", "multiline data", "comment keepalives"]
+}

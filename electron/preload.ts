@@ -1,8 +1,50 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { VaultApi } from "../src/types";
+import type { OpenCodeStreamDelivery, VaultApi } from "../src/types";
 
-const api: VaultApi = {
+const OPEN_CODE_ID = /^[A-Za-z0-9_-]{1,128}$/;
+
+function isOpenCodeStreamDelivery(value: unknown): value is OpenCodeStreamDelivery {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const delivery = value as Record<string, unknown>;
+  if (!Number.isSafeInteger(delivery.generation) || (delivery.generation as number) < 1) return false;
+  if (!Number.isSafeInteger(delivery.sequence) || (delivery.sequence as number) < 1) return false;
+  if (delivery.kind === "delta") {
+    return (
+      typeof delivery.sessionId === "string" &&
+      OPEN_CODE_ID.test(delivery.sessionId) &&
+      typeof delivery.messageId === "string" &&
+      OPEN_CODE_ID.test(delivery.messageId) &&
+      typeof delivery.text === "string" &&
+      delivery.text.length >= 1 &&
+      delivery.text.length <= 8_000
+    );
+  }
+  return (
+    delivery.kind === "control" &&
+    (delivery.state === "connected" ||
+      delivery.state === "reconnecting" ||
+      delivery.state === "terminal" ||
+      delivery.state === "polling-fallback" ||
+      delivery.state === "ready")
+  );
+}
+
+export const api: VaultApi = {
   platform: process.platform,
+  openCodeSetup: (input) => ipcRenderer.invoke("opencode:setup", input),
+  removeOpenCodeSetup: () => ipcRenderer.invoke("opencode:remove-setup"),
+  openCodeStatus: (sessionId) => ipcRenderer.invoke("opencode:status", sessionId),
+  listOpenCodeSessions: () => ipcRenderer.invoke("opencode:list-sessions"),
+  createOpenCodeSession: (title) => ipcRenderer.invoke("opencode:create-session", title),
+  listOpenCodeMessages: (sessionId) => ipcRenderer.invoke("opencode:list-messages", sessionId),
+  sendOpenCodePrompt: (sessionId, prompt) => ipcRenderer.invoke("opencode:send-prompt", sessionId, prompt),
+  abortOpenCodePrompt: (sessionId) => ipcRenderer.invoke("opencode:abort-prompt", sessionId),
+  startOpenCodeStream: () => ipcRenderer.invoke("opencode:stream:start"),
+  stopOpenCodeStream: () => ipcRenderer.invoke("opencode:stream:stop"),
+  acknowledgeOpenCodeStream: (generation, sequence) =>
+    ipcRenderer.invoke("opencode:stream:acknowledge", generation, sequence),
+  openCodeStreamReconciliationReady: (generation) =>
+    ipcRenderer.invoke("opencode:stream:reconciliation-ready", generation),
   list: () => ipcRenderer.invoke("vault:list"),
   chooseLocal: () => ipcRenderer.invoke("vault:choose-local"),
   clone: (url) => ipcRenderer.invoke("vault:clone", url),
@@ -70,6 +112,13 @@ const api: VaultApi = {
     const handler = (_event: Electron.IpcRendererEvent, request: Parameters<typeof listener>[0]) => listener(request);
     ipcRenderer.on("app:open-document", handler);
     return () => ipcRenderer.removeListener("app:open-document", handler);
+  },
+  onOpenCodeStream: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, delivery: unknown) => {
+      if (isOpenCodeStreamDelivery(delivery)) listener(delivery);
+    };
+    ipcRenderer.on("opencode:stream:delivery", handler);
+    return () => ipcRenderer.removeListener("opencode:stream:delivery", handler);
   },
   skillStatus: () => ipcRenderer.invoke("skill:status"),
   skillProviderSelection: () => ipcRenderer.invoke("skill:provider-selection"),
