@@ -12,3 +12,5 @@ screenshots/
 .env
 .env.*
 npm-debug.log*
+.pi/fusion/
+.pi/tasks/
