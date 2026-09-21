@@ -2,13 +2,29 @@
 import type { AppChangelog } from "../src/types";
 
 export const APP_CHANGELOG = {
-  "generatedAt": "2026-09-21T15:18:42+02:00",
+  "generatedAt": "2026-09-21T16:17:05+02:00",
   "repositoryUrl": "https://github.com/BasPeter/data-vault.git",
   "releases": [
     {
-      "version": "0.19.1",
-      "date": "2026-09-21T15:18:42+02:00",
+      "version": "0.19.2",
+      "date": "2026-09-21T16:17:05+02:00",
       "commits": [
+        {
+          "hash": "d5033311a947254e26de0968477847554fc97a91",
+          "shortHash": "d503331",
+          "subject": "build(release): fix macos signing with electron-builder 26.16.1"
+        }
+      ]
+    },
+    {
+      "version": "0.19.1",
+      "date": "2026-09-21T15:19:32+02:00",
+      "commits": [
+        {
+          "hash": "612e326ee877b6e352de9b08f6dfe1bbb59e2324",
+          "shortHash": "612e326",
+          "subject": "chore(release): prepare 0.19.1"
+        },
         {
           "hash": "3e3034be97afbff8b0b2b8fb779b61d3e67187e2",
           "shortHash": "3e3034b",
