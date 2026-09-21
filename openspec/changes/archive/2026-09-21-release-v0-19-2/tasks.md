@@ -11,5 +11,5 @@
 
 ## 3. Recovery publication
 
-- [ ] 3.1 Push the approved `main` commit, create and push the exact `v0.19.2` tag, and leave the existing `v0.19.1` tag unchanged.
-- [ ] 3.2 Verify the automatically triggered `v0.19.2` workflow completed successfully with signed and notarized macOS artifacts, Windows and Linux installers, updater metadata, and the GitHub Release assets.
+- [x] 3.1 Push the approved `main` commit, create and push the exact `v0.19.2` tag, and leave the existing `v0.19.1` tag unchanged.
+- [x] 3.2 Verify the automatically triggered `v0.19.2` workflow completed successfully with signed and notarized macOS artifacts, Windows and Linux installers, updater metadata, and the GitHub Release assets.
