@@ -368,11 +368,11 @@ function titleBarThemeArgument(value: unknown): "light" | "dark" {
 // Re-install the generated agent skills whenever they are missing or outdated.
 // Best-effort: a read-only home directory or similar must never break the app,
 // so failures are logged and surfaced through the existing stale indicator.
-function autoInstallSkills(): void {
+async function autoInstallSkills(): Promise<void> {
   try {
     const vaults = service.list();
     const status = skills.status(vaults);
-    if (status.state !== "not-configured" && status.state !== "current") skills.install(vaults);
+    if (status.state !== "not-configured" && status.state !== "current") await skills.install(vaults);
   } catch (error) {
     console.error("Automatic skill install failed:", error);
   }
@@ -437,31 +437,32 @@ function registerIpc(): void {
     const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
     if (result.canceled) return null;
     const vault = service.addLocal(result.filePaths[0]);
-    autoInstallSkills();
+    await autoInstallSkills();
     return vault;
   });
   ipcMain.handle("vault:clone", async (event, url) => {
     assertTrusted(event);
     const vault = await service.clone(stringArgument(url, "repository URL"));
-    autoInstallSkills();
+    await autoInstallSkills();
     return vault;
   });
   ipcMain.handle("vault:create-empty", async (event, name, format = "html") => {
     assertTrusted(event);
     const vault = await service.createEmpty(stringArgument(name, "vault name"), formatArgument(format));
-    autoInstallSkills();
+    await autoInstallSkills();
     return vault;
   });
   ipcMain.handle("vault:update", async (event, vaultId, update) => {
     assertTrusted(event);
     const result = await service.updateVault(stringArgument(vaultId, "vault ID"), updateArgument(update));
-    autoInstallSkills();
+    await autoInstallSkills();
     return result;
   });
-  ipcMain.handle("vault:remove", (event, vaultId) => {
+  ipcMain.handle("vault:remove", async (event, vaultId) => {
     assertTrusted(event);
     service.remove(stringArgument(vaultId, "vault ID"));
     pruneWatchedVaults();
+    await autoInstallSkills();
   });
   ipcMain.handle("vault:manifest", (event, vaultId) => {
     assertTrusted(event);
@@ -774,7 +775,7 @@ function registerIpc(): void {
   ipcMain.handle("github:clone-by-full-name", async (event, fullName, account) => {
     assertTrusted(event);
     const vault = await service.cloneByFullName(repoFullNameArgument(fullName), loginArgument(account));
-    autoInstallSkills();
+    await autoInstallSkills();
     return vault;
   });
   ipcMain.handle("github:create-repo-and-clone", async (event, input) => {
@@ -782,7 +783,7 @@ function registerIpc(): void {
     const { name, private: isPrivate, account } = createRepoArgument(input);
     const repo = await github.createRepo({ name, private: isPrivate, account });
     const vault = await service.cloneByFullName(repo.fullName, account);
-    autoInstallSkills();
+    await autoInstallSkills();
     return vault;
   });
 }
@@ -806,6 +807,7 @@ async function resetApplicationSettings(window: BrowserWindow): Promise<void> {
   service.reset();
   github.reset();
   pruneWatchedVaults();
+  await autoInstallSkills();
   await window.webContents.session.clearStorageData({ storages: ["localstorage"] });
   window.webContents.reload();
 }

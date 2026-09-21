@@ -52,6 +52,22 @@ const currentStatus: SkillStatus = {
         },
       ],
     },
+    {
+      id: "pi",
+      label: "Pi",
+      root: "~/.pi/agent/skills",
+      enabled: false,
+      state: "needs-install",
+      skills: [
+        {
+          name: "vault-guide",
+          label: "Vault Guide",
+          latestVersion: "9",
+          installedVersion: null,
+          state: "not-installed",
+        },
+      ],
+    },
   ],
 };
 
@@ -174,17 +190,17 @@ describe("AgentSkillsPanel Claude plugin export", () => {
     expect(document.body.querySelector('input[type="checkbox"]')).toBeNull();
     await act(async () => providerSelection.click());
     expect(providerSelection.getAttribute("aria-expanded")).toBe("true");
-    const opencode = Array.from(document.body.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')).find(
-      (input) => input.parentElement?.textContent?.includes("OpenCode"),
+    const pi = Array.from(document.body.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')).find((input) =>
+      input.parentElement?.textContent?.includes("Pi"),
     )!;
-    expect(opencode.checked).toBe(false);
+    expect(pi.checked).toBe(false);
     expect(document.body.textContent).toContain("does not remove files already installed outside Data Vault");
-    await act(async () => opencode.click());
+    await act(async () => pi.click());
     const save = Array.from(document.body.querySelectorAll("button")).find((button) =>
       button.textContent?.includes("Save providers"),
     )!;
     await act(async () => save.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    expect(nextApi.saveSkillProviderSelection).toHaveBeenCalledWith(["claude", "opencode"]);
+    expect(nextApi.saveSkillProviderSelection).toHaveBeenCalledWith(["claude", "pi"]);
     expect(document.body.querySelector('[role="status"]')?.textContent).toContain("Provider selection saved.");
   });
 

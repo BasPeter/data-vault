@@ -120,7 +120,7 @@ the advanced Git-URL and local-folder options are available.
 
 ## Agent skills
 
-Data Vault generates two agent skills from your registered vault list:
+Data Vault generates three agent skills from your registered vault list:
 
 - **vault-guide** — how to read, create, edit, and cross-link vault documents
   (including the rule that cross-vault links may only point from a less public
@@ -128,14 +128,17 @@ Data Vault generates two agent skills from your registered vault list:
 - **document-reviewer** — a structural check that documents conform to the
   vault's setup and rules: fragment shape, metadata, link integrity, naming,
   placement, language, and cross-vault privacy. It does not critique content.
+- **vault-dashboard-guide** — the safe workflow and fixed API contract for
+  authoring a dashboard bundle identified by the application.
 
 Use the Agent Skills panel in the sidebar to explicitly select any combination
-of Claude, Codex, and OpenCode, then save. Data Vault installs and refreshes
+of Claude, Codex, OpenCode, and Pi, then save. Data Vault installs and refreshes
 only the selected providers, writing to:
 
 - `~/.claude/skills/<skill>/SKILL.md` for Claude
 - `~/.codex/skills/<skill>/SKILL.md` for Codex
 - `~/.config/opencode/skills/<skill>/SKILL.md` for OpenCode
+- `~/.pi/agent/skills/<skill>/SKILL.md` for Pi
 
 Changing the selection takes effect immediately. Deselecting a provider stops
 future writes but does not delete previously installed files; remove those

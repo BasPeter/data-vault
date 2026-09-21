@@ -540,14 +540,14 @@ function VaultSettingsDialog({
                 placeholder="en"
               />
               <p className="text-muted-foreground text-xs">
-                Language tag suggested to Claude and Codex when writing documents.
+                Language tag suggested to installed agent skills when writing documents.
               </p>
             </div>
             <div className="flex flex-col gap-1.5">
               <span className="text-sm font-medium">Desired structure</span>
               <p className="text-muted-foreground text-xs">
-                Describe the directory layout this vault should grow into. Shared with Claude and Codex when they write
-                documents.
+                Describe the directory layout this vault should grow into. Shared with installed agent skills when they
+                write documents.
               </p>
               <Button variant="outline" className="justify-start" onClick={() => setView("structure")}>
                 <FolderTree />

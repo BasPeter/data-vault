@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { randomUUID } from "node:crypto";
+import { configureFsSafeNative, root } from "@openclaw/fs-safe";
 import type {
   AgentSkillProviderId,
   AgentSkillProviderStatus,
@@ -17,6 +18,10 @@ const VAULT_GUIDE_VERSION = "12";
 const DOCUMENT_REVIEWER_VERSION = "5";
 const VAULT_DASHBOARD_GUIDE_VERSION = "1";
 const SKILL_FILE = "SKILL.md";
+
+// Native bindings are used when available. Windows arm64 falls back to the
+// helper's documented best-effort implementation rather than disabling skills.
+configureFsSafeNative({ mode: "auto" });
 
 // Emit a YAML frontmatter description as a double-quoted scalar. Prose
 // descriptions may contain a colon-space (e.g. "rules: format, ..."), which a
@@ -46,6 +51,7 @@ export const SKILL_PROVIDERS: readonly SkillProvider[] = [
   { id: "claude", label: "Claude", root: (home) => path.join(home, ".claude", "skills") },
   { id: "codex", label: "Codex", root: (home) => path.join(home, ".codex", "skills") },
   { id: "opencode", label: "OpenCode", root: (home) => path.join(home, ".config", "opencode", "skills") },
+  { id: "pi", label: "Pi", root: (home) => path.join(home, ".pi", "agent", "skills") },
 ];
 
 const PREFERENCES_FILE = "agent-skill-providers.json";
@@ -61,7 +67,16 @@ function validProviders(value: unknown): value is AgentSkillProviderId[] {
 
 type Marker = { version: string; fingerprint: string };
 
+function assertNotSymbolicLink(file: string): void {
+  try {
+    if (fs.lstatSync(file).isSymbolicLink()) throw new Error(`Refusing symbolic link: ${file}`);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+}
+
 function atomicWrite(file: string, content: string, mode: number): void {
+  assertNotSymbolicLink(file);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const temporary = path.join(path.dirname(file), `.${path.basename(file)}-${randomUUID()}.tmp`);
   try {
@@ -146,7 +161,16 @@ function vaultSection(vaults: VaultSummary[], emptyNotice: string): string {
   return vaults.length ? vaults.map(vaultEntry).join("\n\n") : emptyNotice;
 }
 
-function vaultPayload(vaults: VaultSummary[]): unknown {
+type VaultPayload = Array<{
+  name: string;
+  repositoryPath: string;
+  remoteUrl: string | null;
+  format: VaultSummary["format"];
+  defaultLanguage: string | null;
+  structure: VaultStructure | null;
+}>;
+
+function vaultPayload(vaults: VaultSummary[]): VaultPayload {
   return vaults.map((vault) => ({
     name: vault.name,
     repositoryPath: vault.repositoryPath,
@@ -631,14 +655,30 @@ export class SkillService {
     });
   }
 
-  install(vaults: VaultSummary[]): SkillStatus {
+  async install(vaults: VaultSummary[]): Promise<SkillStatus> {
     for (const provider of this.enabled()) {
       try {
+        const homeRoot = await root(this.homeDirectory, { mutationSymlinks: "reject" });
+        const providerRootPath = provider.root(this.homeDirectory);
+        const relativeProviderRoot = path.relative(this.homeDirectory, providerRootPath);
+        let current = "";
+        for (const segment of relativeProviderRoot.split(path.sep)) {
+          current = path.join(current, segment);
+          await homeRoot.mkdir(current, { mutationSymlinks: "reject" });
+        }
+        const providerRoot = await root(providerRootPath, { mutationSymlinks: "reject" });
         for (const skill of SKILLS) {
-          const directory = path.join(provider.root(this.homeDirectory), skill.name);
           const marker: Marker = { version: skill.version, fingerprint: this.skillFingerprint(skill, vaults) };
-          atomicWrite(path.join(directory, SKILL_FILE), skill.render(vaults), 0o644);
-          atomicWrite(path.join(directory, skill.markerFile), `${JSON.stringify(marker, null, 2)}\n`, 0o600);
+          await providerRoot.write(path.join(skill.name, SKILL_FILE), skill.render(vaults), {
+            mkdir: true,
+            mode: 0o644,
+            mutationSymlinks: "reject",
+          });
+          await providerRoot.write(path.join(skill.name, skill.markerFile), `${JSON.stringify(marker, null, 2)}\n`, {
+            mkdir: true,
+            mode: 0o600,
+            mutationSymlinks: "reject",
+          });
         }
         this.installErrors.delete(provider.id);
       } catch (error) {

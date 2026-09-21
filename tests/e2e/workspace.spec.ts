@@ -18,12 +18,12 @@ test("uses the workspace features in one session", async ({ appLaunch }, testInf
     await expect(footer.getByText("Set up agent skills")).toBeVisible();
     await footer.getByRole("button", { name: "Set up agent skills" }).click();
     await page.getByRole("button", { name: "Install for" }).click();
-    for (const provider of ["Claude", "Codex", "OpenCode"]) {
+    for (const provider of ["Claude", "Codex", "OpenCode", "Pi"]) {
       await page.getByRole("checkbox", { name: new RegExp(provider) }).check();
     }
     await page.getByRole("button", { name: "Save providers" }).click();
     await expect(page.getByText("Provider selection saved.")).toBeVisible();
-    await expect(page.getByRole("checkbox", { name: "OpenCode" })).toBeChecked();
+    await expect(page.getByRole("checkbox", { name: "Pi" })).toBeChecked();
     await expect(page.getByText("Vault Guide: current").first()).toBeVisible();
     await expect(page.getByText("Document Reviewer: current").first()).toBeVisible();
     await expect(page.getByText(/Installed: v/).first()).toBeVisible();
@@ -32,14 +32,14 @@ test("uses the workspace features in one session", async ({ appLaunch }, testInf
 
     const header = page.locator("header");
     await expect(header.getByRole("button", { name: "Start guided tour" })).toBeVisible();
-    await expect(header.getByRole("button", { name: /Set up Claude, Codex, and OpenCode skills/ })).toHaveCount(0);
+    await expect(header.getByRole("button", { name: /Set up Claude, Codex, OpenCode, and Pi skills/ })).toHaveCount(0);
     await captureScreenshot(page, testInfo, "document-tree");
     await captureScreenshot(page, testInfo, "sidebar-tools");
   });
 
   await test.step("isolates generated agent skills", async () => {
-    for (const base of [".claude", ".codex", path.join(".config", "opencode")]) {
-      for (const skill of ["vault-guide", "document-reviewer"]) {
+    for (const base of [".claude", ".codex", path.join(".config", "opencode"), path.join(".pi", "agent")]) {
+      for (const skill of ["vault-guide", "document-reviewer", "vault-dashboard-guide"]) {
         const skillFile = path.join(userDataDir, base, "skills", skill, "SKILL.md");
         await expect.poll(() => existsSync(skillFile)).toBe(true);
       }

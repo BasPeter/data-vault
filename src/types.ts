@@ -163,7 +163,7 @@ export type AgentSkillVersionStatus = {
   state: "not-installed" | "outdated" | "current";
 };
 
-export type AgentSkillProviderId = "claude" | "codex" | "opencode";
+export type AgentSkillProviderId = "claude" | "codex" | "opencode" | "pi";
 
 export type AgentSkillProviderStatus = {
   id: AgentSkillProviderId;

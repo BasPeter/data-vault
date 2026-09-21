@@ -26,6 +26,7 @@
     "test:e2e": "npm run build && playwright test"
   },
   "dependencies": {
+    "@openclaw/fs-safe": "^0.17.0",
     "@radix-ui/react-collapsible": "^1.1.2",
     "@radix-ui/react-separator": "^1.1.2",
     "@radix-ui/react-slot": "^1.1.2",
