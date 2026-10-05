@@ -2,13 +2,34 @@
 import type { AppChangelog } from "../src/types";
 
 export const APP_CHANGELOG = {
-  "generatedAt": "2026-09-21T16:17:05+02:00",
+  "generatedAt": "2026-10-05T09:59:32+02:00",
   "repositoryUrl": "https://github.com/BasPeter/data-vault.git",
   "releases": [
     {
-      "version": "0.19.2",
-      "date": "2026-09-21T16:17:05+02:00",
+      "version": "0.19.3",
+      "date": "2026-10-05T09:59:32+02:00",
       "commits": [
+        {
+          "hash": "1298065d860d7b337a023ef96a43093d94689da1",
+          "shortHash": "1298065",
+          "subject": "fix(mermaid): preserve vector quality while zooming"
+        },
+        {
+          "hash": "285bc632343684b1db2f7f7a0550e5b183448339",
+          "shortHash": "285bc63",
+          "subject": "docs(release): archive 0.19.2 recovery"
+        }
+      ]
+    },
+    {
+      "version": "0.19.2",
+      "date": "2026-09-21T16:22:33+02:00",
+      "commits": [
+        {
+          "hash": "353ec96eb0fc3e683f6ee7bed304ed9f0d0a4f8d",
+          "shortHash": "353ec96",
+          "subject": "chore(release): prepare 0.19.2"
+        },
         {
           "hash": "d5033311a947254e26de0968477847554fc97a91",
           "shortHash": "d503331",
