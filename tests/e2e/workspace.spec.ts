@@ -108,6 +108,10 @@ test("uses the workspace features in one session", async ({ appLaunch }, testInf
     await diagrams.first().getByRole("button", { name: "Reset diagram view" }).click();
     await expect(firstSvg).toHaveAttribute("data-mermaid-scale", "1");
     await expect(firstSvg).toHaveAttribute("data-mermaid-x", "0");
+    await diagrams.first().getByRole("button", { name: "Zoom in diagram" }).click();
+    const contentGroup = firstSvg.locator("g.mermaid-navigation-content");
+    await expect(contentGroup).toHaveAttribute("transform", /scale\(1\.2\)$/);
+    await expect(firstSvg).toHaveCSS("transform", "none");
     await page.emulateMedia({ media: "print" });
     await expect
       .poll(() => page.locator(".document-tabs").evaluate((element) => getComputedStyle(element).display))
@@ -120,7 +124,7 @@ test("uses the workspace features in one session", async ({ appLaunch }, testInf
           .evaluate((element) => getComputedStyle(element).display),
       )
       .toBe("none");
-    await expect.poll(() => firstSvg.evaluate((element) => getComputedStyle(element).transform)).toBe("none");
+    await expect.poll(() => contentGroup.evaluate((element) => getComputedStyle(element).transform)).toBe("none");
     await page.emulateMedia({ media: "screen" });
 
     await diagrams.first().getByRole("button", { name: "Zoom in diagram" }).click();

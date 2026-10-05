@@ -13,7 +13,8 @@ function diagram(generation = "test"): { block: HTMLElement; svg: SVGSVGElement 
   const block = document.createElement("div");
   block.className = "mermaid";
   block.dataset.mermaidGeneration = generation;
-  block.innerHTML = '<svg viewBox="0 0 800 400"></svg>';
+  block.innerHTML =
+    '<svg viewBox="0 0 800 400"><defs><marker id="arrow" /></defs><path marker-end="url(#arrow)" /><text>Diagram label</text></svg>';
   document.body.append(block);
   return { block, svg: block.querySelector("svg")! };
 }
@@ -34,6 +35,25 @@ beforeEach(() => {
 });
 
 describe("Mermaid navigation", () => {
+  it("uses an app-owned SVG content group instead of scaling the root SVG", () => {
+    const { block, svg } = diagram();
+    enhanceMermaidDiagram(block, "test");
+
+    const content = svg.querySelector<SVGGElement>("g.mermaid-navigation-content");
+    expect(content).not.toBeNull();
+    expect(Array.from(content!.children).map((child) => child.tagName)).toEqual(["defs", "path", "text"]);
+    expect(content!.getAttribute("transform")).toBe("translate(0 0) scale(1)");
+    expect(svg.style.transform).toBe("");
+
+    block.querySelector<HTMLButtonElement>('[aria-label="Zoom in diagram"]')!.click();
+    expect(content!.getAttribute("transform")).toBe("translate(0 0) scale(1.2)");
+    expect(svg.style.transform).toBe("");
+
+    block.querySelector<HTMLButtonElement>('[aria-label="Reset diagram view"]')!.click();
+    expect(content!.getAttribute("transform")).toBe("translate(0 0) scale(1)");
+    expect(content!.classList.contains("mermaid-navigation-content")).toBe(true);
+  });
+
   it("keeps controls and transforms independent, supports pan and reset, and ignores plain wheel input", () => {
     const first = diagram("first");
     const second = diagram("second");

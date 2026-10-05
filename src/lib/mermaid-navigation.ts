@@ -45,6 +45,11 @@ export function enhanceMermaidDiagram(block: HTMLElement, generation: string): (
   const svg = block.querySelector<SVGSVGElement>("svg");
   if (!svg) return () => {};
 
+  const content = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  content.classList.add("mermaid-navigation-content");
+  Array.from(svg.childNodes).forEach((child) => content.append(child));
+  svg.append(content);
+
   const controls = document.createElement("div");
   controls.className = "mermaid-navigation-controls";
   controls.dataset.mermaidNavigation = "true";
@@ -77,7 +82,10 @@ export function enhanceMermaidDiagram(block: HTMLElement, generation: string): (
   };
 
   const apply = () => {
-    svg.style.transform = `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`;
+    const matrix = svg.getScreenCTM?.();
+    const x = matrix?.a ? transform.x / matrix.a : transform.x;
+    const y = matrix?.d ? transform.y / matrix.d : transform.y;
+    content.setAttribute("transform", `translate(${x} ${y}) scale(${transform.scale})`);
     svg.dataset.mermaidX = String(transform.x);
     svg.dataset.mermaidY = String(transform.y);
     svg.dataset.mermaidScale = String(transform.scale);
@@ -169,11 +177,12 @@ export function enhanceMermaidDiagram(block: HTMLElement, generation: string): (
       delete viewport.dataset.panning;
     }
     if (block.dataset.mermaidGeneration !== generation) return;
-    svg.style.removeProperty("transform");
     svg.removeAttribute("data-mermaid-x");
     svg.removeAttribute("data-mermaid-y");
     svg.removeAttribute("data-mermaid-scale");
     controls.remove();
+    while (content.firstChild) svg.insertBefore(content.firstChild, content);
+    content.remove();
     viewport.replaceWith(svg);
   };
 }

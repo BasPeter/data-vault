@@ -257,10 +257,6 @@
   .doc-content .mermaid-navigation-viewport[data-panning="true"] {
     @apply cursor-grabbing;
   }
-  .doc-content .mermaid-navigation-viewport svg {
-    transform-origin: 0 0;
-    will-change: transform;
-  }
   .doc-content.blame-mode {
     position: relative;
     padding-left: 6.5rem;
@@ -368,7 +364,7 @@
     overflow: visible !important;
   }
 
-  .doc-content .mermaid-navigation-viewport svg {
+  .doc-content .mermaid-navigation-content {
     transform: none !important;
   }
 }
