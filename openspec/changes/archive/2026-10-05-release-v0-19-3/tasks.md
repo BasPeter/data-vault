@@ -11,10 +11,10 @@
 
 ## 3. Publication
 
-- [ ] 3.1 Push the approved release commit to `main`, create the exact `v0.19.3` tag on that commit, and push the tag without altering existing tags.
-- [ ] 3.2 Monitor the tag-triggered workflow to completion and verify the GitHub Release includes expected Windows, Linux, macOS, and updater assets with macOS signing/notarization evidence.
+- [x] 3.1 Push the approved release commit to `main`, create the exact `v0.19.3` tag on that commit, and push the tag without altering existing tags.
+- [x] 3.2 Monitor the tag-triggered workflow to completion and verify the GitHub Release includes expected Windows, Linux, macOS, and updater assets with macOS signing/notarization evidence.
 
 ## 4. Finalization
 
-- [ ] 4.1 Sync the completed release delta into the main release-distribution spec and archive the OpenSpec change.
-- [ ] 4.2 Commit and push the archived release record after explicit commit-message approval, leaving `main` clean and synchronized.
+- [x] 4.1 Sync the completed release delta into the main release-distribution spec and archive the OpenSpec change.
+- [x] 4.2 Commit and push the archived release record after explicit commit-message approval, leaving `main` clean and synchronized.
